@@ -36,7 +36,7 @@ struct MyApp: App {
         
         if !versionSupported {
             print("⚠️ [VERSION CHECK] Unsupported iOS version detected: \(versionString)")
-            print("⚠️ [VERSION CHECK] App only supports iOS 18.0 - 26.2 beta 1")
+            print("⚠️ [VERSION CHECK] App requires iOS 18.0 or later")
         } else {
             print("✅ [VERSION CHECK] iOS version \(versionString) is supported")
         }
@@ -93,7 +93,7 @@ struct UnsupportedVersionView: View {
                         .font(.system(size: 24, weight: .bold))
                         .multilineTextAlignment(.center)
                     
-                    Text("This app only supports iOS versions 18.0 to 26.2 beta 1")
+                    Text("This app requires iOS 18.0 or later")
                         .font(.system(size: 16))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
