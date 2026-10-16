@@ -93,7 +93,6 @@ struct ApplyTabView: View {
 
     @State private var showErrorAlert = false
     @State private var lastError: String?
-    @State private var showSuccessOverlay = false
 
     private var isRunning: Bool {
         if case .running = toolRunner.state { return true }
@@ -110,23 +109,14 @@ struct ApplyTabView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Form {
-                    enabledTweaksSection
-                    optionsSection
-                    statusSection
-                    applyButtonSection
-                }
-                .headerProminence(.increased)
-                .navigationTitle(L("nav_apply"))
-
-                if showSuccessOverlay {
-                    successOverlay
-                        .transition(.opacity.combined(with: .scale))
-                        .zIndex(1)
-                }
+            Form {
+                enabledTweaksSection
+                optionsSection
+                logSection
+                applyButtonSection
             }
-            .animation(.easeInOut(duration: 0.3), value: showSuccessOverlay)
+            .headerProminence(.increased)
+            .navigationTitle(L("nav_apply"))
         }
         .alert(L("alert_error"), isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
@@ -136,37 +126,133 @@ struct ApplyTabView: View {
     }
 
     @ViewBuilder
-    private var successOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea()
-            VStack(spacing: 20) {
-                ZStack {
-                    Circle().fill(Color.green.opacity(0.18)).frame(width: 110, height: 110)
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 72, weight: .bold))
-                        .foregroundStyle(.green)
+    private var enabledTweaksSection: some View {
+        Section(header: Text(L("section_tweaks"))) {
+            if enabledTweaks.isEmpty {
+                Label {
+                    Text(L("apply_no_tweaks_hint"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "info.circle").foregroundStyle(.secondary)
                 }
-                VStack(spacing: 8) {
-                    Text("Tweak Successfully Applied")
-                        .font(.title3.bold())
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.white)
-                    Text("Respringing…")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.75))
+            } else {
+                ForEach(enabledTweaks, id: \.0) { tweak in
+                    Label {
+                        Text(tweak.0)
+                    } icon: {
+                        Image(systemName: tweak.1).foregroundStyle(.tint)
+                    }
                 }
-                ProgressView().tint(.white)
             }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 40)
-            .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemBackground))
-                    .shadow(color: .black.opacity(0.3), radius: 20)
-            )
-            .padding(.horizontal, 32)
         }
     }
+
+    @ViewBuilder
+    private var optionsSection: some View {
+        Section(header: Text(L("section_options"))) {
+            Toggle(isOn: $toolStore.soundRespringEnabled) {
+                Label(L("respring_after_apply"), systemImage: "arrow.clockwise")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var logSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    if isRunning {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(statusText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                if !toolRunner.logs.isEmpty {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(toolRunner.logs.enumerated()), id: \.offset) { _, line in
+                                Text(line.text)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 180)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var applyButtonSection: some View {
+        Section {
+            Button(action: performApply) {
+                HStack(spacing: 10) {
+                    if isRunning {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.white)
+                    }
+                    Text(isRunning ? L("applying") : L("apply_enabled_tweaks"))
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(isRunning ? Color.gray : Color(hex: "#ef9f76"))
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(isRunning || enabledTweaks.isEmpty)
+            .opacity((isRunning || enabledTweaks.isEmpty) ? 0.6 : 1.0)
+        }
+    }
+
+    private var statusText: String {
+        switch toolRunner.state {
+        case .idle:
+            if enabledTweaks.isEmpty { return L("apply_enable_first") }
+            return L("apply_ready").replacingOccurrences(of: "{count}", with: "\(enabledTweaks.count)")
+        case .running(let name):
+            return L("apply_running").replacingOccurrences(of: "{toolName}", with: name)
+        case .success:
+            return L("apply_done")
+        case .failed(let msg):
+            return L("apply_failed").replacingOccurrences(of: "{message}", with: msg)
+        }
+    }
+
+    private func performApply() {
+        Task {
+            await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
+
+            if case .success = toolRunner.state {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+                if toolStore.soundRespringEnabled {
+                    do {
+                        try RespringHelper.respring()
+                    } catch {
+                        print("[RESPRING] Failed: \(error)")
+                    }
+                }
+            }
+
+            if case .failed(let message) = toolRunner.state {
+                await MainActor.run {
+                    lastError = message
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
+}
 
     @ViewBuilder
     private var enabledTweaksSection: some View {
