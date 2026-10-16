@@ -50,6 +50,11 @@ struct SettingsView: View {
         ) { result in
             handlePairingImport(result)
         }
+        .alert("LocalDevVPN", isPresented: $showVPNAlert) {
+            Button("OK") {}
+        } message: {
+            Text("LocalDevVPN chưa bật hoặc tunnel 10.7.0.1 không truy cập được. Airlift sẽ không hoạt động.")
+        }
     }
 
     // MARK: - System Status
@@ -100,7 +105,6 @@ struct SettingsView: View {
                 }
             }
 
-            // VPN check button
             Button {
                 checkVPNStatus(showAlert: true)
             } label: {
@@ -131,13 +135,11 @@ struct SettingsView: View {
                     let hasIdentifier = plist["identifier"] != nil
                     let hasPublicKey = plist["e_public_key"] != nil
 
-                    guard hasIdentifier && hasPublicKey else {
-                        // Still accept legacy format but warn
+                    if !hasIdentifier || !hasPublicKey {
                         print("[Pairing] Warning: file may not be RPPairing format")
                     }
                 }
 
-                // Save to documents
                 let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
                 try data.write(to: pairingPath)
                 pairingFile = url.lastPathComponent
