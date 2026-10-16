@@ -14,11 +14,11 @@ final class ToolStore: ObservableObject {
     // Apple Wallet
     @AppStorage("AppleWalletEnabled") var walletEnabled: Bool = false
 
-    // Config Tweaks (Custom Footnote + Supervision)
+    // Config Tweaks
     @AppStorage("ConfigTweaksEnabled") var configTweaksEnabled: Bool = false
     @AppStorage("ConfigFootnoteText") var configFootnoteText: String = ""
 
-    // Legacy — không dùng nữa nhưng giữ để không lỗi reference
+    // Legacy
     @AppStorage("ThemesUIEnabled") var themesUIEnabled: Bool = false
     @AppStorage("zPatchCustomEnabled") var zPatchCustomEnabled: Bool = false
     @AppStorage("zPatchUnlocked") var zPatchUnlocked: Bool = false
