@@ -23,10 +23,7 @@ LSApplicationWorkspace *LSApplicationWorkspaceDefaultWorkspace(void);
 + (BOOL)_hasHomeButton;
 @end
 
-#pragma mark - bad_query (sandbox escape)
-
-#include <stdint.h>
-#include <stdbool.h>
+#pragma mark - bad_query
 
 int64_t bad_query(char* path, bool create, char *group_identifier, bool is_group);
 char *bad_query_list(char *path, int64_t max_inode);
