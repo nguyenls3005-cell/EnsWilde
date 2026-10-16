@@ -4,14 +4,7 @@ import NetworkExtension
 
 enum NetworkStatus {
 
-    /// Check VPN active via NEVPNManager (accurate, fast)
-    static func isVPNActive() -> Bool {
-        let manager = NEVPNManager.shared()
-        let status = manager.connection.status
-        return status == .connected
-    }
-
-    /// Async version with completion handler (avoid blocking main)
+    /// Async VPN check via NEVPNManager (không block main thread)
     static func checkVPNStatus(completion: @escaping (Bool) -> Void) {
         NEVPNManager.shared().loadFromPreferences { error in
             if let error = error {
@@ -24,12 +17,17 @@ enum NetworkStatus {
         }
     }
 
-    /// Legacy — keep for compatibility
+    /// Sync check
+    static func isVPNActive() -> Bool {
+        return NEVPNManager.shared().connection.status == .connected
+    }
+
+    /// Legacy — giữ để tương thích
     static func isVPNTunnelReachable(timeout: TimeInterval = 1.0) -> Bool {
         return isVPNActive()
     }
 
-    /// Legacy — keep for compatibility
+    /// Legacy — giữ để tương thích
     static func isLocalDevVPNActive() -> Bool {
         return isVPNActive()
     }
