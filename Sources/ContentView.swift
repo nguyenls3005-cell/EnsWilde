@@ -84,7 +84,7 @@ private var tweaksSection: some View {
         toolNavigationLink(
             value: "ConfigTweaks",
             title: "Config Tweaks",
-            subtitle: Custom Lock Screen Footnote",
+            subtitle: "Custom Lock Screen Footnote",
             icon: "textformat",
             isEnabled: toolStore.configTweaksEnabled
         )
