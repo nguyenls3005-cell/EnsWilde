@@ -161,7 +161,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - VPN Check (non-blocking)
+    // MARK: - VPN Check
     private func refreshVPNStatus(showAlert: Bool = false) {
         NetworkStatus.checkVPNStatus { active in
             self.vpnActive = active
