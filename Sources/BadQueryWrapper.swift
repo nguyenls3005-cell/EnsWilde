@@ -20,11 +20,6 @@ enum BadQueryError: Error, LocalizedError {
 
 enum BadQueryWrapper {
     /// Ghi file qua bad_query sandbox escape.
-    /// - Parameters:
-    ///   - path: đường dẫn đầy đủ trên thiết bị
-    ///   - data: nội dung cần ghi
-    ///   - groupIdentifier: App Group ID (iOS 26 cần, iOS 27 không cần → nil)
-    ///   - isGroup: true nếu dùng App Group sacrifice
     static func writeFile(
         at path: String,
         data: Data,
