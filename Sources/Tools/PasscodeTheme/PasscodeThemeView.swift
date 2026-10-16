@@ -7,39 +7,38 @@ struct PasscodeThemeView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @ObservedObject var themeStore: PasscodeThemeStore
     @StateObject private var viewModel: PasscodeThemeViewModel
+    @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @State private var showImportSheet = false
     @State private var showDefaultImportSheet = false
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
-    
+    @State private var showSavedAlert = false
+
     init(themeStore: PasscodeThemeStore) {
         self.themeStore = themeStore
         self._viewModel = StateObject(wrappedValue: PasscodeThemeViewModel(store: themeStore))
     }
-    
+
     var body: some View {
         Form {
             Section(header: Text(L("passcode_theme_manager"))) {
                 Toggle(L("passcode_enable_theme"), isOn: $themeStore.passcodeThemeEnabled)
             }
-            
-            // Global Settings — applies to all passcode themes
+
             Section(header: Text(L("global_settings"))) {
-                // Language / Method
                 Picker(L("passcode_language_method"), selection: $themeStore.globalCustomPrefixRaw) {
                     ForEach(PasscodeTheme.PrefixLanguage.allCases, id: \.self) { prefix in
                         Text(prefix.displayName).tag(prefix.rawValue)
                     }
                 }
-                
-                // Telephony Version
+
                 Picker(L("passcode_telephony_version"), selection: $themeStore.globalTelephonyVersionRaw) {
                     ForEach(PasscodeTheme.TelephonyVersion.allCases, id: \.self) { version in
                         Text(version.displayName).tag(version.rawValue)
                     }
                 }
             }
-            
+
             Section(header: Text(L("section_theme_library"))) {
                 if themeStore.themes.isEmpty {
                     VStack(spacing: 12) {
@@ -60,15 +59,31 @@ struct PasscodeThemeView: View {
                     }
                 }
             }
-            
+
             Section(header: Text(L("section_import_theme"))) {
                 Button(L("passcode_import_file")) {
                     showImportSheet = true
                 }
-                
+
                 Button(L("passcode_import_default_zip")) {
                     showDefaultImportSheet = true
                 }
+            }
+
+            Section {
+                Button {
+                    showApplyTab = true
+                    showSavedAlert = true
+                } label: {
+                    HStack {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("Save Changes")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+                .disabled(!themeStore.passcodeThemeEnabled)
             }
         }
         .headerProminence(.increased)
@@ -85,6 +100,11 @@ struct PasscodeThemeView: View {
         } message: {
             Text(errorMessage)
         }
+        .alert("Saved", isPresented: $showSavedAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Tab Apply đã được mở. Chuyển sang tab Apply để áp dụng.")
+        }
     }
 }
 
@@ -92,10 +112,9 @@ struct PasscodeThemeView: View {
 struct ThemeRowView: View {
     let theme: PasscodeTheme
     @ObservedObject var themeStore: PasscodeThemeStore
-    
+
     var body: some View {
         HStack(spacing: 12) {
-            // Preview Image
             if let previewImage = theme.getPreviewImage() {
                 Image(uiImage: previewImage)
                     .resizable()
@@ -111,8 +130,7 @@ struct ThemeRowView: View {
                             .foregroundStyle(.secondary)
                     )
             }
-            
-            // Theme Info
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(theme.name)
                     .font(.body)
@@ -120,10 +138,9 @@ struct ThemeRowView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            
+
             Spacer()
-            
-            // Selection Radio Button
+
             Image(systemName: theme.isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: 22))
                 .foregroundStyle(theme.isSelected ? .green : .secondary)
@@ -142,10 +159,9 @@ struct ThemeDetailView: View {
     @State private var showDeleteAlert = false
     @State private var showFullPreview = false
     @Environment(\.dismiss) var dismiss
-    
+
     var body: some View {
         Form {
-            // Preview
             Section(header: Text(L("section_preview"))) {
                 if let previewImage = theme.getPreviewImage() {
                     VStack(spacing: 12) {
@@ -154,7 +170,7 @@ struct ThemeDetailView: View {
                             .aspectRatio(contentMode: .fit)
                             .frame(height: 120)
                             .cornerRadius(12)
-                        
+
                         Button {
                             showFullPreview = true
                         } label: {
@@ -166,10 +182,8 @@ struct ThemeDetailView: View {
                     }
                 }
             }
-            
-            // Theme Info
+
             Section(header: Text(L("section_theme_settings"))) {
-                // Theme Name
                 VStack(alignment: .leading, spacing: 4) {
                     Text(L("passcode_theme_name"))
                         .font(.caption)
@@ -177,8 +191,7 @@ struct ThemeDetailView: View {
                     TextField(L("passcode_theme_name"), text: $theme.name)
                         .onChange(of: theme.name) { _ in themeStore.updateTheme(theme) }
                 }
-                
-                // Detected Size Info
+
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L("passcode_detected_size"))
@@ -190,13 +203,12 @@ struct ThemeDetailView: View {
                     Image(systemName: "info.circle")
                         .foregroundStyle(.secondary)
                 }
-                
-                // Key Size
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L("passcode_target_key_size"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    
+
                     Picker("Key Size", selection: $theme.keySize) {
                         ForEach(PasscodeTheme.KeySize.allCases, id: \.self) { size in
                             Text(size.rawValue).tag(size)
@@ -204,13 +216,12 @@ struct ThemeDetailView: View {
                     }
                     .pickerStyle(.segmented)
                     .onChange(of: theme.keySize) { _ in themeStore.updateTheme(theme) }
-                    
+
                     Text(scalingDescription(from: theme.detectedSize, to: theme.keySize))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                
-                // Selection
+
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L("passcode_selected_theme"))
@@ -228,15 +239,13 @@ struct ThemeDetailView: View {
                     }
                 }
             }
-            
-            // Files Info
+
             Section(header: Text(L("section_theme_files"))) {
                 let imageFiles = theme.getImageFiles()
                 Text("\(imageFiles.count) image file(s) found")
                     .foregroundStyle(.secondary)
             }
-            
-            // Delete
+
             Section(header: Text(L("section_danger_zone"))) {
                 Button(role: .destructive) {
                     showDeleteAlert = true
@@ -261,9 +270,7 @@ struct ThemeDetailView: View {
             Text(L("passcode_delete_confirm"))
         }
     }
-    
-    
-    // Helper functions for size descriptions
+
     private func sizeDescription(for detectedSize: PasscodeTheme.DetectedSize) -> String {
         switch detectedSize {
         case .small:
@@ -274,7 +281,7 @@ struct ThemeDetailView: View {
             return "Unknown (will use target size)"
         }
     }
-    
+
     private func scalingDescription(from detectedSize: PasscodeTheme.DetectedSize, to targetSize: PasscodeTheme.KeySize) -> String {
         if detectedSize == .unknown {
             return "No scaling info available - images will be used as-is"
@@ -298,7 +305,7 @@ struct ImportThemeSheet: View {
     @State private var selectedFileURL: URL?
     @State private var isImporting = false
     @State private var errorMessage: String?
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -308,18 +315,18 @@ struct ImportThemeSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Section(header: Text(L("theme_information"))) {
                     TextField(L("passcode_theme_name"), text: $themeName)
                         .autocorrectionDisabled()
                 }
-                
+
                 Section {
                     Button(L("select_file")) {
                         showFilePicker = true
                     }
                 }
-                
+
                 if isImporting {
                     Section {
                         ProgressView(L("importing"))
@@ -365,10 +372,10 @@ struct ImportThemeSheet: View {
             }
         }
     }
-    
+
     private func importTheme() {
         guard let url = selectedFileURL else { return }
-        
+
         isImporting = true
         Task {
             do {
@@ -397,7 +404,7 @@ struct ImportDefaultPasscodeSheet: View {
     @State private var isImporting = false
     @State private var errorMessage: String?
     @State private var detectedInfo = ""
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -412,18 +419,18 @@ struct ImportDefaultPasscodeSheet: View {
                         }
                     }
                 }
-                
+
                 Section(header: Text(L("theme_information"))) {
                     TextField(L("passcode_theme_name"), text: $themeName)
                         .autocorrectionDisabled()
                 }
-                
+
                 Section {
                     Button(L("passcode_select_zip")) {
                         showFilePicker = true
                     }
                 }
-                
+
                 if isImporting {
                     Section {
                         ProgressView(L("importing"))
@@ -455,7 +462,6 @@ struct ImportDefaultPasscodeSheet: View {
                         if themeName.isEmpty {
                             themeName = url.deletingPathExtension().lastPathComponent
                         }
-                        // Preview: detect telephony and language from ZIP
                         previewZIPContents(url: url)
                     }
                 case .failure(let error):
@@ -471,35 +477,32 @@ struct ImportDefaultPasscodeSheet: View {
             }
         }
     }
-    
+
     private func previewZIPContents(url: URL) {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        
-        // Copy to temp to read
+
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(url.lastPathComponent)
         try? FileManager.default.removeItem(at: tempURL)
         guard let _ = try? FileManager.default.copyItem(at: url, to: tempURL) else { return }
         defer { try? FileManager.default.removeItem(at: tempURL) }
-        
+
         guard let archive = try? Archive(url: tempURL, accessMode: .read) else { return }
-        
+
         var telephonyFolder: String?
         var languageCode: String?
-        
+
         for entry in archive {
             let path = entry.path
             let components = path.split(separator: "/")
-            
-            // Look for Telephony-X folder
+
             for comp in components {
                 let compStr = String(comp)
                 if compStr.hasPrefix("Telephony") {
                     telephonyFolder = compStr
                 }
             }
-            
-            // Detect language code from image filenames like "other-2-A B C--white.png"
+
             if languageCode == nil {
                 let filename = (path as NSString).lastPathComponent
                 let ext = (filename as NSString).pathExtension.lowercased()
@@ -513,16 +516,16 @@ struct ImportDefaultPasscodeSheet: View {
                 }
             }
         }
-        
+
         var info: [String] = []
         if let tf = telephonyFolder { info.append("Telephony: \(tf)") }
         if let lc = languageCode { info.append("Language: \(lc)") }
         detectedInfo = info.joined(separator: " • ")
     }
-    
+
     private func importDefaultPasscode() {
         guard let url = selectedFileURL else { return }
-        
+
         isImporting = true
         Task {
             do {
@@ -544,7 +547,7 @@ struct ImportDefaultPasscodeSheet: View {
 struct FullPasscodePreviewSheet: View {
     let theme: PasscodeTheme
     @Environment(\.dismiss) var dismiss
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -553,9 +556,9 @@ struct FullPasscodePreviewSheet: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                
+
                 let keyImages = getAllPasscodeKeyImages()
-                
+
                 if keyImages.isEmpty {
                     Section {
                         VStack(spacing: 12) {
@@ -587,7 +590,7 @@ struct FullPasscodePreviewSheet: View {
                                             .aspectRatio(contentMode: .fit)
                                             .frame(maxWidth: 100, maxHeight: 100)
                                             .cornerRadius(8)
-                                        
+
                                         Text(item.label)
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
@@ -608,28 +611,22 @@ struct FullPasscodePreviewSheet: View {
             }
         }
     }
-    
+
     private func getAllPasscodeKeyImages() -> [(key: String, label: String, image: UIImage)] {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(atPath: theme.themeFolderURL.path) else { return [] }
-        
+
         var keyImages: [(String, String, UIImage)] = []
-        
-        // Define the keys in proper iPhone passcode keyboard order: 1-2-3, 4-5-6, 7-8-9, empty-0-empty
-        // iPhone passcode layout: 0 should be below 8 (middle column)
-        // Grid positions: [0,1,2], [3,4,5], [6,7,8], [9,10,11]
-        // Row 4 has empty spaces: empty below 7, 0 below 8, empty below 9
+
         let keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "empty", "0", "empty"]
         let labels = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", ""]
-        
+
         for (index, key) in keys.enumerated() {
-            // Skip empty slots
             if key == "empty" {
-                keyImages.append((key, labels[index], UIImage()))  // Add empty placeholder
+                keyImages.append((key, labels[index], UIImage()))
                 continue
             }
-            
-            // Look for files containing the key pattern
+
             if let file = files.first(where: {
                 $0.lowercased().contains("-\(key)-") ||
                 $0.lowercased().contains("-\(key)@") ||
@@ -642,7 +639,7 @@ struct FullPasscodePreviewSheet: View {
                 }
             }
         }
-        
+
         return keyImages
     }
 }
