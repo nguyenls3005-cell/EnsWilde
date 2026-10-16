@@ -7,13 +7,15 @@ import ZIPFoundation
 struct AppleWalletView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @ObservedObject var walletStore: AppleWalletStore
+    @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @State private var showAddSheet = false
     @State private var showScanSheet = false
     @State private var showImportZIPSheet = false
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
     @State private var isScanning = false
-    
+    @State private var showSavedAlert = false
+
     var body: some View {
         Form {
             Section(header: Text(L("tool_apple_wallet"))) {
@@ -50,10 +52,26 @@ struct AppleWalletView: View {
                 Button(L("wallet_manual_input")) {
                     showAddSheet = true
                 }
-                
+
                 Button(L("wallet_import_default_zip")) {
                     showImportZIPSheet = true
                 }
+            }
+
+            Section {
+                Button {
+                    showApplyTab = true
+                    showSavedAlert = true
+                } label: {
+                    HStack {
+                        Image(systemName: "square.and.arrow.down")
+                        Text("Save Changes")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+                .disabled(!walletStore.appleWalletEnabled)
             }
         }
         .headerProminence(.increased)
@@ -73,6 +91,11 @@ struct AppleWalletView: View {
         } message: {
             Text(errorMessage)
         }
+        .alert("Saved", isPresented: $showSavedAlert) {
+            Button("OK") {}
+        } message: {
+            Text("Tab Apply đã được mở. Chuyển sang tab Apply để áp dụng.")
+        }
     }
 }
 
@@ -84,7 +107,7 @@ struct WalletCardPreview: View {
     @ObservedObject var walletStore: AppleWalletStore
     @State private var showEditSheet = false
     @State private var showDeleteAlert = false
-    
+
     var body: some View {
         ZStack {
             if let imageData = card.backgroundImageData,
@@ -105,7 +128,7 @@ struct WalletCardPreview: View {
                     )
                     .frame(height: 200)
             }
-            
+
             VStack {
                 HStack {
                     Spacer()
@@ -139,7 +162,7 @@ struct WalletCardPreview: View {
             } label: {
                 Label(L("alert_edit"), systemImage: "pencil")
             }
-            
+
             Button(role: .destructive) {
                 showDeleteAlert = true
             } label: {
@@ -166,7 +189,7 @@ struct ManualAddCardSheet: View {
     @ObservedObject var walletStore: AppleWalletStore
     @State private var cardID = ""
     @State private var cardName = ""
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -206,13 +229,12 @@ struct ScanCardIDSheet: View {
     @State private var scanStatus = L("wallet_scan_ready")
     @State private var elapsedTime: TimeInterval = 0
     @State private var timer: Timer?
-    
+
     var body: some View {
         NavigationStack {
             Form {
                 Section(header: Text(L("wallet_scan_card"))) {
                     VStack(spacing: 20) {
-                        // Scanning Animation
                         ZStack {
                             Circle()
                                 .stroke(Color.secondary.opacity(0.2), lineWidth: 8)
@@ -248,9 +270,7 @@ struct ScanCardIDSheet: View {
                             Text(String(format: "%.0f / 300 seconds", elapsedTime))
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                        }
 
-                        if isScanning {
                             Text(L("wallet_scan_instruction"))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
@@ -285,27 +305,25 @@ struct ScanCardIDSheet: View {
             }
         }
     }
-    
+
     private func startScanning() {
         isScanning = true
         elapsedTime = 0
         scanStatus = "Scanning... Open Apple Wallet now"
-        
-        // Start timer
+
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             elapsedTime += 1
         }
-        
+
         Task {
             do {
-                let cardID = try await scanOneWalletCardID(timeout: 300) // 5 minutes
+                let cardID = try await scanOneWalletCardID(timeout: 300)
                 await MainActor.run {
                     stopScanning()
                     let newCard = AppleWalletCard(id: cardID, name: "Card \(cardID.prefix(8))")
                     walletStore.addCard(newCard)
                     scanStatus = "✓ Successfully scanned card ID!"
-                    
-                    // Auto dismiss after 1.5 seconds
+
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                         dismiss()
                     }
@@ -318,7 +336,7 @@ struct ScanCardIDSheet: View {
             }
         }
     }
-    
+
     private func stopScanning() {
         isScanning = false
         timer?.invalidate()
@@ -333,18 +351,17 @@ struct EditCardSheet: View {
     @State var card: AppleWalletCard
     @ObservedObject var walletStore: AppleWalletStore
     @State private var cardName: String
-    
+
     init(card: AppleWalletCard, walletStore: AppleWalletStore) {
         self._card = State(initialValue: card)
         self.walletStore = walletStore
         self._cardName = State(initialValue: card.name)
     }
-    
+
     var body: some View {
         NavigationStack {
             Form {
                 Section(header: Text(L("section_card_information"))) {
-                    // Card ID is read-only
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L("wallet_card_id_readonly"))
                             .font(.caption)
@@ -388,22 +405,20 @@ struct AppleWalletCardDetailView: View {
     @State private var primaryAccountSuffix: String = ""
     @State private var passJSONData: Data? = nil
     @Environment(\.dismiss) var dismiss
-    
+
     enum ImageType {
         case background
     }
-    
-    /// Compute the pass.json file path for this card
+
     private var passJSONFileURL: URL {
         URL.documentsDirectory
             .appendingPathComponent("WalletCards")
             .appendingPathComponent(card.id)
             .appendingPathComponent("pass.json")
     }
-    
+
     var body: some View {
         Form {
-            // Card Preview
             Section(header: Text(L("section_card_preview"))) {
                 if let imageData = card.backgroundImageData,
                    let uiImage = UIImage(data: imageData) {
@@ -428,7 +443,6 @@ struct AppleWalletCardDetailView: View {
                 }
             }
 
-            // Card Info
             Section(header: Text(L("section_card_information"))) {
                 TextField(L("wallet_card_name"), text: $card.name)
                     .onChange(of: card.name) { _ in walletStore.updateCard(card) }
@@ -445,7 +459,6 @@ struct AppleWalletCardDetailView: View {
                     .onChange(of: card.enabled) { _ in walletStore.updateCard(card) }
             }
 
-            // Image Resolution
             Section(header: Text(L("section_image_resolution"))) {
                 Picker("Resolution", selection: $card.useRetina) {
                     Text(L("wallet_resolution_2x")).tag(false)
@@ -455,7 +468,6 @@ struct AppleWalletCardDetailView: View {
                 .onChange(of: card.useRetina) { _ in walletStore.updateCard(card) }
             }
 
-            // Images
             Section(header: Text(L("section_card_images"))) {
                 ImagePickerButton(
                     title: "Background Image",
@@ -466,11 +478,9 @@ struct AppleWalletCardDetailView: View {
                     showImagePicker = true
                 }
             }
-            
-            // Card Display Number Section
+
             Section(header: Text(L("wallet_card_display_number"))) {
                 if passJSONData != nil {
-                    // Show imported status
                     HStack {
                         Image(systemName: "creditcard.fill")
                             .foregroundStyle(.green)
@@ -479,8 +489,7 @@ struct AppleWalletCardDetailView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                     }
-                    
-                    // primaryAccountSuffix editing
+
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L("wallet_display_number_label"))
                             .font(.caption)
@@ -492,22 +501,19 @@ struct AppleWalletCardDetailView: View {
                                 updatePrimaryAccountSuffixOnDisk(newValue)
                             }
                     }
-                    
-                    // Replace button
+
                     Button {
                         showPassJSONImporter = true
                     } label: {
                         Label(L("wallet_replace_card_data"), systemImage: "arrow.triangle.2.circlepath")
                     }
-                    
-                    // Delete button
+
                     Button(role: .destructive) {
                         deletePassJSON()
                     } label: {
                         Label(L("wallet_delete_card_data"), systemImage: "trash")
                     }
                 } else {
-                    // Import button
                     Button {
                         showPassJSONImporter = true
                     } label: {
@@ -516,7 +522,6 @@ struct AppleWalletCardDetailView: View {
                 }
             }
 
-            // Delete Card
             Section(header: Text(L("section_danger_zone"))) {
                 Button(role: .destructive) {
                     showDeleteAlert = true
@@ -557,7 +562,7 @@ struct AppleWalletCardDetailView: View {
             Text(importErrorMessage)
         }
     }
-    
+
     private func bindingForImageType(_ type: ImageType) -> Binding<Data?> {
         Binding(
             get: {
@@ -573,16 +578,12 @@ struct AppleWalletCardDetailView: View {
             }
         )
     }
-    
-    // MARK: - pass.json Operations
-    
-    /// Load pass.json data from disk into @State
+
     private func loadPassJSONFromDisk() {
         let fileURL = passJSONFileURL
         if FileManager.default.fileExists(atPath: fileURL.path),
            let data = try? Data(contentsOf: fileURL) {
             passJSONData = data
-            // Extract primaryAccountSuffix
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 primaryAccountSuffix = json["primaryAccountSuffix"] as? String ?? ""
             }
@@ -591,22 +592,19 @@ struct AppleWalletCardDetailView: View {
             primaryAccountSuffix = ""
         }
     }
-    
-    /// Save pass.json data to disk
+
     private func savePassJSONToDisk(_ data: Data) throws {
         let folderURL = passJSONFileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
         try data.write(to: passJSONFileURL)
     }
-    
-    /// Delete pass.json from disk and clear state
+
     private func deletePassJSON() {
         try? FileManager.default.removeItem(at: passJSONFileURL)
         passJSONData = nil
         primaryAccountSuffix = ""
     }
-    
-    /// Update primaryAccountSuffix in the on-disk pass.json
+
     private func updatePrimaryAccountSuffixOnDisk(_ newValue: String) {
         guard let currentData = passJSONData,
               var json = try? JSONSerialization.jsonObject(with: currentData) as? [String: Any] else {
@@ -618,15 +616,14 @@ struct AppleWalletCardDetailView: View {
             passJSONData = updatedData
         }
     }
-    
-    /// Handle file importer result
+
     private func handlePassJSONImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-            
+
             let importedData: Data
             do {
                 importedData = try Data(contentsOf: url)
@@ -635,15 +632,13 @@ struct AppleWalletCardDetailView: View {
                 showImportErrorAlert = true
                 return
             }
-            
-            // Validate it's valid JSON
+
             guard let json = try? JSONSerialization.jsonObject(with: importedData) as? [String: Any] else {
                 importErrorMessage = "Invalid JSON format. The file must contain a JSON object."
                 showImportErrorAlert = true
                 return
             }
-            
-            // Save to disk
+
             do {
                 try savePassJSONToDisk(importedData)
             } catch {
@@ -651,11 +646,10 @@ struct AppleWalletCardDetailView: View {
                 showImportErrorAlert = true
                 return
             }
-            
-            // Update @State — this triggers the UI to show the editing section
+
             passJSONData = importedData
             primaryAccountSuffix = json["primaryAccountSuffix"] as? String ?? ""
-            
+
         case .failure(let error):
             importErrorMessage = "File import error: \(error.localizedDescription)"
             showImportErrorAlert = true
@@ -669,7 +663,7 @@ struct ImagePickerButton: View {
     let subtitle: String
     let hasImage: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             HStack {
@@ -697,68 +691,64 @@ struct ImagePickerButton: View {
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var imageData: Data?
     @Environment(\.dismiss) var dismiss
-    let useRetina: Bool  // true = @3x, false = @2x
-    
+    let useRetina: Bool
+
     func makeUIViewController(context: Context) -> PHPickerViewController {
         var config = PHPickerConfiguration()
         config.filter = .images
         config.selectionLimit = 1
-        
+
         let picker = PHPickerViewController(configuration: config)
         picker.delegate = context.coordinator
         return picker
     }
-    
+
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self, useRetina: useRetina)
     }
-    
+
     class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let parent: ImagePicker
         let useRetina: Bool
-        
+
         init(_ parent: ImagePicker, useRetina: Bool) {
             self.parent = parent
             self.useRetina = useRetina
         }
-        
+
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             parent.dismiss()
-            
+
             guard let provider = results.first?.itemProvider,
                   provider.canLoadObject(ofClass: UIImage.self) else { return }
-            
+
             provider.loadObject(ofClass: UIImage.self) { image, error in
                 guard let image = image as? UIImage else { return }
-                
-                // Resize to Apple Wallet dimensions based on resolution
-                // Apple Wallet card background sizes:
-                // @3x (Retina): 2304x1452
-                // @2x (Standard): 1536x969 (user-specified default)
+
                 let targetSize: CGSize
                 if self.useRetina {
                     targetSize = CGSize(width: 2304, height: 1452)
                 } else {
                     targetSize = CGSize(width: 1536, height: 969)
                 }
-                
+
                 let resizedImage = self.resizeImage(image, targetSize: targetSize)
-                
+
                 DispatchQueue.main.async {
                     self.parent.imageData = resizedImage.pngData()
                 }
             }
         }
-        
+
         private func resizeImage(_ image: UIImage, targetSize: CGSize) -> UIImage {
             let size = image.size
             let widthRatio = targetSize.width / size.width
             let heightRatio = targetSize.height / size.height
             let ratio = min(widthRatio, heightRatio)
             let newSize = CGSize(width: size.width * ratio, height: size.height * ratio)
-            
+
             let renderer = UIGraphicsImageRenderer(size: newSize)
             return renderer.image { _ in
                 image.draw(in: CGRect(origin: .zero, size: newSize))
@@ -782,28 +772,19 @@ private enum WalletIDScanError: Error, LocalizedError {
     }
 }
 
-// MARK: - 2. Hàm trích xuất ID từ dòng log (Regex Logic)
-
 private func extractWalletCardID(from line: String) -> String? {
-    // Danh sách các mẫu Regex để bắt ID thẻ trong các trường hợp khác nhau của iOS
     let patterns = [
-        // Mẫu 1: Khi PDCardFileManager ghi dữ liệu thẻ
         #"PDCardFileManager: writing card\s+([A-Za-z0-9+/]+={0,2})(?=\s|\)|,|$)"#,
-        // Mẫu 2: Khi PDPassLibrary ghi nhận pass mới
         #"PDPassLibrary: wrote pass\s+([A-Za-z0-9+/]+={0,2})(?=\s|\)|,|$)"#,
-        // Mẫu 3: Khi hệ thống thực hiện VerificationCheck
         #"VerificationCheck\.([A-Za-z0-9+/]+={0,2})(?=\s|\)|,|$)"#
     ]
 
     for pattern in patterns {
-        // Tạo đối tượng Regex an toàn
         guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-        
+
         let nsRange = NSRange(line.startIndex..., in: line)
-        
-        // Tìm match đầu tiên trong dòng log
+
         if let match = regex.firstMatch(in: line, options: [], range: nsRange) {
-            // Lấy nhóm capture thứ 1 (ID thẻ)
             if let range = Range(match.range(at: 1), in: line) {
                 return String(line[range])
             }
@@ -815,14 +796,13 @@ private func extractWalletCardID(from line: String) -> String? {
 func scanOneWalletCardID(timeout: TimeInterval = 300) async throws -> String {
     return try await withCheckedThrowingContinuation { continuation in
         var finished = false
-        
+
         JITEnableContext.shared.startSyslogRelay { line in
             guard !finished else { return }
             guard let line else { return }
-            
-            // Filter for passd logs only
+
             guard line.localizedCaseInsensitiveContains("passd") else { return }
-            
+
             if let cardID = extractWalletCardID(from: line) {
                 finished = true
                 JITEnableContext.shared.stopSyslogRelay()
@@ -834,7 +814,7 @@ func scanOneWalletCardID(timeout: TimeInterval = 300) async throws -> String {
             JITEnableContext.shared.stopSyslogRelay()
             continuation.resume(throwing: error ?? WalletIDScanError.unknownError)
         }
-        
+
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
             guard !finished else { return }
             finished = true
@@ -852,7 +832,7 @@ struct ImportDefaultCardSheet: View {
     @State private var isImporting = false
     @State private var importResult: String?
     @State private var errorMessage: String?
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -861,7 +841,7 @@ struct ImportDefaultCardSheet: View {
                         showFilePicker = true
                     }
                 }
-                
+
                 if isImporting {
                     Section {
                         HStack {
@@ -871,7 +851,7 @@ struct ImportDefaultCardSheet: View {
                         }
                     }
                 }
-                
+
                 if let result = importResult {
                     Section {
                         Label(result, systemImage: "checkmark.circle.fill")
@@ -909,11 +889,11 @@ struct ImportDefaultCardSheet: View {
             }
         }
     }
-    
+
     private func importZIP(url: URL) {
         isImporting = true
         importResult = nil
-        
+
         Task {
             do {
                 let count = try await performZIPImport(url: url)
@@ -929,38 +909,34 @@ struct ImportDefaultCardSheet: View {
             }
         }
     }
-    
+
     private func performZIPImport(url: URL) async throws -> Int {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        
+
         let fm = FileManager.default
         let tempDir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        
-        // Copy to temp first
+
         let tempZIP = tempDir.appendingPathComponent("import.zip")
         try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
         try fm.copyItem(at: url, to: tempZIP)
-        
-        // Unzip
+
         let extractDir = tempDir.appendingPathComponent("extracted")
         try fm.createDirectory(at: extractDir, withIntermediateDirectories: true)
         try fm.unzipItem(at: tempZIP, to: extractDir)
-        
+
         defer { try? fm.removeItem(at: tempDir) }
-        
-        // Find .pkpass folders (could be at root or one level deep)
+
         var pkpassFolders: [(id: String, url: URL)] = []
-        
+
         func scanForPkpass(at dirURL: URL) {
             guard let items = try? fm.contentsOfDirectory(atPath: dirURL.path) else { return }
             for item in items {
                 let itemURL = dirURL.appendingPathComponent(item)
                 var isDir: ObjCBool = false
                 fm.fileExists(atPath: itemURL.path, isDirectory: &isDir)
-                
+
                 if isDir.boolValue && item.hasSuffix(".pkpass") {
-                    // Extract card ID: remove ".pkpass" suffix
                     let cardID = String(item.dropLast(".pkpass".count))
                     if !cardID.isEmpty {
                         pkpassFolders.append((id: cardID, url: itemURL))
@@ -968,11 +944,9 @@ struct ImportDefaultCardSheet: View {
                 }
             }
         }
-        
-        // Scan root level
+
         scanForPkpass(at: extractDir)
-        
-        // If none found at root, scan one level deeper (in case ZIP has a wrapper folder)
+
         if pkpassFolders.isEmpty {
             if let topItems = try? fm.contentsOfDirectory(atPath: extractDir.path) {
                 for item in topItems {
@@ -985,52 +959,48 @@ struct ImportDefaultCardSheet: View {
                 }
             }
         }
-        
+
         guard !pkpassFolders.isEmpty else {
             throw NSError(domain: "ImportDefaultCard", code: 1, userInfo: [NSLocalizedDescriptionKey: "No .pkpass folders found in ZIP"])
         }
-        
+
         var importedCount = 0
-        
+
         for folder in pkpassFolders {
             let cardID = folder.id
             let folderURL = folder.url
-            
-            // Create card in wallet store (skip if already exists)
+
             let cardName = "Card \(String(cardID.prefix(8)))..."
-            
+
             await MainActor.run {
                 if !walletStore.cards.contains(where: { $0.id == cardID }) {
                     let newCard = AppleWalletCard(id: cardID, name: cardName)
                     walletStore.addCard(newCard)
                 }
             }
-            
-            // Copy files from the .pkpass folder to the card's Documents folder
+
             let cardFolder = URL.documentsDirectory
                 .appendingPathComponent("WalletCards")
                 .appendingPathComponent(cardID)
             try fm.createDirectory(at: cardFolder, withIntermediateDirectories: true)
-            
+
             guard let files = try? fm.contentsOfDirectory(atPath: folderURL.path) else { continue }
-            
+
             for filename in files {
                 let srcFile = folderURL.appendingPathComponent(filename)
                 var isFileDir: ObjCBool = false
                 fm.fileExists(atPath: srcFile.path, isDirectory: &isFileDir)
                 guard !isFileDir.boolValue else { continue }
-                
-                // Determine destination filename
+
                 let destFile = cardFolder.appendingPathComponent(filename)
-                
-                // Remove existing file if needed
+
                 try? fm.removeItem(at: destFile)
                 try fm.copyItem(at: srcFile, to: destFile)
             }
-            
+
             importedCount += 1
         }
-        
+
         return importedCount
     }
 }
