@@ -294,7 +294,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Pairing Import Handler (FIX)
+    // MARK: - Pairing Import Handler
     private func handlePairingImport(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
@@ -304,11 +304,9 @@ struct SettingsView: View {
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
             do {
-                // Bước 1: Đọc data
                 let data = try Data(contentsOf: url)
                 print("[Pairing] Data size: \(data.count) bytes")
 
-                // Bước 2: Parse RPPairing
                 do {
                     let parsed = try RPPairingParser.parse(data)
                     print("[Pairing] Parsed OK. identifier=\(parsed.identifier)")
@@ -324,16 +322,13 @@ struct SettingsView: View {
                     return
                 }
 
-                // Bước 3: Lưu file
                 let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
                 try data.write(to: pairingPath)
                 print("[Pairing] Saved to: \(pairingPath.path)")
 
-                // Bước 4: Update state
                 pairingFile = url.lastPathComponent
                 print("[Pairing] pairingFile set to: \(url.lastPathComponent)")
 
-                // Bước 5: Show success alert
                 pairingImportSuccess = "Đã import pairing: \(url.lastPathComponent)\nKích thước: \(data.count) bytes"
                 showPairingSuccessAlert = true
 
