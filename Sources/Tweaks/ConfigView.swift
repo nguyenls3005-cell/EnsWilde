@@ -6,19 +6,12 @@ enum CNURL {
 }
 
 enum CNMsg {
-    static var supWarning = """
-    ⚠️ CẢNH BÁO SUPERVISION
-
-    • Nếu thiết bị đã được MDM quản lý → ĐỪNG bật toggle này!
-    • Sau khi respring có thể thấy màn hình setup ban đầu.
-    • Dùng với rủi ro của bạn. Hãy backup trước.
-    """
+    static var supWarning = "⚠️ CẢNH BÁO SUPERVISION. Nếu thiết bị đã được MDM quản lý → ĐỪNG bật toggle này! Sau khi respring có thể thấy màn hình setup ban đầu. Dùng với rủi ro của bạn."
     static var resetInfo = "Bấm Confirm → footnote bị xoá và thiết bị sẽ không còn supervised."
 }
 
 struct ConfigView: View {
     @ObservedObject var toolStore: ToolStore
-
     @State private var ftCurrentDict = NSMutableDictionary()
     @State private var ccCurrentDict = NSMutableDictionary()
     @State private var footnoteText = ""
@@ -42,16 +35,12 @@ struct ConfigView: View {
                 VStack(spacing: 14) {
                     HStack {
                         Image(systemName: "flashlight.off.fill")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 26, height: 26)
+                            .resizable().scaledToFit().frame(width: 26, height: 26)
                             .padding()
                             .modifier(QuickActionBackground())
                         Spacer()
                         Image(systemName: "camera.fill")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 26, height: 26)
+                            .resizable().scaledToFit().frame(width: 26, height: 26)
                             .padding()
                             .modifier(QuickActionBackground())
                     }
@@ -61,21 +50,14 @@ struct ConfigView: View {
                         Text(footnoteText.isEmpty ? "Swipe up to open" : footnoteText)
                             .font(.system(size: 10))
                             .foregroundStyle(.white)
-                        Capsule()
-                            .frame(width: 145, height: 4)
-                            .foregroundStyle(.white)
+                        Capsule().frame(width: 145, height: 4).foregroundStyle(.white)
                     }
                 }
-                .padding(.top, 25)
-                .padding(.bottom, 10)
+                .padding(.top, 25).padding(.bottom, 10)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(
                     LinearGradient(
-                        colors: [
-                            Color.black,
-                            Color.gray.opacity(0.4),
-                            Color.black
-                        ],
+                        colors: [Color.black, Color.gray.opacity(0.4), Color.black],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -92,11 +74,8 @@ struct ConfigView: View {
             Section {
                 Toggle("Enable Supervision", isOn: $supervised)
                     .onChange(of: supervised) { newValue in
-                        if newValue {
-                            showSupervisionWarning = true
-                        }
+                        if newValue { showSupervisionWarning = true }
                     }
-
                 if supervised {
                     TextField("Organization Name", text: $orgName)
                 }
@@ -110,11 +89,9 @@ struct ConfigView: View {
                 } label: {
                     HStack {
                         Image(systemName: "square.and.arrow.down.fill")
-                        Text("Apply Save Changes")
-                            .font(.headline)
+                        Text("Apply Save Changes").font(.headline)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity).padding(.vertical, 4)
                 }
 
                 Button(role: .destructive) {
@@ -127,11 +104,9 @@ struct ConfigView: View {
                 } label: {
                     HStack {
                         Image(systemName: "arrow.counterclockwise")
-                        Text("Restore Save Changes")
-                            .font(.headline)
+                        Text("Restore Save Changes").font(.headline)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity).padding(.vertical, 4)
                 }
             }
         }
@@ -143,18 +118,13 @@ struct ConfigView: View {
             footnoteText = toolStore.configFootnoteText
         }
         .alert("Supervision Warning!", isPresented: $showSupervisionWarning) {
-            Button("Cancel", role: .cancel) {
-                supervised = false
-            }
-            Button("I Understand", role: .destructive) {
-            }
+            Button("Cancel", role: .cancel) { supervised = false }
+            Button("I Understand", role: .destructive) {}
         } message: {
             Text(CNMsg.supWarning)
         }
         .alert("Config Tweaks", isPresented: $showRespringAlert) {
-            Button("Respring") {
-                try? RespringHelper.respring()
-            }
+            Button("Respring") { try? RespringHelper.respring() }
             Button("Later", role: .cancel) {}
         } message: {
             Text(respringMessage)
@@ -197,7 +167,6 @@ struct ConfigView: View {
         let ftDict = ["LockScreenFootnote" : footnoteText]
         ccCurrentDict["IsSupervised"] = supervised
         ccCurrentDict["OrganizationName"] = orgName
-
         toolStore.configFootnoteText = footnoteText
         toolStore.configTweaksEnabled = true
 
@@ -208,13 +177,11 @@ struct ConfigView: View {
             try ccData.write(to: CNURL.cloudConfig)
             print("(cn) successfully applied config tweaks!")
             Haptic.shared.play(.soft)
-
             UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-
-            respringMessage = "Đã apply. Tab Apply đã được mở ở dưới — chuyển sang để respring."
+            respringMessage = "Đã apply. Tab Apply đã được mở ở dưới."
             showRespringAlert = true
         } catch {
-            print("(cn) failed to write config files: \(error.localizedDescription)")
+            print("(cn) failed: \(error.localizedDescription)")
             Alertinator.shared.alert(title: "Failed to apply tweaks!", body: AppMsg.opFailed)
         }
     }
@@ -226,14 +193,14 @@ struct ConfigView: View {
             try? fm.removeItem(at: CNURL.sharedDevConfig)
             let ccData = try PropertyListSerialization.data(fromPropertyList: ccCurrentDict, format: .binary, options: 0)
             try ccData.write(to: CNURL.cloudConfig)
-            print("(cn) successfully reset config tweaks!")
+            print("(cn) successfully reset!")
             Haptic.shared.play(.soft)
             loadData()
             footnoteText = ""
             respringMessage = "Đã reset. Respring để thay đổi có hiệu lực."
             showRespringAlert = true
         } catch {
-            print("(cn) failed to reset config files: \(error.localizedDescription)")
+            print("(cn) failed to reset: \(error.localizedDescription)")
             Alertinator.shared.alert(title: "Failed to reset tweaks!", body: AppMsg.opFailed)
         }
     }
@@ -241,7 +208,6 @@ struct ConfigView: View {
 
 struct QuickActionBackground: ViewModifier {
     func body(content: Content) -> some View {
-        content
-            .background(.ultraThinMaterial, in: .circle)
+        content.background(.ultraThinMaterial, in: .circle)
     }
 }
