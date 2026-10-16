@@ -19,7 +19,6 @@ enum BadQueryError: Error, LocalizedError {
 }
 
 enum BadQueryWrapper {
-    /// Ghi file qua bad_query sandbox escape.
     static func writeFile(
         at path: String,
         data: Data,
