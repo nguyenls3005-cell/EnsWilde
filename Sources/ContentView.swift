@@ -107,7 +107,7 @@ struct ContentView: View {
         } else if route == "AppleWallet" {
             AppleWalletView(walletStore: walletStore)
         } else if route == "ConfigTweaks" {
-            ConfigView()
+            ConfigView(toolStore: toolStore)
         }
     }
 
