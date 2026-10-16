@@ -9,22 +9,13 @@ struct ContentView: View {
     @ObservedObject var walletStore: AppleWalletStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
 
-    var onNavigateToApply: (() -> Void)? = nil
-
     @State private var path = NavigationPath()
-
-    private var hasAnyTweakEnabled: Bool {
-        toolStore.replaceMobileGestaltEnabled
-            || toolStore.disableSoundEnabled
-            || toolStore.walletEnabled
-    }
 
     var body: some View {
         NavigationStack(path: $path) {
             Form {
                 statusSection
                 tweaksSection
-                applySection
             }
             .headerProminence(.increased)
             .navigationTitle("EnsWilde")
@@ -34,7 +25,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Status
     @ViewBuilder
     private var statusSection: some View {
         Section(header: Text(L("section_status"))) {
@@ -52,7 +42,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Tweaks
     @ViewBuilder
     private var tweaksSection: some View {
         Section(header: Text(L("section_tweaks"))) {
@@ -82,27 +71,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Apply button
-    @ViewBuilder
-    private var applySection: some View {
-        Section {
-            Button {
-                onNavigateToApply?()
-            } label: {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text(L("apply_enabled_tweaks"))
-                        .font(.headline)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-            }
-            .disabled(!hasAnyTweakEnabled)
-            .opacity(hasAnyTweakEnabled ? 1.0 : 0.5)
-        }
-    }
-
-    // MARK: - Navigation Destination
     @ViewBuilder
     private func destinationView(for route: String) -> some View {
         if route == "MobileGestalt" {
@@ -114,7 +82,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Row
     @ViewBuilder
     private func toolNavigationLink(value: String, title: String, subtitle: String, icon: String, isEnabled: Bool) -> some View {
         NavigationLink(value: value) {
