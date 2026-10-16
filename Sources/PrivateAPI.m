@@ -19,8 +19,6 @@ LSApplicationWorkspace *LSApplicationWorkspaceDefaultWorkspace(void) {
 //
 //  Created by Taj C on 7/21/26.
 //
-
-#include "bad_query.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
