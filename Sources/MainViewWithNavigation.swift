@@ -43,14 +43,6 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.home)
 
             NavigationStack {
-                ThemeStoreView(themeStore: themeStore)
-            }
-            .tabItem {
-                Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill")
-            }
-            .tag(NavigationTab.home)
-
-            NavigationStack {
                 SettingsView(heartbeatRunning: false, ddiMounted: false)
             }
             .tabItem {
@@ -223,10 +215,7 @@ struct ApplyTabView: View {
 
     private func performApply() {
         Task {
-            await toolRunner.applyAll(
-                store: toolStore,
-                themeStore: themeStore
-            )
+            await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
 
             if case .success = toolRunner.state {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
