@@ -189,30 +189,31 @@ struct ApplyTabView: View {
         }
     }
 
-    @ViewBuilder
-    private var applyButtonSection: some View {
-        Section {
-            Button(action: performApply) {
-                HStack(spacing: 10) {
-                    if isRunning {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.white)
-                    }
-                    Text(isRunning ? L("applying") : L("apply_enabled_tweaks"))
-                        .font(.headline)
+@ViewBuilder
+private var applyButtonSection: some View {
+    Section {
+        Button(action: performApply) {
+            HStack(spacing: 10) {
+                Text(isRunning ? L("applying") : L("apply_enabled_tweaks"))
+                    .font(.headline)
+                if isRunning {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(.white)
+                        .scaleEffect(0.9)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(isRunning ? Color.gray : Color(hex: "#ef9f76"))
-                .foregroundColor(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
-            .buttonStyle(.plain)
-            .disabled(isRunning || enabledTweaks.isEmpty)
-            .opacity((isRunning || enabledTweaks.isEmpty) ? 0.6 : 1.0)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(isRunning ? Color.gray : Color(hex: "#ef9f76"))
+            .foregroundColor(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .disabled(isRunning || enabledTweaks.isEmpty)
+        .opacity((isRunning || enabledTweaks.isEmpty) ? 0.6 : 1.0)
     }
+}
 
     private var statusText: String {
         switch toolRunner.state {
