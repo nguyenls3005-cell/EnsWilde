@@ -34,12 +34,10 @@ struct ConfigView: View {
 
     var body: some View {
         Form {
-            // MARK: - Enable Tweak
             Section(header: Text("Config Tweaks")) {
                 Toggle("Enable Tweak", isOn: $toolStore.configTweaksEnabled)
             }
 
-            // MARK: - Preview
             Section {
                 VStack(spacing: 14) {
                     HStack {
@@ -91,7 +89,6 @@ struct ConfigView: View {
                 HeaderLabel("Lock Screen Footnote", symbol: "textformat")
             }
 
-            // MARK: - Supervision
             Section {
                 Toggle("Enable Supervision", isOn: $supervised)
                     .onChange(of: supervised) { newValue in
@@ -107,7 +104,6 @@ struct ConfigView: View {
                 HeaderLabel("Supervision", symbol: "eye")
             }
 
-            // MARK: - Actions
             Section {
                 Button {
                     apply()
@@ -151,7 +147,6 @@ struct ConfigView: View {
                 supervised = false
             }
             Button("I Understand", role: .destructive) {
-                // Giữ toggle ON
             }
         } message: {
             Text(CNMsg.supWarning)
@@ -244,7 +239,6 @@ struct ConfigView: View {
     }
 }
 
-// MARK: - UI
 struct QuickActionBackground: ViewModifier {
     func body(content: Content) -> some View {
         content
