@@ -64,11 +64,11 @@ struct ConfigView: View {
                 .listRowBackground(
                     ZStack {
                         Color.black
-                        Image(systemName: "pawprint.fill")
+                        Image("solarium")
                             .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: 100, maxHeight: 100)
-                            .foregroundStyle(.orange.opacity(0.4))
+                            .scaledToFill()
+                            .frame(maxWidth: .infinity)
+                            .clipped()
                     }
                 )
 
