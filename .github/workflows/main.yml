@@ -16,7 +16,12 @@ jobs:
 
       - name: Downgrade project format for Xcode 15
         run: |
-          sed -i '' 's/objectVersion = 77;/objectVersion = 63;/' EnsWilde.xcodeproj/project.pbxproj
+          FILE="EnsWilde.xcodeproj/project.pbxproj"
+          echo "Before:"
+          grep -n "objectVersion" "$FILE" || true
+          perl -i -pe 's/objectVersion\s*=\s*\d+;/objectVersion = 63;/g' "$FILE"
+          echo "After:"
+          grep -n "objectVersion" "$FILE"
 
       - name: Show toolchain
         run: |
