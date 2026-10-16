@@ -18,11 +18,6 @@ struct ContentView: View {
     var ddiMountedBinding: Binding<Bool>?
 
     @State private var path = NavigationPath()
-    @State private var _showApplySheet = false
-
-    private var showApplySheet: Binding<Bool> {
-        showApplySheetBinding ?? $_showApplySheet
-    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -50,7 +45,7 @@ struct ContentView: View {
                 Image(systemName: "checkmark.shield.fill")
                     .foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("bad_query active")
+                    Text("bad_query")
                         .font(.subheadline.bold())
                     Text("iOS 26.0 – 27.0b4 sandbox escape")
                         .font(.caption)
