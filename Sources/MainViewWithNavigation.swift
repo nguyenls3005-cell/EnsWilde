@@ -33,12 +33,6 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.themeStore)
 
             NavigationStack {
-                ConfigView()
-            }
-            .tabItem { Label("Tweaks", systemImage: "wrench.and.screwdriver.fill") }
-            .tag(NavigationTab.tweaks)
-
-            NavigationStack {
                 SettingsView()
             }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
@@ -126,6 +120,7 @@ struct ApplyTabView: View {
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if toolStore.disableSoundEnabled { list.append((L("tool_disable_sound"), "speaker.slash")) }
         if toolStore.walletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
+        if toolStore.configTweaksEnabled { list.append(("Config Tweaks", "textformat")) }
         return list
     }
 
