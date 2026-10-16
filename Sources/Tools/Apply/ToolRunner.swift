@@ -60,7 +60,6 @@ final class ToolRunner: ObservableObject {
                 state = .running(toolName: "Config Tweaks")
                 log("Preparing Config Tweaks...")
 
-                // Đọc dữ liệu từ AppStorage
                 let footnote = store.configFootnoteText
                 let supervised = UserDefaults.standard.bool(forKey: "ConfigSupervised")
                 let orgName = UserDefaults.standard.string(forKey: "ConfigOrgName") ?? ""
@@ -68,12 +67,10 @@ final class ToolRunner: ObservableObject {
                 log("Footnote: \(footnote.isEmpty ? "(empty)" : footnote)")
                 log("Supervised: \(supervised)")
 
-                // Path
                 let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
                 let sharedDevConfigPath = "\(configDir)/SharedDeviceConfiguration.plist"
                 let cloudConfigPath = "\(configDir)/CloudConfigurationDetails.plist"
 
-                // Bước 1: Grant access vào folder config
                 log("Granting access to ConfigurationProfiles...")
                 let access = bq.grantAccess(atPath: configDir)
                 guard access.0 else {
@@ -84,7 +81,6 @@ final class ToolRunner: ObservableObject {
                 }
                 log("✓ Access granted.")
 
-                // Bước 2: Ghi SharedDeviceConfiguration.plist
                 let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
                 let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
 
@@ -92,7 +88,6 @@ final class ToolRunner: ObservableObject {
                 try ftData.write(to: URL(fileURLWithPath: sharedDevConfigPath))
                 log("✓ SharedDeviceConfiguration.plist written.")
 
-                // Bước 3: Đọc CloudConfigurationDetails.plist hiện tại (nếu có)
                 var ccDict: NSMutableDictionary = [:]
                 if let existing = NSMutableDictionary(contentsOfFile: cloudConfigPath) {
                     ccDict = existing
