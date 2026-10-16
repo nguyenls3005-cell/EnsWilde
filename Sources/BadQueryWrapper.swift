@@ -43,7 +43,9 @@ enum BadQueryWrapper {
         default: break
         }
 
-        guard handle > 0 else { throw BadQueryError.unknown(handle) }
+        guard handle > 0 else {
+            throw BadQueryError.unknown(Int64(handle))   // ← ÉP KIỂU Int64
+        }
         defer { bad_query_release(handle) }
 
         try data.write(to: URL(fileURLWithPath: path))
