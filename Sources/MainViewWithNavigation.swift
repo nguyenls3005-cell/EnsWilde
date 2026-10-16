@@ -282,7 +282,17 @@ struct ApplyTabView: View {
             await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
 
             if case .success = toolRunner.state {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                // Thêm 2 dòng log cuối
+                await MainActor.run {
+                    toolRunner.logs.append(ToolRunLogLine(text: "✓ Tweak applied successfully"))
+                    toolRunner.logs.append(ToolRunLogLine(text: "Respringing after 3 seconds..."))
+                }
+
+                // Đợi log hiện lên
+                try? await Task.sleep(nanoseconds: 500_000_000)
+
+                // Đợi 3 giây trước khi respring
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
 
                 do {
                     try RespringHelper.respring()
