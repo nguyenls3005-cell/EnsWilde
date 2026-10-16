@@ -8,7 +8,7 @@ class BadQuery {
     func grantAccess(atPath directory: String, toFileName fileName: String = "") -> (Bool, Int64, String) {
         var dirCs = directory.utf8CString.map { Int8($0) }
 
-        // EnsWilde bad_query CHỈ có 4 tham số
+        // EnsWilde bad_query chỉ có 4 tham số
         let res = bad_query(&dirCs, false, nil, false)
 
         var errorString: String?
