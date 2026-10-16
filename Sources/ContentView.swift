@@ -14,23 +14,11 @@ struct ContentView: View {
 var body: some View {
     NavigationStack(path: $path) {
         Form {
-            statusSection
+            exploitStatusSection
             tweaksSection
         }
         .headerProminence(.increased)
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("EnsWilde")
-                        .font(.largeTitle.bold())
-                    Text("Status Exploit")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, 4)
-            }
-        }
+        .navigationTitle("EnsWilde")
         .navigationDestination(for: String.self) { route in
             destinationView(for: route)
         }
@@ -38,8 +26,8 @@ var body: some View {
 }
 
 @ViewBuilder
-private var statusSection: some View {
-    Section {
+private var exploitStatusSection: some View {
+    Section(header: Text("Status Exploit")) {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
@@ -96,7 +84,7 @@ private var tweaksSection: some View {
         toolNavigationLink(
             value: "ConfigTweaks",
             title: "Config Tweaks",
-            subtitle: "Custom Lock Screen Footnote",
+            subtitle: Custom Lock Screen Footnote",
             icon: "textformat",
             isEnabled: toolStore.configTweaksEnabled
         )
