@@ -1,52 +1,96 @@
+//
+//  RespringHelper.swift
+//  EnsWilde
+//
+//  NeoSpring implementation (credit: @neonmodder123 & @skadz108)
+//
+
+import UIKit
 import Foundation
 import WebKit
-import UIKit
 
-enum RespringError: Error {
+enum RespringError: Error, LocalizedError {
+    case noWindow
     case failed
+
+    var errorDescription: String? {
+        switch self {
+        case .noWindow:
+            return "Không tìm thấy window để trigger respring"
+        case .failed:
+            return "Respring failed"
+        }
+    }
 }
 
-enum RespringHelper {
-    /// NeoSpring respring using WebKit GPU process
-    /// Credit: @skadz108, @rooootdev, @neonmodder123
-    @MainActor
-    static func respring() throws {
-        let webView = WKWebView(frame: .zero)
-        webView.isHidden = true
+public final class RespringHelper: NSObject {
 
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else {
-            throw RespringError.failed
+    public static let neospringHTML = """
+<!DOCTYPE html>
+<html>
+    <body>
+        <!-- big credit to @neonmodder123 & @skadz108 (neospring) -->
+        <iframe id="frame" srcdoc="" sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-presentation allow-scripts"></iframe>
+        <script>
+            const frame = document.getElementById('frame');
+            const funfun = `
+                <html>
+                <body>
+                    <script>
+                        const container = document.createElement('div');
+                        container.style.cssText = 'perspective: 1px; perspective-origin: 9999999% 9999999%;';
+                        document.body.appendChild(container);
+    
+                        for (let i = 0; i < 500; i++) {
+                            let d = document.createElement('div');
+                            d.style.cssText = 'position: absolute; width: 100vw; height: 100vh; backdrop-filter: blur(100px); -webkit-backdrop-filter: blur(100px); transform: translate3d(100000px, 100000px, ' + i + 'px) rotateY(90deg);';
+                            container.appendChild(d);
+                        }
+    
+                        setInterval(() => {
+                            navigator.share({ title: 'R', text: 'R'.repeat(100000) }).catch(() => {});
+                            let x = new Uint8Array(1024 * 1024 * 10);
+                            crypto.getRandomValues(x);
+                        }, 0);
+                    <\\/script>
+                </body>
+                </html>
+            `;
+    
+            frame.srcdoc = funfun;
+        </script>
+    </body>
+</html>
+"""
+
+    /// Trigger NeoSpring directly by attaching a WKWebView to the key window
+    public static func triggerNeoSpring() {
+        DispatchQueue.main.async {
+            guard let windowScene = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .first,
+                  let window = windowScene.windows.first(where: { $0.isKeyWindow })
+                    ?? windowScene.windows.first else {
+                print("[NeoSpring] No window found")
+                return
+            }
+
+            let config = WKWebViewConfiguration()
+            config.defaultWebpagePreferences.allowsContentJavaScript = true
+
+            let webView = WKWebView(frame: window.bounds, configuration: config)
+            webView.isOpaque = true
+            webView.backgroundColor = .black
+
+            window.addSubview(webView)
+            webView.loadHTMLString(neospringHTML, baseURL: nil)
+
+            print("[NeoSpring] WebView attached, loading crash HTML...")
         }
-        window.addSubview(webView)
+    }
 
-        // NeoSpring technique: load HTML that crashes GPU process
-        let html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body { margin: 0; padding: 0; overflow: hidden; }
-                div {
-                    width: 99999px;
-                    height: 99999px;
-                    background: radial-gradient(circle, red, blue);
-                    animation: spin 0.0001s infinite linear;
-                }
-                @keyframes spin {
-                    from { transform: rotate(0deg); }
-                    to { transform: rotate(360deg); }
-                }
-            </style>
-        </head>
-        <body>
-            <div></div>
-            <div></div>
-            <div></div>
-        </body>
-        </html>
-        """
-
-        webView.loadHTMLString(html, baseURL: nil)
+    /// Legacy API — giữ để tương thích với code cũ
+    public static func respring() throws {
+        triggerNeoSpring()
     }
 }
