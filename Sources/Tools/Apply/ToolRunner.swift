@@ -35,7 +35,7 @@ final class ToolRunner: ObservableObject {
         if hasWallet { names.append("Apple Wallet") }
         log("Apply started. Enabled: \(names.joined(separator: ", "))")
 
-        // Check unsupported tweaks first
+        // Check unsupported first
         var unsupported: [String] = []
         if hasRecordSound { unsupported.append("Record Sound") }
         if hasWallet { unsupported.append("Apple Wallet") }
