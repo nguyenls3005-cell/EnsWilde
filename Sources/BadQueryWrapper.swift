@@ -5,7 +5,7 @@ enum BadQueryError: Error, LocalizedError {
     case cantCreateQuery
     case outsideSandbox
     case kernelDenied
-    case unknown(Int32)
+    case unknown(Int64)
 
     var errorDescription: String? {
         switch self {
@@ -19,9 +19,27 @@ enum BadQueryError: Error, LocalizedError {
 }
 
 enum BadQueryWrapper {
-    static func writeFile(at path: String, data: Data) throws {
+    /// Ghi file qua bad_query sandbox escape.
+    /// - Parameters:
+    ///   - path: đường dẫn đầy đủ trên thiết bị
+    ///   - data: nội dung cần ghi
+    ///   - groupIdentifier: App Group ID (iOS 26 cần, iOS 27 không cần → nil)
+    ///   - isGroup: true nếu dùng App Group sacrifice
+    static func writeFile(
+        at path: String,
+        data: Data,
+        groupIdentifier: String? = nil,
+        isGroup: Bool = false
+    ) throws {
         var cPath = path.cString(using: .utf8)!
-        let handle = bad_query(&cPath, false, nil, false)
+
+        let handle: Int64
+        if let group = groupIdentifier {
+            var cGroup = group.cString(using: .utf8)!
+            handle = bad_query(&cPath, true, &cGroup, isGroup)
+        } else {
+            handle = bad_query(&cPath, true, nil, false)
+        }
 
         switch handle {
         case -1: throw BadQueryError.cantResolve
