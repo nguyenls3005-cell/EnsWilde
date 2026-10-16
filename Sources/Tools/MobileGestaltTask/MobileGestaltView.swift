@@ -114,7 +114,6 @@ struct MobileGestaltView: View {
         Section(header: Text(L("section_device_subtype"))) {
             Picker(L("mg_device_subtype_preset"), selection: $dynamicIslandType) {
                 Text("Default").tag(0)
-                Text("iPhone Air").tag(1)
                 Text(L("mg_subtype_2556")).tag(2)
                 Text(L("mg_subtype_2796")).tag(3)
                 Text(L("mg_subtype_2976")).tag(4)
