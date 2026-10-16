@@ -11,6 +11,12 @@ struct MainViewWithNavigation: View {
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
 
+    private var hasAnyTweakEnabled: Bool {
+        toolStore.replaceMobileGestaltEnabled
+            || toolStore.disableSoundEnabled
+            || toolStore.walletEnabled
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -19,7 +25,12 @@ struct MainViewWithNavigation: View {
                     toolStore: toolStore,
                     toolRunner: toolRunner,
                     walletStore: walletStore,
-                    featureFlagsStore: featureFlagsStore
+                    featureFlagsStore: featureFlagsStore,
+                    onNavigateToApply: {
+                        withAnimation {
+                            selectedTab = .apply
+                        }
+                    }
                 )
             }
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
@@ -37,17 +48,25 @@ struct MainViewWithNavigation: View {
             .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
 
-            ApplyTabView(
-                toolStore: toolStore,
-                toolRunner: toolRunner,
-                themeStore: themeStore
-            )
-            .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
-            .tag(NavigationTab.apply)
+            if hasAnyTweakEnabled {
+                ApplyTabView(
+                    toolStore: toolStore,
+                    toolRunner: toolRunner,
+                    themeStore: themeStore
+                )
+                .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
+                .tag(NavigationTab.apply)
+            }
         }
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
+        .onChange(of: hasAnyTweakEnabled) { enabled in
+            // Nếu đang ở tab Apply mà tweak tắt hết → về Home
+            if !enabled && selectedTab == .apply {
+                withAnimation { selectedTab = .home }
+            }
+        }
         .onAppear { applyTintColor() }
     }
 
@@ -65,6 +84,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
+// MARK: - Apply Tab
 struct ApplyTabView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @ObservedObject var toolStore: ToolStore
@@ -82,12 +102,9 @@ struct ApplyTabView: View {
 
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
-        if toolStore.replaceMobileGestaltEnabled {
-            list.append((L("tool_mobile_gestalt"), "cpu"))
-        }
-        if themeStore.passcodeThemeEnabled {
-            list.append((L("tool_passcode_theme"), "lock.rectangle"))
-        }
+        if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
+        if toolStore.disableSoundEnabled { list.append((L("tool_disable_sound"), "speaker.slash")) }
+        if toolStore.walletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         return list
     }
 
@@ -96,7 +113,6 @@ struct ApplyTabView: View {
             ZStack {
                 Form {
                     enabledTweaksSection
-                    optionsSection
                     statusSection
                     applyButtonSection
                 }
@@ -118,23 +134,17 @@ struct ApplyTabView: View {
         }
     }
 
-    // MARK: - Success Overlay
     @ViewBuilder
     private var successOverlay: some View {
         ZStack {
-            Color.black.opacity(0.55)
-                .ignoresSafeArea()
-
+            Color.black.opacity(0.55).ignoresSafeArea()
             VStack(spacing: 20) {
                 ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.18))
-                        .frame(width: 110, height: 110)
+                    Circle().fill(Color.green.opacity(0.18)).frame(width: 110, height: 110)
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 72, weight: .bold))
                         .foregroundStyle(.green)
                 }
-
                 VStack(spacing: 8) {
                     Text("Tweak Successfully Applied")
                         .font(.title3.bold())
@@ -144,10 +154,7 @@ struct ApplyTabView: View {
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.75))
                 }
-
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(.white)
+                ProgressView().tint(.white)
             }
             .padding(.horizontal, 32)
             .padding(.vertical, 40)
@@ -160,7 +167,6 @@ struct ApplyTabView: View {
         }
     }
 
-    // MARK: - Sections
     @ViewBuilder
     private var enabledTweaksSection: some View {
         Section(header: Text(L("section_tweaks"))) {
@@ -170,27 +176,16 @@ struct ApplyTabView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } icon: {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.secondary)
+                    Image(systemName: "info.circle").foregroundStyle(.secondary)
                 }
             } else {
                 ForEach(enabledTweaks, id: \.0) { tweak in
                     Label {
                         Text(tweak.0)
                     } icon: {
-                        Image(systemName: tweak.1)
-                            .foregroundStyle(.tint)
+                        Image(systemName: tweak.1).foregroundStyle(.tint)
                     }
                 }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var optionsSection: some View {
-        Section(header: Text(L("section_options"))) {
-            Toggle(isOn: $toolStore.soundRespringEnabled) {
-                Label(L("respring_after_apply"), systemImage: "arrow.clockwise")
             }
         }
     }
@@ -211,9 +206,7 @@ struct ApplyTabView: View {
     }
 
     private var latestLogOrStatus: String {
-        if isRunning, let lastLog = toolRunner.logs.last?.text {
-            return lastLog
-        }
+        if isRunning, let lastLog = toolRunner.logs.last?.text { return lastLog }
         return statusText
     }
 
@@ -234,40 +227,8 @@ struct ApplyTabView: View {
         case .idle:
             if enabledTweaks.isEmpty { return L("apply_enable_first") }
             return L("apply_ready").replacingOccurrences(of: "{count}", with: "\(enabledTweaks.count)")
-        case .running(let toolName):
-            return L("apply_running").replacingOccurrences(of: "{toolName}", with: toolName)
+        case .running(let name):
+            return L("apply_running").replacingOccurrences(of: "{toolName}", with: name)
         case .success:
             return L("apply_done")
-        case .failed(let message):
-            return L("apply_failed").replacingOccurrences(of: "{message}", with: message)
-        }
-    }
-
-    // MARK: - Apply
-    private func performApply() {
-        Task {
-            await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
-
-            if case .success = toolRunner.state {
-                await MainActor.run {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showSuccessOverlay = true
-                    }
-                }
-
-                // Chờ 2.5 giây để user thấy overlay
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
-
-                // Respring
-                try? RespringHelper.respring()
-            }
-
-            if case .failed(let message) = toolRunner.state {
-                await MainActor.run {
-                    lastError = message
-                    showErrorAlert = true
-                }
-            }
-        }
-    }
-}
+        case .failed(let msg
