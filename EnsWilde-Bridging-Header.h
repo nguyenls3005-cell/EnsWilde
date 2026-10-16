@@ -24,8 +24,9 @@ LSApplicationWorkspace *LSApplicationWorkspaceDefaultWorkspace(void);
 @end
 
 #pragma mark - bad_query
-
 #include <stdint.h>
 #include <stdbool.h>
 
 int64_t bad_query(char* path, bool create, char *group_identifier, bool is_group);
+char *bad_query_list(char *path, int64_t max_inode);
+void bad_query_release(int64_t handle);
