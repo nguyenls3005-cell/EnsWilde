@@ -25,16 +25,17 @@ struct MainViewWithNavigation: View {
                     toolStore: toolStore,
                     toolRunner: toolRunner,
                     walletStore: walletStore,
-                    featureFlagsStore: featureFlagsStore,
-                    onNavigateToApply: {
-                        withAnimation {
-                            selectedTab = .apply
-                        }
-                    }
+                    featureFlagsStore: featureFlagsStore
                 )
             }
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
+
+            NavigationStack {
+                ThemeStoreView(themeStore: themeStore)
+            }
+            .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
+            .tag(NavigationTab.themeStore)
 
             NavigationStack {
                 SettingsView(heartbeatRunning: false, ddiMounted: false)
@@ -62,7 +63,6 @@ struct MainViewWithNavigation: View {
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
         .onChange(of: hasAnyTweakEnabled) { enabled in
-            // Nếu đang ở tab Apply mà tweak tắt hết → về Home
             if !enabled && selectedTab == .apply {
                 withAnimation { selectedTab = .home }
             }
@@ -113,6 +113,7 @@ struct ApplyTabView: View {
             ZStack {
                 Form {
                     enabledTweaksSection
+                    optionsSection
                     statusSection
                     applyButtonSection
                 }
@@ -191,6 +192,15 @@ struct ApplyTabView: View {
     }
 
     @ViewBuilder
+    private var optionsSection: some View {
+        Section(header: Text(L("section_options"))) {
+            Toggle(isOn: $toolStore.soundRespringEnabled) {
+                Label(L("respring_after_apply"), systemImage: "arrow.clockwise")
+            }
+        }
+    }
+
+    @ViewBuilder
     private var statusSection: some View {
         if isRunning || !statusText.isEmpty {
             Section {
@@ -231,4 +241,31 @@ struct ApplyTabView: View {
             return L("apply_running").replacingOccurrences(of: "{toolName}", with: name)
         case .success:
             return L("apply_done")
-        case .failed(let msg
+        case .failed(let msg):
+            return L("apply_failed").replacingOccurrences(of: "{message}", with: msg)
+        }
+    }
+
+    private func performApply() {
+        Task {
+            await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
+
+            if case .success = toolRunner.state {
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showSuccessOverlay = true
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                try? RespringHelper.respring()
+            }
+
+            if case .failed(let message) = toolRunner.state {
+                await MainActor.run {
+                    lastError = message
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
+}
