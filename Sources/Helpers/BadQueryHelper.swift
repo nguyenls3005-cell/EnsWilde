@@ -7,14 +7,9 @@ class BadQuery {
     @discardableResult
     func grantAccess(atPath directory: String, toFileName fileName: String = "") -> (Bool, Int64, String) {
         var dirCs = directory.utf8CString.map { Int8($0) }
-        let res: Int64
 
-        if !fileName.isEmpty {
-            var fileNameCs = fileName.utf8CString.map { Int8($0) }
-            res = bad_query(&dirCs, false, nil, false, &fileNameCs)
-        } else {
-            res = bad_query(&dirCs, false, nil, false, nil)
-        }
+        // EnsWilde bad_query CHỈ có 4 tham số
+        let res = bad_query(&dirCs, false, nil, false)
 
         var errorString: String?
         switch res {
@@ -34,7 +29,7 @@ class BadQuery {
         }
 
         if let errorString {
-            print("(bq) failed to get access at \(directory)! \(fileName.isEmpty ? "" : "file: \(fileName) ")res: \(res), \(errorString)")
+            print("(bq) failed at \(directory): res=\(res), \(errorString)")
             return (false, res, errorString)
         } else {
             print("(bq) access granted at \(directory)")
