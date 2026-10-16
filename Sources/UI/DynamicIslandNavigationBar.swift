@@ -4,7 +4,6 @@ import SwiftUI
 enum NavigationTab: String, CaseIterable {
     case home = "nav_home"
     case themeStore = "nav_theme_store"
-    case tweaks = "nav_tweaks"
     case settings = "nav_settings"
     case about = "nav_about"
     case apply = "nav_apply"
@@ -15,8 +14,6 @@ enum NavigationTab: String, CaseIterable {
             return "house.fill"
         case .themeStore:
             return "square.grid.2x2.fill"
-        case .tweaks:
-            return "wrench.and.screwdriver.fill"
         case .settings:
             return "gearshape.fill"
         case .apply:
@@ -31,7 +28,7 @@ enum NavigationTab: String, CaseIterable {
     }
 }
 
-// MARK: - Dynamic Island Navigation Bar (kept for backward compatibility, unused in Feather-style UI)
+// MARK: - Dynamic Island Navigation Bar
 struct DynamicIslandNavigationBar: View {
     @Binding var selectedTab: NavigationTab
     var showApplyButton: Bool
