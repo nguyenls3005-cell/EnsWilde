@@ -30,9 +30,7 @@ struct ContentView: View {
         Section {
             HStack(spacing: 14) {
                 ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.18))
-                        .frame(width: 48, height: 48)
+                    Circle().fill(Color.green.opacity(0.18)).frame(width: 48, height: 48)
                     Image(systemName: "checkmark.shield.fill")
                         .font(.system(size: 24, weight: .semibold))
                         .foregroundStyle(.green)
@@ -40,10 +38,8 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("bad_query")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
                     Text("Sandbox Escape • Active")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
@@ -61,7 +57,6 @@ struct ContentView: View {
                 icon: "cpu",
                 isEnabled: toolStore.replaceMobileGestaltEnabled
             )
-
             toolNavigationLink(
                 value: "PasscodeTheme",
                 title: L("tool_passcode_theme"),
@@ -69,7 +64,6 @@ struct ContentView: View {
                 icon: "lock.rectangle",
                 isEnabled: themeStore.passcodeThemeEnabled
             )
-
             toolNavigationLink(
                 value: "DisableSound",
                 title: L("tool_disable_sound"),
@@ -77,7 +71,6 @@ struct ContentView: View {
                 icon: "speaker.slash",
                 isEnabled: toolStore.disableSoundEnabled
             )
-
             toolNavigationLink(
                 value: "AppleWallet",
                 title: L("tool_apple_wallet"),
@@ -85,7 +78,6 @@ struct ContentView: View {
                 icon: "wallet.pass",
                 isEnabled: toolStore.walletEnabled
             )
-
             toolNavigationLink(
                 value: "ConfigTweaks",
                 title: "Config Tweaks",
@@ -118,19 +110,14 @@ struct ContentView: View {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                        Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
                 } icon: {
                     Image(systemName: icon)
                 }
                 Spacer()
                 if isEnabled {
-                    Image(systemName: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
-                        .font(.caption)
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).font(.caption)
                 }
             }
         }
