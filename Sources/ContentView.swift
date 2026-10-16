@@ -25,7 +25,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Status
     @ViewBuilder
     private var statusSection: some View {
         Section {
@@ -52,7 +51,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Tweaks
     @ViewBuilder
     private var tweaksSection: some View {
         Section(header: Text(L("section_tweaks"))) {
@@ -87,10 +85,17 @@ struct ContentView: View {
                 icon: "wallet.pass",
                 isEnabled: toolStore.walletEnabled
             )
+
+            toolNavigationLink(
+                value: "ConfigTweaks",
+                title: "Config Tweaks",
+                subtitle: "Custom Lock Screen Footnote",
+                icon: "textformat",
+                isEnabled: toolStore.configTweaksEnabled
+            )
         }
     }
 
-    // MARK: - Destination
     @ViewBuilder
     private func destinationView(for route: String) -> some View {
         if route == "MobileGestalt" {
@@ -101,10 +106,11 @@ struct ContentView: View {
             DisableSoundView()
         } else if route == "AppleWallet" {
             AppleWalletView(walletStore: walletStore)
+        } else if route == "ConfigTweaks" {
+            ConfigView()
         }
     }
 
-    // MARK: - Row
     @ViewBuilder
     private func toolNavigationLink(value: String, title: String, subtitle: String, icon: String, isEnabled: Bool) -> some View {
         NavigationLink(value: value) {
