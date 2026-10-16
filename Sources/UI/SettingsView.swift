@@ -492,7 +492,7 @@ struct AboutView: View {
                     .foregroundStyle(.pink)
                     .frame(maxWidth: .infinity)
 
-                Text("Thank you for using EnsWilde! This is a passion project dedicated to providing the best experience for you. Your support is my biggest motivation to keep improving it every day.")
+                Text("Thank you for using EnsWilde! This is a passion project dedicated to providing the best experience for you.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -540,20 +540,14 @@ struct AboutView: View {
     @ViewBuilder
     private var creditsSection: some View {
         Section(header: Text(L("settings_thanks_to"))) {
-            creditRow(name: "Carrot1211", desc: "For cheering me on and supporting me during development.")
-            creditRow(name: "@khanhduytran0", desc: "is based on SparseBox.")
-            creditRow(name: "@SideStore team", desc: "idevice and C bindings from StikDebug.")
-            creditRow(name: "@JJTech0130", desc: "SparseRestore and backup exploit.")
-            creditRow(name: "@hanakim3945", desc: "bl_sbx exploit files and writeup.")
-            creditRow(name: "@Lakr233", desc: "BBackupp.")
-            creditRow(name: "@libimobiledevice", desc: L("settings_thanks_libimobile"))
-            creditRow(name: "@PoomSmart", desc: "MobileGestalt dump.")
-            creditRow(name: "@paragonarsi", desc: "Apple Wallet Get.")
-            creditRow(name: "@iTechExpert21", desc: "Hide Dynamic Island.")
-            creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring respring.")
-            creditRow(name: "@mak5er", desc: "AirCard-iOS reference.")
-            creditRow(name: "@Nouvborne", desc: "Ketamine reference.")
-            creditRow(name: "@jailbreakdotparty", desc: "Erosion reference.")
+            creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
+            creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
+            creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
+            creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+            creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
+            creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+            creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+            creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
         }
     }
 
