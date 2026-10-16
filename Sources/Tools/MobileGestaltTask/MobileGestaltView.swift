@@ -191,9 +191,6 @@ struct MobileGestaltView: View {
                 }
             }
             .pickerStyle(.menu)
-            let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary
-            Toggle("Become iPadOS", isOn: bindingForTrollPad())
-                .disabled(cacheExtra?["+3Uf0Pm5F8Xy7Onyvko0vA"] as? String != "iPhone")
         }
     }
 
@@ -339,39 +336,6 @@ struct MobileGestaltView: View {
                 cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_appleInternalInstall, as: Int.self)
                 cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_HasInternalSettingsBundle, as: Int.self)
                 cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_InternalBuild, as: Int.self)
-            }
-        )
-    }
-
-    func bindingForTrollPad() -> Binding<Bool> {
-        guard let cacheData = mobileGestalt["CacheData"] as? NSMutableData,
-              let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
-            return State(initialValue: false).projectedValue
-        }
-        let valueOffset = FindCacheDataOffset("mtrAoWJ3gsq+I90ZnQ0vQw")
-
-        let keys = [
-            "uKc7FPnEO++lVhHWHFlGbQ",
-            "mG0AnH/Vy1veoqoLRAIgTA",
-            "UCG5MkVahJxG1YULbbd5Bg",
-            "ZYqko/XM5zD3XBfN5RmaXA",
-            "nVh/gwNpy7Jv1NOk00CMrw",
-        ]
-
-        return Binding(
-            get: {
-                if let value = cacheExtra[keys.first!] as? Int? { return value == 1 }
-                return false
-            },
-            set: { enabled in
-                cacheData.mutableBytes.storeBytes(of: enabled ? 3 : 1, toByteOffset: valueOffset, as: Int.self)
-                for key in keys {
-                    if enabled {
-                        cacheExtra[key] = 1
-                    } else {
-                        cacheExtra.removeObject(forKey: key)
-                    }
-                }
             }
         )
     }
