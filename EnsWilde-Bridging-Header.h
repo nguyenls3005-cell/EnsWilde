@@ -1,6 +1,7 @@
 //
 //  Use this file to import your target's public headers that you would like to expose to Swift.
 //
+
 @import UIKit;
 #import "idevice.h"
 #import "applist.h"
@@ -21,10 +22,12 @@ LSApplicationWorkspace *LSApplicationWorkspaceDefaultWorkspace(void);
 @property(nonatomic, strong, readonly) NSString *buildVersion;
 + (BOOL)_hasHomeButton;
 @end
+
+#pragma mark - bad_query (sandbox escape)
+
 #include <stdint.h>
 #include <stdbool.h>
 
-// MARK: - bad_query (sandbox escape)
 int64_t bad_query(char* path, bool create, char *group_identifier, bool is_group);
 char *bad_query_list(char *path, int64_t max_inode);
 void bad_query_release(int64_t handle);
