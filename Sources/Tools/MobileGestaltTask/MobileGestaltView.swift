@@ -537,7 +537,7 @@ struct MobileGestaltView: View {
         } else if mode == 3 {
             return (1000, 1779)
         } else if mode == 2 {
-let subtypeValues = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
+            let subtypeValues = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
             guard dynamicIslandType > 0 && dynamicIslandType < subtypeValues.count else {
                 return nil
             }
