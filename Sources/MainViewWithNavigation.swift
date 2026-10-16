@@ -1,6 +1,10 @@
 import SwiftUI
 import UserNotifications
 
+enum NavigationTab {
+    case home, themeStore, settings, about, apply, tweaks
+}
+
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
@@ -31,6 +35,12 @@ struct MainViewWithNavigation: View {
             }
             .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
+
+            NavigationStack {
+                ConfigView()
+            }
+            .tabItem { Label("Tweaks", systemImage: "wrench.and.screwdriver.fill") }
+            .tag(NavigationTab.tweaks)
 
             NavigationStack {
                 SettingsView()
@@ -278,8 +288,6 @@ struct ApplyTabView: View {
 
     private func performApply() {
         displayedLogs.removeAll()
-
-        // Capture toggle value ở đầu — tránh bị thay đổi giữa chừng
         let shouldRespring = toolStore.soundRespringEnabled
 
         Task {
@@ -295,13 +303,10 @@ struct ApplyTabView: View {
                     }
                 }
 
-                // Đợi log reveal
                 try? await Task.sleep(nanoseconds: 800_000_000)
 
                 if shouldRespring {
-                    // Đợi 3 giây như log đã báo
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
-
                     do {
                         try RespringHelper.respring()
                     } catch {
