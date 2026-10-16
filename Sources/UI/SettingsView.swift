@@ -11,6 +11,8 @@ struct SettingsView: View {
     @State private var showPairingFileImporter = false
     @State private var vpnActive: Bool = false
     @State private var showVPNAlert = false
+    @State private var pairingImportError: String?
+    @State private var showPairingErrorAlert = false
 
     private let tintOptions: [(name: String, hex: String)] = [
         ("Pink", "#f4b8e4"),
@@ -39,7 +41,7 @@ struct SettingsView: View {
                     await languageManager.fetchAvailableLanguages()
                 }
             }
-            checkVPNStatus()
+            refreshVPNStatus()
         }
         .fileImporter(
             isPresented: $showPairingFileImporter,
@@ -53,7 +55,12 @@ struct SettingsView: View {
         .alert("LocalDevVPN", isPresented: $showVPNAlert) {
             Button("OK") {}
         } message: {
-            Text("LocalDevVPN chưa bật hoặc tunnel 10.7.0.1 không truy cập được. Airlift sẽ không hoạt động.")
+            Text("LocalDevVPN chưa bật. Airlift (Wallet / Passcode) sẽ không hoạt động.")
+        }
+        .alert("Pairing Error", isPresented: $showPairingErrorAlert) {
+            Button("OK") {}
+        } message: {
+            Text(pairingImportError ?? "Unknown error")
         }
     }
 
@@ -106,7 +113,7 @@ struct SettingsView: View {
             }
 
             Button {
-                checkVPNStatus(showAlert: true)
+                refreshVPNStatus(showAlert: true)
             } label: {
                 HStack {
                     Label("Check LocalDevVPN", systemImage: "wifi")
@@ -130,38 +137,38 @@ struct SettingsView: View {
             do {
                 let data = try Data(contentsOf: url)
 
-                // Validate RPPairing format (plist with identifier + e_public_key)
-                if let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
-                    let hasIdentifier = plist["identifier"] != nil
-                    let hasPublicKey = plist["e_public_key"] != nil
+                // Parse & validate RPPairing
+                _ = try RPPairingParser.parse(data)
 
-                    if !hasIdentifier || !hasPublicKey {
-                        print("[Pairing] Warning: file may not be RPPairing format")
-                    }
-                }
-
+                // Save to documents
                 let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
                 try data.write(to: pairingPath)
                 pairingFile = url.lastPathComponent
 
                 print("[Pairing] Imported: \(url.lastPathComponent)")
 
+            } catch let parseError as RPPairingError {
+                pairingImportError = parseError.localizedDescription
+                showPairingErrorAlert = true
             } catch {
-                print("[Pairing] Import failed: \(error)")
+                pairingImportError = "Đọc file thất bại: \(error.localizedDescription)"
+                showPairingErrorAlert = true
             }
 
         case .failure(let error):
-            print("[Pairing] File picker failed: \(error)")
+            pairingImportError = "Chọn file thất bại: \(error.localizedDescription)"
+            showPairingErrorAlert = true
         }
     }
 
-    // MARK: - VPN Check
-    private func checkVPNStatus(showAlert: Bool = false) {
-        let active = NetworkStatus.isVPNTunnelReachable()
-        vpnActive = active
+    // MARK: - VPN Check (non-blocking)
+    private func refreshVPNStatus(showAlert: Bool = false) {
+        NetworkStatus.checkVPNStatus { active in
+            self.vpnActive = active
 
-        if showAlert && !active {
-            showVPNAlert = true
+            if showAlert && !active {
+                self.showVPNAlert = true
+            }
         }
     }
 
