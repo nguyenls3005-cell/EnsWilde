@@ -25,23 +25,34 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Status
     @ViewBuilder
     private var statusSection: some View {
-        Section(header: Text(L("section_status"))) {
-            HStack {
-                Image(systemName: "checkmark.shield.fill")
-                    .foregroundStyle(.green)
+        Section {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.18))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.green)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("bad_query")
-                        .font(.subheadline.bold())
-                    Text("iOS 26.0 – 27.0b4 sandbox escape")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    Text("Sandbox Escape • Active")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Spacer()
             }
+            .padding(.vertical, 4)
         }
     }
 
+    // MARK: - Tweaks
     @ViewBuilder
     private var tweaksSection: some View {
         Section(header: Text(L("section_tweaks"))) {
@@ -51,6 +62,14 @@ struct ContentView: View {
                 subtitle: L("tool_mobile_gestalt_desc"),
                 icon: "cpu",
                 isEnabled: toolStore.replaceMobileGestaltEnabled
+            )
+
+            toolNavigationLink(
+                value: "PasscodeTheme",
+                title: L("tool_passcode_theme"),
+                subtitle: L("tool_passcode_theme_desc"),
+                icon: "lock.rectangle",
+                isEnabled: themeStore.passcodeThemeEnabled
             )
 
             toolNavigationLink(
@@ -75,6 +94,8 @@ struct ContentView: View {
     private func destinationView(for route: String) -> some View {
         if route == "MobileGestalt" {
             MobileGestaltView(toolStore: toolStore)
+        } else if route == "PasscodeTheme" {
+            PasscodeThemeView(themeStore: themeStore)
         } else if route == "DisableSound" {
             DisableSoundView()
         } else if route == "AppleWallet" {
