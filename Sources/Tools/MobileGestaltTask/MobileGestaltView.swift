@@ -303,34 +303,6 @@ struct MobileGestaltView: View {
         )
     }
 
-    func bindingForMedusa() -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
-            return State(initialValue: false).projectedValue
-        }
-        let keys = [
-            "mG0AnH/Vy1veoqoLRAIgTA",
-            "UCG5MkVahJxG1YULbbd5Bg",
-            "ZYqko/XM5zD3XBfN5RmaXA",
-            "nVh/gwNpy7Jv1NOk00CMrw",
-            "qeaj75wk3HF4DwQ8qbIi7g",
-        ]
-        return Binding(
-            get: {
-                if let value = cacheExtra[keys.first!] as? Int? { return value == 1 }
-                return false
-            },
-            set: { enabled in
-                for key in keys {
-                    if enabled {
-                        cacheExtra[key] = 1
-                    } else {
-                        cacheExtra.removeObject(forKey: key)
-                    }
-                }
-            }
-        )
-    }
-
     func bindingForRegionRestriction() -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
             return State(initialValue: false).projectedValue
