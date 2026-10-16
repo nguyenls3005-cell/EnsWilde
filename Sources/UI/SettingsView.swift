@@ -8,8 +8,9 @@ struct SettingsView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
     @AppStorage("PairingFile") private var pairingFile: String?
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
-    var heartbeatRunning: Bool = false
-    var ddiMounted: Bool = false
+    @State private var showPairingFileImporter = false
+    @State private var vpnActive: Bool = false
+    @State private var showVPNAlert = false
 
     private let tintOptions: [(name: String, hex: String)] = [
         ("Pink", "#f4b8e4"),
@@ -24,6 +25,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             systemStatusSection
+            pairingSection
             languageSection
             colorSection
             tutorialSection
@@ -37,9 +39,20 @@ struct SettingsView: View {
                     await languageManager.fetchAvailableLanguages()
                 }
             }
+            checkVPNStatus()
+        }
+        .fileImporter(
+            isPresented: $showPairingFileImporter,
+            allowedContentTypes: [
+                .propertyList,
+                UTType(filenameExtension: "plist", conformingTo: .data) ?? .data
+            ]
+        ) { result in
+            handlePairingImport(result)
         }
     }
 
+    // MARK: - System Status
     @ViewBuilder
     private var systemStatusSection: some View {
         Section(header: Text(L("system_status") + " (For Passcode, Wallet)")) {
@@ -47,6 +60,11 @@ struct SettingsView: View {
                 title: L("status_pairing_file"),
                 subtitle: pairingFile != nil ? L("status_pairing_loaded") : L("status_pairing_missing"),
                 ok: pairingFile != nil
+            )
+            statusRow(
+                title: "LocalDevVPN",
+                subtitle: vpnActive ? "Connected" : "Not connected",
+                ok: vpnActive
             )
         }
     }
@@ -62,6 +80,90 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Pairing Section
+    @ViewBuilder
+    private var pairingSection: some View {
+        Section(header: Text(L("status_pairing_file"))) {
+            if pairingFile != nil {
+                Button(role: .destructive) {
+                    pairingFile = nil
+                    let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+                    try? FileManager.default.removeItem(at: pairingPath)
+                } label: {
+                    Label(L("button_reset_pairing"), systemImage: "trash")
+                }
+            } else {
+                Button {
+                    showPairingFileImporter = true
+                } label: {
+                    Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
+                }
+            }
+
+            // VPN check button
+            Button {
+                checkVPNStatus(showAlert: true)
+            } label: {
+                HStack {
+                    Label("Check LocalDevVPN", systemImage: "wifi")
+                    Spacer()
+                    if vpnActive {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Pairing Import Handler
+    private func handlePairingImport(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+
+            do {
+                let data = try Data(contentsOf: url)
+
+                // Validate RPPairing format (plist with identifier + e_public_key)
+                if let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
+                    let hasIdentifier = plist["identifier"] != nil
+                    let hasPublicKey = plist["e_public_key"] != nil
+
+                    guard hasIdentifier && hasPublicKey else {
+                        // Still accept legacy format but warn
+                        print("[Pairing] Warning: file may not be RPPairing format")
+                    }
+                }
+
+                // Save to documents
+                let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+                try data.write(to: pairingPath)
+                pairingFile = url.lastPathComponent
+
+                print("[Pairing] Imported: \(url.lastPathComponent)")
+
+            } catch {
+                print("[Pairing] Import failed: \(error)")
+            }
+
+        case .failure(let error):
+            print("[Pairing] File picker failed: \(error)")
+        }
+    }
+
+    // MARK: - VPN Check
+    private func checkVPNStatus(showAlert: Bool = false) {
+        let active = NetworkStatus.isVPNTunnelReachable()
+        vpnActive = active
+
+        if showAlert && !active {
+            showVPNAlert = true
+        }
+    }
+
+    // MARK: - Language
     @ViewBuilder
     private var languageSection: some View {
         Section(header: Text(L("settings_language"))) {
@@ -71,6 +173,7 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Tutorial
     @ViewBuilder
     private var tutorialSection: some View {
         Section(header: Text(L("settings_tutorial"))) {
@@ -122,6 +225,7 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Color
     @ViewBuilder
     private var colorSection: some View {
         Section(header: Text(L("settings_accent_color"))) {
@@ -176,6 +280,7 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - App Info
     private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
     @ViewBuilder
@@ -300,6 +405,8 @@ struct AboutView: View {
             creditRow(name: "@PoomSmart", desc: "MobileGestalt dump.")
             creditRow(name: "@paragonarsi", desc: "Apple Wallet Get.")
             creditRow(name: "@iTechExpert21", desc: "Hide Dynamic Island.")
+            creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring respring.")
+            creditRow(name: "@mak5er", desc: "AirCard-iOS reference.")
         }
     }
 
