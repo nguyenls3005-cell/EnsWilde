@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var showVPNAlert = false
     @State private var pairingImportError: String?
     @State private var showPairingErrorAlert = false
+    @State private var pairingImportSuccess: String?
+    @State private var showPairingSuccessAlert = false
 
     // Backup
     @State private var showBackupImporter = false
@@ -38,7 +40,6 @@ struct SettingsView: View {
             backupSection
             languageSection
             colorSection
-            tutorialSection
             appInfoSection
         }
         .headerProminence(.increased)
@@ -59,6 +60,7 @@ struct SettingsView: View {
                 UTType(filenameExtension: "plist", conformingTo: .data) ?? .data
             ]
         ) { result in
+            print("[Pairing] File picker result: \(result)")
             handlePairingImport(result)
         }
         .fileImporter(
@@ -79,6 +81,11 @@ struct SettingsView: View {
             Button("OK") {}
         } message: {
             Text(pairingImportError ?? "Unknown error")
+        }
+        .alert("Pairing Success", isPresented: $showPairingSuccessAlert) {
+            Button("OK") {}
+        } message: {
+            Text(pairingImportSuccess ?? "")
         }
         .alert("Backup", isPresented: $showBackupAlert) {
             Button("OK") {}
@@ -129,6 +136,7 @@ struct SettingsView: View {
                 }
             } else {
                 Button {
+                    print("[Pairing] Import button tapped")
                     showPairingFileImporter = true
                 } label: {
                     Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
@@ -251,14 +259,12 @@ struct SettingsView: View {
             do {
                 let data = try Data(contentsOf: url)
 
-                // Validate plist
                 guard (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil else {
                     backupAlertMessage = "File không phải plist hợp lệ."
                     showBackupAlert = true
                     return
                 }
 
-                // Overwrite backup (cần method importBackup trong manager — mình đã thêm)
                 try MobileGestaltBackupManager.shared.importBackup(from: data)
 
                 refreshBackupInfo()
@@ -288,33 +294,57 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Pairing Import Handler
+    // MARK: - Pairing Import Handler (FIX)
     private func handlePairingImport(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
+            print("[Pairing] Selected file: \(url.lastPathComponent)")
+
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
             do {
+                // Bước 1: Đọc data
                 let data = try Data(contentsOf: url)
+                print("[Pairing] Data size: \(data.count) bytes")
 
-                _ = try RPPairingParser.parse(data)
+                // Bước 2: Parse RPPairing
+                do {
+                    let parsed = try RPPairingParser.parse(data)
+                    print("[Pairing] Parsed OK. identifier=\(parsed.identifier)")
+                } catch let parseError as RPPairingError {
+                    print("[Pairing] Parse error: \(parseError.localizedDescription)")
+                    pairingImportError = parseError.localizedDescription
+                    showPairingErrorAlert = true
+                    return
+                } catch {
+                    print("[Pairing] Unknown parse error: \(error)")
+                    pairingImportError = "Parse failed: \(error.localizedDescription)"
+                    showPairingErrorAlert = true
+                    return
+                }
 
+                // Bước 3: Lưu file
                 let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
                 try data.write(to: pairingPath)
+                print("[Pairing] Saved to: \(pairingPath.path)")
+
+                // Bước 4: Update state
                 pairingFile = url.lastPathComponent
+                print("[Pairing] pairingFile set to: \(url.lastPathComponent)")
 
-                print("[Pairing] Imported: \(url.lastPathComponent)")
+                // Bước 5: Show success alert
+                pairingImportSuccess = "Đã import pairing: \(url.lastPathComponent)\nKích thước: \(data.count) bytes"
+                showPairingSuccessAlert = true
 
-            } catch let parseError as RPPairingError {
-                pairingImportError = parseError.localizedDescription
-                showPairingErrorAlert = true
             } catch {
+                print("[Pairing] Read/write error: \(error)")
                 pairingImportError = "Đọc file thất bại: \(error.localizedDescription)"
                 showPairingErrorAlert = true
             }
 
         case .failure(let error):
+            print("[Pairing] File picker failed: \(error)")
             pairingImportError = "Chọn file thất bại: \(error.localizedDescription)"
             showPairingErrorAlert = true
         }
@@ -337,58 +367,6 @@ struct SettingsView: View {
         Section(header: Text(L("settings_language"))) {
             NavigationLink(destination: LanguageSettingsView()) {
                 Label(L("settings_language"), systemImage: "globe")
-            }
-        }
-    }
-
-    // MARK: - Tutorial
-    @ViewBuilder
-    private var tutorialSection: some View {
-        Section(header: Text(L("settings_tutorial"))) {
-            NavigationLink {
-                TutorialView()
-            } label: {
-                Label(L("tutorial_guide"), systemImage: "book.fill")
-            }
-
-            Button {
-                let version = (UIDevice.current.systemVersion as NSString).floatValue
-                let passcodePath = version >= 26.0
-                    ? "file://a/var/mobile/Library/Caches/TelephonyUI-10/"
-                    : "file://a/var/mobile/Library/Caches/TelephonyUI-9/"
-                UIPasteboard.general.string = passcodePath
-                copiedPath = "passcode"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    if copiedPath == "passcode" { copiedPath = nil }
-                }
-            } label: {
-                HStack {
-                    Label(L("tutorial_copy_passcode_path"), systemImage: "lock.rectangle")
-                    Spacer()
-                    if copiedPath == "passcode" {
-                        Image(systemName: "checkmark").foregroundStyle(.green)
-                    } else {
-                        Image(systemName: "doc.on.doc").foregroundStyle(.secondary)
-                    }
-                }
-            }
-
-            Button {
-                UIPasteboard.general.string = "file://a/var/mobile/Library/Passes/Cards/"
-                copiedPath = "wallet"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    if copiedPath == "wallet" { copiedPath = nil }
-                }
-            } label: {
-                HStack {
-                    Label(L("tutorial_copy_wallet_path"), systemImage: "wallet.pass")
-                    Spacer()
-                    if copiedPath == "wallet" {
-                        Image(systemName: "checkmark").foregroundStyle(.green)
-                    } else {
-                        Image(systemName: "doc.on.doc").foregroundStyle(.secondary)
-                    }
-                }
             }
         }
     }
@@ -469,6 +447,10 @@ struct SettingsView: View {
                 Spacer()
                 Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary)
             }
+            Text("iOS 27+: bad_query có thể chỉnh chữ trên màn hình khoá (swipe up text) và PosterBoard wallpaper. iOS 26: chỉ Airlift (Wallet/Passcode).")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
         }
     }
 
@@ -576,6 +558,7 @@ struct AboutView: View {
             creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring respring.")
             creditRow(name: "@mak5er", desc: "AirCard-iOS reference.")
             creditRow(name: "@Nouvborne", desc: "Ketamine reference.")
+            creditRow(name: "@jailbreakdotparty", desc: "Erosion reference.")
         }
     }
 
@@ -631,234 +614,5 @@ struct ThanksRow: View {
             }
         }
         .padding(.vertical, 2)
-    }
-}
-
-// MARK: - Tutorial Onboarding View
-struct TutorialView: View {
-    @Environment(\.dismiss) var dismiss
-    @State private var currentStep = 0
-    @State private var copiedPath: String?
-
-    private var steps: [(icon: String, title: String, description: String)] {[
-        ("doc.on.doc", L("tutorial_step_1_title"), L("tutorial_step_1_desc")),
-        ("gear", L("tutorial_step_2_title"), L("tutorial_step_2_desc")),
-        ("hand.tap", L("tutorial_step_3_title"), L("tutorial_step_3_desc")),
-        ("airplayaudio", L("tutorial_step_4_title"), L("tutorial_step_4_desc")),
-        ("archivebox", L("tutorial_step_5_title"), L("tutorial_step_5_desc"))
-    ]}
-
-    private var totalPages: Int { steps.count + 1 }
-    private var isLastStep: Bool { currentStep == totalPages - 1 }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TabView(selection: $currentStep) {
-                ForEach(0..<steps.count, id: \.self) { index in
-                    stepPage(index: index)
-                        .tag(index)
-                }
-
-                copyPathPage
-                    .tag(steps.count)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(.easeInOut(duration: 0.3), value: currentStep)
-
-            VStack(spacing: 16) {
-                HStack(spacing: 8) {
-                    ForEach(0..<totalPages, id: \.self) { index in
-                        Circle()
-                            .fill(index == currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
-                            .frame(width: 8, height: 8)
-                            .scaleEffect(index == currentStep ? 1.2 : 1.0)
-                            .animation(.spring(response: 0.3), value: currentStep)
-                    }
-                }
-                .padding(.bottom, 4)
-
-                HStack(spacing: 16) {
-                    if currentStep > 0 {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                currentStep -= 1
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: "chevron.left")
-                                Text(L("tutorial_back"))
-                            }
-                            .font(.subheadline.weight(.medium))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(Color.secondary.opacity(0.12))
-                            .foregroundStyle(.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                    }
-
-                    Button {
-                        if isLastStep {
-                            dismiss()
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                currentStep += 1
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text(isLastStep ? L("tutorial_done") : L("tutorial_next"))
-                            if !isLastStep {
-                                Image(systemName: "chevron.right")
-                            }
-                        }
-                        .font(.headline.weight(.bold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color.accentColor)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
-                .padding(.horizontal)
-            }
-            .padding(.bottom, 30)
-        }
-        .navigationTitle(L("tutorial_title"))
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    @ViewBuilder
-    private func stepPage(index: Int) -> some View {
-        let step = steps[index]
-        VStack(spacing: 24) {
-            Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 120, height: 120)
-                Image(systemName: step.icon)
-                    .font(.system(size: 48, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
-            }
-            .transition(.scale.combined(with: .opacity))
-
-            Text(L("tutorial_step_of").replacingOccurrences(of: "{current}", with: "\(index + 1)").replacingOccurrences(of: "{total}", with: "\(steps.count)"))
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(Color.accentColor, in: Capsule())
-
-            Text(step.title)
-                .font(.title2)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-
-            Text(step.description)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
-            Spacer()
-        }
-        .padding()
-    }
-
-    @ViewBuilder
-    private var copyPathPage: some View {
-        VStack(spacing: 24) {
-            Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.12))
-                    .frame(width: 120, height: 120)
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 48, weight: .medium))
-                    .foregroundStyle(.green)
-            }
-
-            Text(L("tutorial_copy_paths"))
-                .font(.title2)
-                .fontWeight(.bold)
-
-            Text(L("tutorial_copy_paths_desc"))
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-
-            VStack(spacing: 12) {
-                let version = (UIDevice.current.systemVersion as NSString).floatValue
-                let passcodePath = version >= 26.0
-                    ? "file://a/var/mobile/Library/Caches/TelephonyUI-10/"
-                    : "file://a/var/mobile/Library/Caches/TelephonyUI-9/"
-                copyPathButton(
-                    label: "Passcode Theme",
-                    icon: "lock.rectangle",
-                    path: passcodePath,
-                    identifier: "passcode"
-                )
-
-                copyPathButton(
-                    label: "Apple Wallet",
-                    icon: "wallet.pass",
-                    path: "file://a/var/mobile/Library/Passes/Cards/",
-                    identifier: "wallet"
-                )
-            }
-            .padding(.horizontal, 24)
-
-            Spacer()
-            Spacer()
-        }
-        .padding()
-    }
-
-    @ViewBuilder
-    private func copyPathButton(label: String, icon: String, path: String, identifier: String) -> some View {
-        Button {
-            UIPasteboard.general.string = path
-            withAnimation(.spring(response: 0.3)) {
-                copiedPath = identifier
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                withAnimation { if copiedPath == identifier { copiedPath = nil } }
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .frame(width: 36)
-                    .foregroundStyle(Color.accentColor)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(path)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Image(systemName: copiedPath == identifier ? "checkmark.circle.fill" : "doc.on.doc")
-                    .foregroundStyle(copiedPath == identifier ? .green : .secondary)
-                    .animation(.spring(response: 0.3), value: copiedPath)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }
