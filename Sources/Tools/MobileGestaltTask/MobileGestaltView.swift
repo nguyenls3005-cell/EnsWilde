@@ -19,7 +19,6 @@ struct MobileGestaltView: View {
     @State var initError: String?
     @State var lastError: String?
     @State var dynamicIslandType: Int = 0
-    @State var enableRdarFix: Bool = false
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
 
@@ -73,8 +72,6 @@ struct MobileGestaltView: View {
                     modelName = modelNameValue
                 }
             }
-
-            loadRdarFixState()
         }
         .onChange(of: enableModelName) { enabled in
             if enabled {
@@ -116,8 +113,8 @@ struct MobileGestaltView: View {
     private var deviceSubtypeSection: some View {
         Section(header: Text(L("section_device_subtype"))) {
             Picker(L("mg_device_subtype_preset"), selection: $dynamicIslandType) {
-                Text(L("mg_subtype_none")).tag(0)
-                Text(L("mg_subtype_2436")).tag(1)
+                Text("Default").tag(0)
+                Text("iPhone Air").tag(1)
                 Text(L("mg_subtype_2556")).tag(2)
                 Text(L("mg_subtype_2796")).tag(3)
                 Text(L("mg_subtype_2976")).tag(4)
@@ -129,9 +126,6 @@ struct MobileGestaltView: View {
             .onChange(of: dynamicIslandType) { newValue in
                 applyDynamicIsland(type: newValue)
             }
-
-            Toggle(L("mg_rdar_fix"), isOn: $enableRdarFix)
-                .disabled(dynamicIslandType == 0)
 
             Toggle(L("mg_change_model_name"), isOn: $enableModelName)
 
@@ -211,7 +205,6 @@ struct MobileGestaltView: View {
                 do {
                     saveProductType()
                     try mobileGestalt.write(to: modMGURL)
-                    try saveResolutionPlist()
 
                     UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
@@ -492,96 +485,6 @@ struct MobileGestaltView: View {
 
         if let gestaltDict = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSMutableDictionary {
             gestaltDict.removeObject(forKey: "ArtworkDeviceProductDescription")
-        }
-    }
-
-    // MARK: - RDAR Fix
-
-    private func getRdarMode() -> Int {
-        let model = Self.machineName()
-
-        let mode1Models: Set<String> = [
-            "iPhone11,2", "iPhone11,4", "iPhone11,6", "iPhone11,8",
-            "iPhone12,1", "iPhone12,3", "iPhone12,5"
-        ]
-        if mode1Models.contains(model) {
-            return 1
-        }
-
-        let mode2Models: Set<String> = [
-            "iPhone13,2", "iPhone13,3", "iPhone13,4",
-            "iPhone14,5", "iPhone14,2", "iPhone14,3",
-            "iPhone14,7", "iPhone14,8", "iPhone17,5"
-        ]
-        if mode2Models.contains(model) {
-            return 2
-        }
-
-        let mode3Models: Set<String> = [
-            "iPhone12,8", "iPhone14,6"
-        ]
-        if mode3Models.contains(model) {
-            return 3
-        }
-
-        return 0
-    }
-
-    private func calculateResolution() -> (width: Int, height: Int)? {
-        let mode = getRdarMode()
-
-        if dynamicIslandType == 0 || !enableRdarFix {
-            return nil
-        }
-
-        if mode == 1 {
-            return (828, 1791)
-        } else if mode == 3 {
-            return (1000, 1779)
-        } else if mode == 2 {
-            let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
-            guard dynamicIslandType > 0 && dynamicIslandType < subtypeValues.count else {
-                return nil
-            }
-
-            let subtypeValue = subtypeValues[dynamicIslandType]
-
-            switch subtypeValue {
-            case 2556: return (1179, 2556)
-            case 2796: return (1290, 2796)
-            case 2622: return (1206, 2622)
-            case 2868: return (1320, 2868)
-            case 2736: return (1260, 2736)
-            default: return (1320, 2868)
-            }
-        }
-
-        return nil
-    }
-
-    func saveResolutionPlist() throws {
-        if let resolution = calculateResolution() {
-            let resolutionDict: NSDictionary = [
-                "canvas_width": resolution.width,
-                "canvas_height": resolution.height
-            ]
-
-            try resolutionDict.write(to: resolutionURL)
-            chmod(resolutionURL.path, 0o644)
-        } else {
-            if FileManager.default.fileExists(atPath: resolutionURL.path) {
-                try? FileManager.default.removeItem(at: resolutionURL)
-            }
-        }
-    }
-
-    private func loadRdarFixState() {
-        if FileManager.default.fileExists(atPath: resolutionURL.path),
-           let resolutionDict = NSDictionary(contentsOf: resolutionURL),
-           resolutionDict["canvas_width"] != nil && resolutionDict["canvas_height"] != nil {
-            enableRdarFix = true
-        } else {
-            enableRdarFix = false
         }
     }
 }
