@@ -452,7 +452,7 @@ struct MobileGestaltView: View {
     func applyDynamicIsland(type: Int) {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
 
-        let subtypeValues = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
+        let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
 
         if type == 0 {
             cacheExtra.removeObject(forKey: "oPeik/9e8lQWMszEjbPzng")
@@ -517,7 +517,9 @@ struct MobileGestaltView: View {
             return 2
         }
 
-        let mode3Models: Set<String> = ["iPhone12,8", "iPhone14,6"]
+        let mode3Models: Set<String> = [
+            "iPhone12,8", "iPhone14,6"
+        ]
         if mode3Models.contains(model) {
             return 3
         }
@@ -537,7 +539,7 @@ struct MobileGestaltView: View {
         } else if mode == 3 {
             return (1000, 1779)
         } else if mode == 2 {
-            let subtypeValues = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
+            let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
             guard dynamicIslandType > 0 && dynamicIslandType < subtypeValues.count else {
                 return nil
             }
