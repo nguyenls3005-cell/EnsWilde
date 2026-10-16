@@ -18,7 +18,7 @@ struct MobileGestaltView: View {
     @State var taskRunning = false
     @State var initError: String?
     @State var lastError: String?
-    @State var dynamicIslandType: Int = 0 // 0 = None, 1-7 = different types
+    @State var dynamicIslandType: Int = 0
     @State var enableRdarFix: Bool = false
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
@@ -51,8 +51,7 @@ struct MobileGestaltView: View {
 
             if let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
                 productType = cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] as? String ?? productType
-                
-                // Load Dynamic Island setting
+
                 if let diValue = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSDictionary,
                    let subtype = diValue["ArtworkDeviceSubType"] as? Int {
                     switch subtype {
@@ -66,8 +65,7 @@ struct MobileGestaltView: View {
                     default: dynamicIslandType = 0
                     }
                 }
-                
-                // Load Model Name setting
+
                 if let diValue = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSDictionary,
                    let modelNameValue = diValue["ArtworkDeviceProductDescription"] as? String,
                    !modelNameValue.isEmpty {
@@ -75,8 +73,7 @@ struct MobileGestaltView: View {
                     modelName = modelNameValue
                 }
             }
-            
-            // Load RDAR Fix state from resolution plist
+
             loadRdarFixState()
         }
         .onChange(of: enableModelName) { enabled in
@@ -132,12 +129,12 @@ struct MobileGestaltView: View {
             .onChange(of: dynamicIslandType) { newValue in
                 applyDynamicIsland(type: newValue)
             }
-            
+
             Toggle(L("mg_rdar_fix"), isOn: $enableRdarFix)
                 .disabled(dynamicIslandType == 0)
-            
+
             Toggle(L("mg_change_model_name"), isOn: $enableModelName)
-            
+
             if enableModelName {
                 TextField(L("mg_model_name_placeholder"), text: $modelName)
             }
@@ -214,11 +211,11 @@ struct MobileGestaltView: View {
                 do {
                     saveProductType()
                     try mobileGestalt.write(to: modMGURL)
-                    
-                    // Save resolution plist for RDAR fix
                     try saveResolutionPlist()
-                    
-                    lastError = "Saved ModifiedMobileGestalt.plist. Now go Home → Apply Enabled Tools."
+
+                    UserDefaults.standard.set(true, forKey: "ShowApplyTab")
+
+                    lastError = "Đã lưu ModifiedMobileGestalt.plist. Tab Apply đã được mở ở dưới — chuyển sang để áp dụng."
                     showErrorAlert = true
                 } catch {
                     lastError = "Save failed: \(error)"
@@ -227,23 +224,26 @@ struct MobileGestaltView: View {
             }) {
                 Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
             }
-            
+
             Button(role: .destructive, action: {
                 do {
                     let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary
                     let wasTrollPadEnabled = (cacheExtra?["uKc7FPnEO++lVhHWHFlGbQ"] as? Int) == 1
-                    
+
                     try? FileManager.default.removeItem(at: modMGURL)
                     try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
                     mobileGestalt = try NSMutableDictionary(contentsOf: modMGURL, error: ())
                     toolStore.replaceMobileGestaltEnabled = true
-                    
+
                     if wasTrollPadEnabled {
                         toolStore.bookassetdUUID = nil
-                        lastError = "Reset done. MobileGestalt tool enabled. Bookassetd UUID cleared (iPadOS was enabled). Now go Home → Apply Enabled Tools to apply the reset to system."
+                        lastError = "Reset done. Tab Apply đã được mở. Bookassetd UUID đã xoá (iPadOS was enabled)."
                     } else {
-                        lastError = "Reset done. MobileGestalt tool enabled. Now go Home → Apply Enabled Tools to apply the reset to system."
+                        lastError = "Reset done. Tab Apply đã được mở."
                     }
+
+                    UserDefaults.standard.set(true, forKey: "ShowApplyTab")
+
                     showErrorAlert = true
                 } catch {
                     lastError = "Reset failed: \(error)"
@@ -254,11 +254,10 @@ struct MobileGestaltView: View {
             }
         }
     }
-    
 
     init(toolStore: ToolStore) {
         self.toolStore = toolStore
-        
+
         let documentsDirectory = URL.documentsDirectory
         featFlagsURL = documentsDirectory.appendingPathComponent("FeatureFlags.plist", conformingTo: .data)
         origMGURL = documentsDirectory.appendingPathComponent("OriginalMobileGestalt.plist", conformingTo: .data)
@@ -267,7 +266,6 @@ struct MobileGestaltView: View {
 
         do {
             if !FileManager.default.fileExists(atPath: origMGURL.path) {
-                // Use obfuscated path from MobileGestaltApplyTask
                 let url = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 try FileManager.default.copyItem(at: url, to: origMGURL)
             }
@@ -286,7 +284,7 @@ struct MobileGestaltView: View {
         }
     }
 
-    // MARK: - Bindings (mostly unchanged)
+    // MARK: - Bindings
 
     func bindingForAppleIntelligence() -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
@@ -311,17 +309,17 @@ struct MobileGestaltView: View {
             }
         )
     }
-    
+
     func bindingForMedusa() -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
             return State(initialValue: false).projectedValue
         }
         let keys = [
-            "mG0AnH/Vy1veoqoLRAIgTA", // MedusaFloatingLiveAppCapability
-            "UCG5MkVahJxG1YULbbd5Bg", // MedusaOverlayAppCapability
-            "ZYqko/XM5zD3XBfN5RmaXA", // MedusaPinnedAppCapability
-            "nVh/gwNpy7Jv1NOk00CMrw", // MedusaPIPCapability
-            "qeaj75wk3HF4DwQ8qbIi7g", // DeviceSupportsEnhancedMultitasking
+            "mG0AnH/Vy1veoqoLRAIgTA",
+            "UCG5MkVahJxG1YULbbd5Bg",
+            "ZYqko/XM5zD3XBfN5RmaXA",
+            "nVh/gwNpy7Jv1NOk00CMrw",
+            "qeaj75wk3HF4DwQ8qbIi7g",
         ]
         return Binding(
             get: {
@@ -387,12 +385,12 @@ struct MobileGestaltView: View {
         let valueOffset = FindCacheDataOffset("mtrAoWJ3gsq+I90ZnQ0vQw")
 
         let keys = [
-            "uKc7FPnEO++lVhHWHFlGbQ", // ipad
-            "mG0AnH/Vy1veoqoLRAIgTA", // MedusaFloatingLiveAppCapability
-            "UCG5MkVahJxG1YULbbd5Bg", // MedusaOverlayAppCapability
-            "ZYqko/XM5zD3XBfN5RmaXA", // MedusaPinnedAppCapability
-            "nVh/gwNpy7Jv1NOk00CMrw", // MedusaPIPCapability
-            "qeaj75wk3HF4DwQ8qbIi7g", // DeviceSupportsEnhancedMultitasking
+            "uKc7FPnEO++lVhHWHFlGbQ",
+            "mG0AnH/Vy1veoqoLRAIgTA",
+            "UCG5MkVahJxG1YULbbd5Bg",
+            "ZYqko/XM5zD3XBfN5RmaXA",
+            "nVh/gwNpy7Jv1NOk00CMrw",
+            "qeaj75wk3HF4DwQ8qbIi7g",
         ]
 
         return Binding(
@@ -450,21 +448,18 @@ struct MobileGestaltView: View {
         let cacheExtra = mobileGestalt["CacheExtra"] as! NSMutableDictionary
         cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] = productType
     }
-    
+
     func applyDynamicIsland(type: Int) {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-        
+
         let subtypeValues = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
-        
+
         if type == 0 {
-            // Remove Dynamic Island
             cacheExtra.removeObject(forKey: "oPeik/9e8lQWMszEjbPzng")
             cacheExtra.removeObject(forKey: "YlEtTtHlNesRBMal1CqRaA")
         } else if type > 0 && type < subtypeValues.count {
-            // Set Dynamic Island
             let subtypeValue = subtypeValues[type]
-            
-            // Create or update the dictionary for the key
+
             var gestaltDict: NSMutableDictionary
             if let existing = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSMutableDictionary {
                 gestaltDict = existing
@@ -472,18 +467,15 @@ struct MobileGestaltView: View {
                 gestaltDict = NSMutableDictionary()
                 cacheExtra["oPeik/9e8lQWMszEjbPzng"] = gestaltDict
             }
-            
+
             gestaltDict["ArtworkDeviceSubType"] = subtypeValue
-            
-            // Enable Dynamic Island flag
             cacheExtra["YlEtTtHlNesRBMal1CqRaA"] = 1
         }
     }
-    
+
     func applyModelName() {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-        
-        // Create or update the dictionary for the key
+
         var gestaltDict: NSMutableDictionary
         if let existing = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSMutableDictionary {
             gestaltDict = existing
@@ -491,28 +483,23 @@ struct MobileGestaltView: View {
             gestaltDict = NSMutableDictionary()
             cacheExtra["oPeik/9e8lQWMszEjbPzng"] = gestaltDict
         }
-        
+
         gestaltDict["ArtworkDeviceProductDescription"] = modelName
     }
-    
+
     func removeModelName() {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-        
+
         if let gestaltDict = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSMutableDictionary {
             gestaltDict.removeObject(forKey: "ArtworkDeviceProductDescription")
         }
     }
-    
-    // MARK: - RDAR Fix Functions
-    
-    /// Determines the RDAR fix mode based on device model
-    /// Mode 1: iPhone XR, XS, 11 series
-    /// Mode 2: iPhone 12+ series
-    /// Mode 3: iPhone SE series
+
+    // MARK: - RDAR Fix
+
     private func getRdarMode() -> Int {
         let model = Self.machineName()
-        
-        // Mode 1: iPhone XR, XS, and 11 series
+
         let mode1Models: Set<String> = [
             "iPhone11,2", "iPhone11,4", "iPhone11,6", "iPhone11,8",
             "iPhone12,1", "iPhone12,3", "iPhone12,5"
@@ -520,8 +507,7 @@ struct MobileGestaltView: View {
         if mode1Models.contains(model) {
             return 1
         }
-        
-        // Mode 2: iPhone 12, 13, 14, 15, 16, 17 series
+
         let mode2Models: Set<String> = [
             "iPhone13,2", "iPhone13,3", "iPhone13,4",
             "iPhone14,5", "iPhone14,2", "iPhone14,3",
@@ -530,87 +516,67 @@ struct MobileGestaltView: View {
         if mode2Models.contains(model) {
             return 2
         }
-        
-        // Mode 3: iPhone SE series
+
         let mode3Models: Set<String> = ["iPhone12,8", "iPhone14,6"]
         if mode3Models.contains(model) {
             return 3
         }
-        
+
         return 0
     }
-    
-    /// Calculates the resolution based on dynamic island type and device mode
+
     private func calculateResolution() -> (width: Int, height: Int)? {
         let mode = getRdarMode()
-        
+
         if dynamicIslandType == 0 || !enableRdarFix {
-            // No fix needed
             return nil
         }
-        
+
         if mode == 1 {
-            // iPhone XR, XS, and 11 - Fixed resolution for older devices
             return (828, 1791)
         } else if mode == 3 {
-            // iPhone SEs - Fixed resolution for SE models
             return (1000, 1779)
         } else if mode == 2 {
-            // Status bar fix for iPhone 12+ (requires dynamic island type)
-            // Subtype values correspond to screen heights: 0=None, 2436, 2556, 2796, 2976, 2622, 2868, 2736
             let subtypeValues = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
             guard dynamicIslandType > 0 && dynamicIslandType < subtypeValues.count else {
                 return nil
             }
-            
+
             let subtypeValue = subtypeValues[dynamicIslandType]
-            
-            // Calculate width and height based on the selected dynamic island subtype
+
             switch subtypeValue {
-            case 2556: // iPhone 14 Pro / 15 Pro
-                return (1179, 2556)
-            case 2796: // iPhone 14 Pro Max / 15 Pro Max
-                return (1290, 2796)
-            case 2622: // iPhone 16 Pro
-                return (1206, 2622)
-            case 2868: // iPhone 16 Pro Max
-                return (1320, 2868)
-            case 2736: // iPhone 17 Pro Max
-                return (1260, 2736)
-            default:
-                // Default to iPhone 16 Pro Max dimensions if unknown
-                return (1320, 2868)
+            case 2556: return (1179, 2556)
+            case 2796: return (1290, 2796)
+            case 2622: return (1206, 2622)
+            case 2868: return (1320, 2868)
+            case 2736: return (1260, 2736)
+            default: return (1320, 2868)
             }
         }
-        
+
         return nil
     }
-    
-    /// Saves the resolution plist file for RDAR fix
+
     func saveResolutionPlist() throws {
         if let resolution = calculateResolution() {
-            // Create the resolution plist with canvas_width and canvas_height
             let resolutionDict: NSDictionary = [
                 "canvas_width": resolution.width,
                 "canvas_height": resolution.height
             ]
-            
+
             try resolutionDict.write(to: resolutionURL)
             chmod(resolutionURL.path, 0o644)
         } else {
-            // Remove resolution plist if RDAR fix is disabled or not needed
             if FileManager.default.fileExists(atPath: resolutionURL.path) {
                 try? FileManager.default.removeItem(at: resolutionURL)
             }
         }
     }
-    
-    /// Loads the RDAR fix state from existing resolution plist
+
     private func loadRdarFixState() {
         if FileManager.default.fileExists(atPath: resolutionURL.path),
            let resolutionDict = NSDictionary(contentsOf: resolutionURL),
            resolutionDict["canvas_width"] != nil && resolutionDict["canvas_height"] != nil {
-            // Resolution plist exists with valid data, enable RDAR fix
             enableRdarFix = true
         } else {
             enableRdarFix = false
