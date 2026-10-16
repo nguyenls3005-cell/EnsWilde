@@ -29,18 +29,18 @@ struct ContentView: View {
     @ViewBuilder
     private var statusSection: some View {
         Section {
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 ZStack {
                     Circle()
                         .fill(Color.green.opacity(0.18))
-                        .frame(width: 44, height: 44)
+                        .frame(width: 48, height: 48)
                     Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 22, weight: .semibold))
+                        .font(.system(size: 24, weight: .semibold))
                         .foregroundStyle(.green)
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("bad_query")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
                     Text("Sandbox Escape • Active")
                         .font(.caption)
@@ -48,7 +48,7 @@ struct ContentView: View {
                 }
                 Spacer()
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
         }
     }
 
@@ -90,6 +90,7 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Destination
     @ViewBuilder
     private func destinationView(for route: String) -> some View {
         if route == "MobileGestalt" {
@@ -103,6 +104,7 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Row
     @ViewBuilder
     private func toolNavigationLink(value: String, title: String, subtitle: String, icon: String, isEnabled: Bool) -> some View {
         NavigationLink(value: value) {
