@@ -6,7 +6,13 @@ enum CNURL {
 }
 
 enum CNMsg {
-    static var supWarning = "⚠️ CẢNH BÁO SUPERVISION. Nếu thiết bị đã được MDM quản lý → ĐỪNG bật toggle này! Sau khi respring có thể thấy màn hình setup ban đầu. Dùng với rủi ro của bạn."
+    static var supWarning = """
+    ⚠️ CẢNH BÁO SUPERVISION
+
+    • Nếu thiết bị đã được MDM quản lý → ĐỪNG bật toggle này!
+    • Sau khi respring có thể thấy màn hình setup ban đầu.
+    • Dùng với rủi ro của bạn. Hãy backup trước.
+    """
     static var resetInfo = "Bấm Confirm → footnote bị xoá và thiết bị sẽ không còn supervised."
 }
 
@@ -17,9 +23,9 @@ struct ConfigView: View {
     @State private var footnoteText = ""
     @State private var supervised = false
     @State private var orgName = ""
-    @State private var showRespringAlert = false
-    @State private var respringMessage = ""
     @State private var showSupervisionWarning = false
+    @State private var showSaveAlert = false
+    @State private var saveAlertMessage = ""
 
     init(toolStore: ToolStore = ToolStore()) {
         self.toolStore = toolStore
@@ -123,11 +129,10 @@ struct ConfigView: View {
         } message: {
             Text(CNMsg.supWarning)
         }
-        .alert("Config Tweaks", isPresented: $showRespringAlert) {
-            Button("Respring") { try? RespringHelper.respring() }
-            Button("Later", role: .cancel) {}
+        .alert("Saved", isPresented: $showSaveAlert) {
+            Button("OK") {}
         } message: {
-            Text(respringMessage)
+            Text(saveAlertMessage)
         }
     }
 
@@ -164,26 +169,20 @@ struct ConfigView: View {
     }
 
     private func apply() {
-        let ftDict = ["LockScreenFootnote" : footnoteText]
-        ccCurrentDict["IsSupervised"] = supervised
-        ccCurrentDict["OrganizationName"] = orgName
+        // Chỉ lưu state — không ghi file
+        // Việc ghi file sẽ do ToolRunner làm khi bấm Apply trong tab Apply
         toolStore.configFootnoteText = footnoteText
         toolStore.configTweaksEnabled = true
 
-        do {
-            let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
-            try ftData.write(to: CNURL.sharedDevConfig)
-            let ccData = try PropertyListSerialization.data(fromPropertyList: ccCurrentDict, format: .binary, options: 0)
-            try ccData.write(to: CNURL.cloudConfig)
-            print("(cn) successfully applied config tweaks!")
-            Haptic.shared.play(.soft)
-            UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-            respringMessage = "Đã apply. Tab Apply đã được mở ở dưới."
-            showRespringAlert = true
-        } catch {
-            print("(cn) failed: \(error.localizedDescription)")
-            Alertinator.shared.alert(title: "Failed to apply tweaks!", body: AppMsg.opFailed)
-        }
+        // Lưu supervised + orgName vào AppStorage để ToolRunner đọc
+        UserDefaults.standard.set(supervised, forKey: "ConfigSupervised")
+        UserDefaults.standard.set(orgName, forKey: "ConfigOrgName")
+
+        // Bật tab Apply
+        UserDefaults.standard.set(true, forKey: "ShowApplyTab")
+
+        saveAlertMessage = "Đã lưu. Tab Apply đã được mở ở dưới — chuyển sang để áp dụng."
+        showSaveAlert = true
     }
 
     private func reset() {
@@ -193,14 +192,19 @@ struct ConfigView: View {
             try? fm.removeItem(at: CNURL.sharedDevConfig)
             let ccData = try PropertyListSerialization.data(fromPropertyList: ccCurrentDict, format: .binary, options: 0)
             try ccData.write(to: CNURL.cloudConfig)
-            print("(cn) successfully reset!")
+            print("(cn) successfully reset config tweaks!")
             Haptic.shared.play(.soft)
             loadData()
             footnoteText = ""
-            respringMessage = "Đã reset. Respring để thay đổi có hiệu lực."
-            showRespringAlert = true
+            toolStore.configFootnoteText = ""
+            toolStore.configTweaksEnabled = false
+            UserDefaults.standard.set(false, forKey: "ConfigSupervised")
+            UserDefaults.standard.removeObject(forKey: "ConfigOrgName")
+
+            saveAlertMessage = "Đã reset. Bấm Apply trong tab Apply để áp dụng vào hệ thống."
+            showSaveAlert = true
         } catch {
-            print("(cn) failed to reset: \(error.localizedDescription)")
+            print("(cn) failed to reset config files: \(error.localizedDescription)")
             Alertinator.shared.alert(title: "Failed to reset tweaks!", body: AppMsg.opFailed)
         }
     }
