@@ -18,16 +18,17 @@ var body: some View {
             tweaksSection
         }
         .headerProminence(.increased)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
+            ToolbarItem(placement: .topBarLeading) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("EnsWilde")
-                        .font(.headline)
+                        .font(.largeTitle.bold())
                     Text("Status Exploit")
-                        .font(.caption2)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+                .padding(.bottom, 4)
             }
         }
         .navigationDestination(for: String.self) { route in
