@@ -20,9 +20,10 @@ final class ToolRunner: ObservableObject {
         resetLogs()
 
         let hasMobileGestalt = store.replaceMobileGestaltEnabled
-        let hasPasscodeTheme = themeStore.passcodeThemeEnabled
+        let hasRecordSound = store.disableSoundEnabled
+        let hasWallet = store.walletEnabled
 
-        if !hasMobileGestalt && !hasPasscodeTheme {
+        if !hasMobileGestalt && !hasRecordSound && !hasWallet {
             state = .failed(message: "No tweaks enabled.")
             log("Nothing to apply.")
             return
@@ -30,8 +31,20 @@ final class ToolRunner: ObservableObject {
 
         var names: [String] = []
         if hasMobileGestalt { names.append("MobileGestalt") }
-        if hasPasscodeTheme { names.append("Passcode Theme") }
+        if hasRecordSound { names.append("Record Sound") }
+        if hasWallet { names.append("Apple Wallet") }
         log("Apply started. Enabled: \(names.joined(separator: ", "))")
+
+        // Check unsupported tweaks first
+        var unsupported: [String] = []
+        if hasRecordSound { unsupported.append("Record Sound") }
+        if hasWallet { unsupported.append("Apple Wallet") }
+
+        if !unsupported.isEmpty {
+            state = .failed(message: "Chưa hỗ trợ exploit cho: \(unsupported.joined(separator: ", ")). Cần Airlift (Mac paired).")
+            log("⚠ Chưa hỗ trợ: \(unsupported.joined(separator: ", "))")
+            return
+        }
 
         do {
             if hasMobileGestalt {
@@ -54,12 +67,6 @@ final class ToolRunner: ObservableObject {
                 log("Writing via bad_query...")
                 try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
                 log("✓ MobileGestalt written.")
-            }
-
-            if hasPasscodeTheme {
-                state = .failed(message: "Passcode Theme chưa có exploit. Chờ cập nhật.")
-                log("⚠ Passcode Theme skipped — no exploit available.")
-                return
             }
 
             state = .success
