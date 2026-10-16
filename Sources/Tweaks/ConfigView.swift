@@ -5,21 +5,39 @@ enum CNURL {
     static var cloudConfig = FSURL.configProfiles.appendingPathComponent("CloudConfigurationDetails.plist")
 }
 
+enum CNMsg {
+    static var supWarning = """
+    ⚠️ CẢNH BÁO:
+    • Nếu thiết bị đã được MDM quản lý → ĐỪNG chạm vào toggle này!
+    • Sau khi respring có thể thấy màn hình setup ban đầu.
+    • Dùng với rủi ro của bạn. Hãy backup trước.
+    """
+    static var resetInfo = "Bấm Confirm → footnote bị xoá và thiết bị sẽ không còn supervised."
+}
+
 struct ConfigView: View {
     @ObservedObject var toolStore: ToolStore
 
     @State private var ftCurrentDict = NSMutableDictionary()
+    @State private var ccCurrentDict = NSMutableDictionary()
     @State private var footnoteText = ""
+    @State private var supervised = false
+    @State private var orgName = ""
     @State private var showRespringAlert = false
     @State private var respringMessage = ""
-    @State private var saveSuccess = false
 
     init(toolStore: ToolStore = ToolStore()) {
         self.toolStore = toolStore
     }
 
     var body: some View {
-        List {
+        Form {
+            // MARK: - Enable Tweak
+            Section(header: Text("Config Tweaks")) {
+                Toggle("Enable Tweak", isOn: $toolStore.configTweaksEnabled)
+            }
+
+            // MARK: - Preview
             Section {
                 VStack(spacing: 14) {
                     HStack {
@@ -52,10 +70,13 @@ struct ConfigView: View {
                 .padding(.bottom, 10)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(
-                    Group {
+                    ZStack {
+                        Color.black
                         Image("SolariumBackground")
                             .resizable()
-                            .scaledToFill()
+                            .scaledToFit()
+                            .frame(maxWidth: 180, maxHeight: 180)
+                            .opacity(0.85)
                     }
                 )
 
@@ -67,13 +88,58 @@ struct ConfigView: View {
                 HeaderLabel("Lock Screen Footnote", symbol: "textformat")
             }
 
+            // MARK: - Supervision
+            Section {
+                HStack {
+                    Button {
+                        // Show warning
+                        Alertinator.shared.alert(
+                            title: "Supervision Warning!",
+                            body: CNMsg.supWarning,
+                            showCancel: true
+                        )
+                    } label: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+
+                    Toggle("Enable Supervision", isOn: $supervised)
+                }
+
+                if supervised {
+                    TextField("Organization Name", text: $orgName)
+                }
+            } header: {
+                HeaderLabel("Supervision", symbol: "eye")
+            }
+
+            // MARK: - Actions
             Section {
                 Button {
                     apply()
                 } label: {
                     HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Apply")
+                        Image(systemName: "square.and.arrow.down.fill")
+                        Text("Apply Save Changes")
+                            .font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+
+                Button(role: .destructive) {
+                    Alertinator.shared.alert(
+                        title: "Reset your tweaks?",
+                        body: CNMsg.resetInfo,
+                        actionLabel: "Confirm",
+                        action: { reset() }
+                    )
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Restore Save Changes")
                             .font(.headline)
                     }
                     .frame(maxWidth: .infinity)
@@ -123,29 +189,57 @@ struct ConfigView: View {
             ftCurrentDict = ftDict
             footnoteText = ftDict["LockScreenFootnote"] as? String ?? ""
         }
+        if let ccDict = NSMutableDictionary(contentsOf: CNURL.cloudConfig) {
+            ccCurrentDict = ccDict
+            supervised = ccDict["IsSupervised"] as? Bool ?? false
+            orgName = ccDict["OrganizationName"] as? String ?? ""
+        }
     }
 
     private func apply() {
         let ftDict = ["LockScreenFootnote" : footnoteText]
+        ccCurrentDict["IsSupervised"] = supervised
+        ccCurrentDict["OrganizationName"] = orgName
 
-        // Save to AppStorage trước để state luôn được giữ
+        // Save to AppStorage
         toolStore.configFootnoteText = footnoteText
         toolStore.configTweaksEnabled = true
 
         do {
             let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
             try ftData.write(to: CNURL.sharedDevConfig)
+            let ccData = try PropertyListSerialization.data(fromPropertyList: ccCurrentDict, format: .binary, options: 0)
+            try ccData.write(to: CNURL.cloudConfig)
             print("(cn) successfully applied config tweaks!")
             Haptic.shared.play(.soft)
 
-            // Bật tab Apply — user tự chuyển sang
+            // Bật tab Apply
             UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
             respringMessage = "Đã apply. Tab Apply đã được mở ở dưới — chuyển sang để respring."
             showRespringAlert = true
         } catch {
-            print("(cn) failed to write config file: \(error.localizedDescription)")
+            print("(cn) failed to write config files: \(error.localizedDescription)")
             Alertinator.shared.alert(title: "Failed to apply tweaks!", body: AppMsg.opFailed)
+        }
+    }
+
+    private func reset() {
+        ccCurrentDict["IsSupervised"] = false
+        ccCurrentDict.removeObject(forKey: "OrganizationName")
+        do {
+            try? fm.removeItem(at: CNURL.sharedDevConfig)
+            let ccData = try PropertyListSerialization.data(fromPropertyList: ccCurrentDict, format: .binary, options: 0)
+            try ccData.write(to: CNURL.cloudConfig)
+            print("(cn) successfully reset config tweaks!")
+            Haptic.shared.play(.soft)
+            loadData()
+            footnoteText = ""
+            respringMessage = "Đã reset. Respring để thay đổi có hiệu lực."
+            showRespringAlert = true
+        } catch {
+            print("(cn) failed to reset config files: \(error.localizedDescription)")
+            Alertinator.shared.alert(title: "Failed to reset tweaks!", body: AppMsg.opFailed)
         }
     }
 }
