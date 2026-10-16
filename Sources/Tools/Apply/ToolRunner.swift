@@ -20,10 +20,9 @@ final class ToolRunner: ObservableObject {
         resetLogs()
 
         let hasMobileGestalt = store.replaceMobileGestaltEnabled
-        let hasRecordSound = store.disableSoundEnabled
-        let hasWallet = store.walletEnabled
+        let hasConfigTweaks = store.configTweaksEnabled
 
-        if !hasMobileGestalt && !hasRecordSound && !hasWallet {
+        if !hasMobileGestalt && !hasConfigTweaks {
             state = .failed(message: "No tweaks enabled.")
             log("Nothing to apply.")
             return
@@ -31,20 +30,8 @@ final class ToolRunner: ObservableObject {
 
         var names: [String] = []
         if hasMobileGestalt { names.append("MobileGestalt") }
-        if hasRecordSound { names.append("Record Sound") }
-        if hasWallet { names.append("Apple Wallet") }
+        if hasConfigTweaks { names.append("Config Tweaks") }
         log("Apply started. Enabled: \(names.joined(separator: ", "))")
-
-        // Check unsupported first
-        var unsupported: [String] = []
-        if hasRecordSound { unsupported.append("Record Sound") }
-        if hasWallet { unsupported.append("Apple Wallet") }
-
-        if !unsupported.isEmpty {
-            state = .failed(message: "Chưa hỗ trợ exploit cho: \(unsupported.joined(separator: ", ")). Cần Airlift (Mac paired).")
-            log("⚠ Chưa hỗ trợ: \(unsupported.joined(separator: ", "))")
-            return
-        }
 
         do {
             if hasMobileGestalt {
@@ -64,9 +51,66 @@ final class ToolRunner: ObservableObject {
                 let mgData = try Data(contentsOf: modMGURL)
                 let targetPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
 
-                log("Writing via bad_query...")
+                log("Writing MobileGestalt via bad_query...")
                 try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
                 log("✓ MobileGestalt written.")
+            }
+
+            if hasConfigTweaks {
+                state = .running(toolName: "Config Tweaks")
+                log("Preparing Config Tweaks...")
+
+                // Đọc dữ liệu từ AppStorage
+                let footnote = store.configFootnoteText
+                let supervised = UserDefaults.standard.bool(forKey: "ConfigSupervised")
+                let orgName = UserDefaults.standard.string(forKey: "ConfigOrgName") ?? ""
+
+                log("Footnote: \(footnote.isEmpty ? "(empty)" : footnote)")
+                log("Supervised: \(supervised)")
+
+                // Path
+                let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
+                let sharedDevConfigPath = "\(configDir)/SharedDeviceConfiguration.plist"
+                let cloudConfigPath = "\(configDir)/CloudConfigurationDetails.plist"
+
+                // Bước 1: Grant access vào folder config
+                log("Granting access to ConfigurationProfiles...")
+                let access = bq.grantAccess(atPath: configDir)
+                guard access.0 else {
+                    throw NSError(
+                        domain: "ToolRunner", code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Failed to grant access: \(access.2)"]
+                    )
+                }
+                log("✓ Access granted.")
+
+                // Bước 2: Ghi SharedDeviceConfiguration.plist
+                let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
+                let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
+
+                log("Writing SharedDeviceConfiguration.plist...")
+                try ftData.write(to: URL(fileURLWithPath: sharedDevConfigPath))
+                log("✓ SharedDeviceConfiguration.plist written.")
+
+                // Bước 3: Đọc CloudConfigurationDetails.plist hiện tại (nếu có)
+                var ccDict: NSMutableDictionary = [:]
+                if let existing = NSMutableDictionary(contentsOfFile: cloudConfigPath) {
+                    ccDict = existing
+                }
+                ccDict["IsSupervised"] = supervised
+                if supervised && !orgName.isEmpty {
+                    ccDict["OrganizationName"] = orgName
+                } else {
+                    ccDict.removeObject(forKey: "OrganizationName")
+                }
+
+                let ccData = try PropertyListSerialization.data(fromPropertyList: ccDict, format: .binary, options: 0)
+
+                log("Writing CloudConfigurationDetails.plist...")
+                try ccData.write(to: URL(fileURLWithPath: cloudConfigPath))
+                log("✓ CloudConfigurationDetails.plist written.")
+
+                log("✓ Config Tweaks applied.")
             }
 
             state = .success
