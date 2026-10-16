@@ -1,55 +1,36 @@
 import Foundation
 import Network
+import NetworkExtension
 
 enum NetworkStatus {
-    /// Check if LocalDevVPN loopback is active (10.7.0.1 or 127.0.0.1)
-    static func isLocalDevVPNActive() -> Bool {
-        let monitor = NWPathMonitor()
-        let semaphore = DispatchSemaphore(value: 0)
-        var isSatisfied = false
 
-        monitor.pathUpdateHandler = { path in
-            isSatisfied = (path.status == .satisfied)
-            semaphore.signal()
-        }
-
-        let queue = DispatchQueue(label: "NetworkStatusCheck")
-        monitor.start(queue: queue)
-
-        _ = semaphore.wait(timeout: .now() + 1.0)
-        monitor.cancel()
-
-        return isSatisfied
+    /// Check VPN active via NEVPNManager (accurate, fast)
+    static func isVPNActive() -> Bool {
+        let manager = NEVPNManager.shared()
+        let status = manager.connection.status
+        return status == .connected
     }
 
-    /// Check VPN tunnel active via NWConnection to 10.7.0.1
-    static func isVPNTunnelReachable(timeout: TimeInterval = 1.0) -> Bool {
-        let host = NWEndpoint.Host("10.7.0.1")
-        let port = NWEndpoint.Port(rawValue: 80)!
-
-        let connection = NWConnection(host: host, port: port, using: .tcp)
-        let semaphore = DispatchSemaphore(value: 0)
-        var isReady = false
-
-        connection.stateUpdateHandler = { state in
-            switch state {
-            case .ready:
-                isReady = true
-                semaphore.signal()
-                connection.cancel()
-            case .failed, .cancelled:
-                semaphore.signal()
-            default:
-                break
+    /// Async version with completion handler (avoid blocking main)
+    static func checkVPNStatus(completion: @escaping (Bool) -> Void) {
+        NEVPNManager.shared().loadFromPreferences { error in
+            if let error = error {
+                print("[VPN] Load error: \(error)")
+                DispatchQueue.main.async { completion(false) }
+                return
             }
+            let isConnected = NEVPNManager.shared().connection.status == .connected
+            DispatchQueue.main.async { completion(isConnected) }
         }
+    }
 
-        let queue = DispatchQueue(label: "VPNTunnelCheck")
-        connection.start(queue: queue)
+    /// Legacy — keep for compatibility
+    static func isVPNTunnelReachable(timeout: TimeInterval = 1.0) -> Bool {
+        return isVPNActive()
+    }
 
-        _ = semaphore.wait(timeout: .now() + timeout)
-        connection.cancel()
-
-        return isReady
+    /// Legacy — keep for compatibility
+    static func isLocalDevVPNActive() -> Bool {
+        return isVPNActive()
     }
 }
