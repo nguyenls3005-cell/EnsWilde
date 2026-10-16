@@ -191,6 +191,7 @@ char *bad_query_list(char *path, int64_t max_inode) {
     }
     return out;
 }
+// MARK: - bad_query prototypes
 int64_t bad_query(char* path, bool create, char *group_identifier, bool is_group);
 char *bad_query_list(char *path, int64_t max_inode);
 void bad_query_release(int64_t handle);
