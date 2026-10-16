@@ -33,7 +33,7 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.themeStore)
 
             NavigationStack {
-                SettingsView(heartbeatRunning: false, ddiMounted: false)
+            SettingsView()
             }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
