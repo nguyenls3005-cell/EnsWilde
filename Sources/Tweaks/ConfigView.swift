@@ -8,7 +8,7 @@ enum CNURL {
 enum CNMsg {
     static var supWarning = """
     ⚠️ CẢNH BÁO SUPERVISION
-    
+
     • Nếu thiết bị đã được MDM quản lý → ĐỪNG bật toggle này!
     • Sau khi respring có thể thấy màn hình setup ban đầu.
     • Dùng với rủi ro của bạn. Hãy backup trước.
@@ -72,14 +72,15 @@ struct ConfigView: View {
                 .padding(.bottom, 10)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(
-                    ZStack {
-                        Color.black
-                        Image("SolariumBackground")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: 180, maxHeight: 180)
-                            .opacity(0.85)
-                    }
+                    LinearGradient(
+                        colors: [
+                            Color.black,
+                            Color.gray.opacity(0.4),
+                            Color.black
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
 
                 TextField("Custom Footnote", text: $footnoteText)
@@ -150,7 +151,7 @@ struct ConfigView: View {
                 supervised = false
             }
             Button("I Understand", role: .destructive) {
-                // Keep toggle on
+                // Giữ toggle ON
             }
         } message: {
             Text(CNMsg.supWarning)
@@ -202,7 +203,6 @@ struct ConfigView: View {
         ccCurrentDict["IsSupervised"] = supervised
         ccCurrentDict["OrganizationName"] = orgName
 
-        // Save to AppStorage
         toolStore.configFootnoteText = footnoteText
         toolStore.configTweaksEnabled = true
 
@@ -214,7 +214,6 @@ struct ConfigView: View {
             print("(cn) successfully applied config tweaks!")
             Haptic.shared.play(.soft)
 
-            // Bật tab Apply
             UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
             respringMessage = "Đã apply. Tab Apply đã được mở ở dưới — chuyển sang để respring."
