@@ -202,7 +202,6 @@ struct MobileGestaltView: View {
         Section(header: Text(L("section_save_reset"))) {
             Button(action: {
                 do {
-                    // Tạo pristine backup lần đầu (nếu chưa có)
                     let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
                     let onDeviceURL = URL(fileURLWithPath: onDevicePath)
                     if let originalData = try? Data(contentsOf: onDeviceURL) {
@@ -230,7 +229,6 @@ struct MobileGestaltView: View {
 
             Button(role: .destructive, action: {
                 do {
-                    // Restore pristine backup vào modMGURL
                     let pristineData = try MobileGestaltBackupManager.shared.restoreData()
                     try pristineData.write(to: modMGURL)
 
@@ -352,7 +350,6 @@ struct MobileGestaltView: View {
         }
         let valueOffset = FindCacheDataOffset("mtrAoWJ3gsq+I90ZnQ0vQw")
 
-        // CHỈ 5 key — giống Ketamine, BỎ "qeaj75wk3HF4DwQ8qbIi7g"
         let keys = [
             "uKc7FPnEO++lVhHWHFlGbQ",
             "mG0AnH/Vy1veoqoLRAIgTA",
