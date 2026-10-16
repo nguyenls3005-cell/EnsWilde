@@ -7,8 +7,9 @@ enum CNURL {
 
 enum CNMsg {
     static var supWarning = """
-    ⚠️ CẢNH BÁO:
-    • Nếu thiết bị đã được MDM quản lý → ĐỪNG chạm vào toggle này!
+    ⚠️ CẢNH BÁO SUPERVISION
+    
+    • Nếu thiết bị đã được MDM quản lý → ĐỪNG bật toggle này!
     • Sau khi respring có thể thấy màn hình setup ban đầu.
     • Dùng với rủi ro của bạn. Hãy backup trước.
     """
@@ -25,6 +26,7 @@ struct ConfigView: View {
     @State private var orgName = ""
     @State private var showRespringAlert = false
     @State private var respringMessage = ""
+    @State private var showSupervisionWarning = false
 
     init(toolStore: ToolStore = ToolStore()) {
         self.toolStore = toolStore
@@ -90,23 +92,12 @@ struct ConfigView: View {
 
             // MARK: - Supervision
             Section {
-                HStack {
-                    Button {
-                        // Show warning
-                        Alertinator.shared.alert(
-                            title: "Supervision Warning!",
-                            body: CNMsg.supWarning,
-                            showCancel: true
-                        )
-                    } label: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                            .font(.caption)
+                Toggle("Enable Supervision", isOn: $supervised)
+                    .onChange(of: supervised) { newValue in
+                        if newValue {
+                            showSupervisionWarning = true
+                        }
                     }
-                    .buttonStyle(.plain)
-
-                    Toggle("Enable Supervision", isOn: $supervised)
-                }
 
                 if supervised {
                     TextField("Organization Name", text: $orgName)
@@ -153,6 +144,16 @@ struct ConfigView: View {
         .onAppear {
             doSetup()
             footnoteText = toolStore.configFootnoteText
+        }
+        .alert("Supervision Warning!", isPresented: $showSupervisionWarning) {
+            Button("Cancel", role: .cancel) {
+                supervised = false
+            }
+            Button("I Understand", role: .destructive) {
+                // Keep toggle on
+            }
+        } message: {
+            Text(CNMsg.supWarning)
         }
         .alert("Config Tweaks", isPresented: $showRespringAlert) {
             Button("Respring") {
