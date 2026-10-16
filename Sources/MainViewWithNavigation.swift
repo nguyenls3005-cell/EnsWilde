@@ -26,7 +26,7 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.home)
 
             NavigationStack {
-                SettingsView()
+                SettingsView(heartbeatRunning: false, ddiMounted: false)
             }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
