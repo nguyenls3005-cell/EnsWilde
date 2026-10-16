@@ -1,26 +1,27 @@
 import Foundation
 import SwiftUI
 
-/// Central place for enable flags + shared prefs.
-/// Keep using AppStorage so settings persist.
 final class ToolStore: ObservableObject {
 
-    // Disable Sound
+    // Disable Sound (Record Sound)
     @AppStorage("DisableDisclosureSoundEnabled") var disableSoundEnabled: Bool = false
     @AppStorage("SoundRespringEnabled") var soundRespringEnabled: Bool = true
     @AppStorage("BookassetdContainerUUID") var bookassetdUUID: String?
 
     // MobileGestalt
     @AppStorage("ReplaceMobileGestaltEnabled") var replaceMobileGestaltEnabled: Bool = false
-    
-    // Themes UI
+
+    // Apple Wallet
+    @AppStorage("AppleWalletEnabled") var walletEnabled: Bool = false
+
+    // Themes UI (không dùng)
     @AppStorage("ThemesUIEnabled") var themesUIEnabled: Bool = false
-    
-    // zPatch Custom
+
+    // zPatch (không dùng)
     @AppStorage("zPatchCustomEnabled") var zPatchCustomEnabled: Bool = false
     @AppStorage("zPatchUnlocked") var zPatchUnlocked: Bool = false
 
-    // DisableSound delays
+    // DisableSound delays (không dùng)
     @AppStorage("SoundDelayAfterStartSeconds") var soundDelayAfterStart: Double = 3.0
     @AppStorage("SoundDelayAfterStopSeconds") var soundDelayAfterStop: Double = 3.0
 
