@@ -3,7 +3,7 @@ import SwiftUI
 
 final class ToolStore: ObservableObject {
 
-    // Disable Sound (Record Sound)
+    // Disable Sound
     @AppStorage("DisableDisclosureSoundEnabled") var disableSoundEnabled: Bool = false
     @AppStorage("SoundRespringEnabled") var soundRespringEnabled: Bool = true
     @AppStorage("BookassetdContainerUUID") var bookassetdUUID: String?
@@ -14,7 +14,11 @@ final class ToolStore: ObservableObject {
     // Apple Wallet
     @AppStorage("AppleWalletEnabled") var walletEnabled: Bool = false
 
-    // Legacy (không dùng)
+    // Config Tweaks (Custom Footnote)
+    @AppStorage("ConfigTweaksEnabled") var configTweaksEnabled: Bool = false
+    @AppStorage("ConfigFootnoteText") var configFootnoteText: String = ""
+
+    // Legacy
     @AppStorage("ThemesUIEnabled") var themesUIEnabled: Bool = false
     @AppStorage("zPatchCustomEnabled") var zPatchCustomEnabled: Bool = false
     @AppStorage("zPatchUnlocked") var zPatchUnlocked: Bool = false
