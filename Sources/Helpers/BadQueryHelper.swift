@@ -4,7 +4,6 @@ let bq = BadQuery()
 
 class BadQuery {
 
-    /// Grant access đến path (và optional filename) qua bad_query
     @discardableResult
     func grantAccess(atPath directory: String, toFileName fileName: String = "") -> (Bool, Int64, String) {
         var dirCs = directory.utf8CString.map { Int8($0) }
@@ -31,7 +30,7 @@ class BadQuery {
         let writable = fm.isWritableFile(atPath: path)
 
         if !writable || !readable {
-            errorString = "file not actually readable/writable"
+            errorString = "file not actually readable/writable to this app's sandbox"
         }
 
         if let errorString {
@@ -43,8 +42,24 @@ class BadQuery {
         }
     }
 
-    /// List tất cả file trong path qua bad_query_list
     func getPathsOfDir(atPath path: String, maxInode: Int64 = 100000) -> [String] {
+        var array = [""]
+        path.withCString { pathPtr in
+            guard let res = bad_query_list(UnsafeMutablePointer(mutating: pathPtr), maxInode) else {
+                return
+            }
+            defer { free(res) }
+            let string = String(cString: res)
+            array = string.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        }
+        return array
+    }
+}
+
+let fsHandlers = FSHandlers()
+
+class FSHandlers {
+    func getDirPaths(_ path: String, maxInode: Int64 = 10000000) -> [String] {
         var array = [""]
         path.withCString { pathPtr in
             guard let res = bad_query_list(UnsafeMutablePointer(mutating: pathPtr), maxInode) else {
