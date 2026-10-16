@@ -1,8 +1,9 @@
 import Foundation
 import UIKit
 import SwiftUI
+import Combine
 
-// MARK: - FileManager instance
+// MARK: - FileManager
 let fm = FileManager.default
 
 // MARK: - FSURL paths
@@ -23,30 +24,55 @@ enum FSURL {
 
 // MARK: - AppMsg
 enum AppMsg {
-    static let opFailed = "Operation failed. Check console logs for details."
-    static let applied = "Changes applied. You may need to respring for them to take effect."
+    static let opFailed = "Restart app và thử lại. Nếu vẫn lỗi → thiết bị hoặc tweak không được hỗ trợ."
+    static let applied = "Respring để thay đổi có hiệu lực."
+    static let unsupported = "Exploit đã bị patch trên phiên bản này."
+}
+
+// MARK: - AppURL
+enum AppURL {
+    static let pb = URL.documentsDirectory.appendingPathComponent("PosterBoard")
+    static let pbFolders = AppURL.pb.appendingPathComponent("Wallpapers")
+    static let ps = URL.documentsDirectory.appendingPathComponent("Passcode Themes")
 }
 
 // MARK: - Haptic
-final class Haptic {
-    static let shared = Haptic()
-    private init() {}
+@MainActor
+public class Haptic: ObservableObject {
+    public static let shared = Haptic()
 
-    enum HapticType {
-        case soft, light, medium, heavy, rigid, success, warning, error
+    public func play(_ feedbackStyle: UIImpactFeedbackGenerator.FeedbackStyle, intensity: CGFloat = 1.0) {
+        Task { @MainActor in
+            UIImpactFeedbackGenerator(style: feedbackStyle).impactOccurred(intensity: intensity)
+        }
     }
 
-    func play(_ type: HapticType) {
-        switch type {
-        case .soft:    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        case .light:   UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        case .medium:  UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        case .heavy:   UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        case .rigid:   UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-        case .success: UINotificationFeedbackGenerator().notificationOccurred(.success)
-        case .warning: UINotificationFeedbackGenerator().notificationOccurred(.warning)
-        case .error:   UINotificationFeedbackGenerator().notificationOccurred(.error)
+    public func notify(_ feedbackType: UINotificationFeedbackGenerator.FeedbackType) {
+        Task { @MainActor in
+            UINotificationFeedbackGenerator().notificationOccurred(feedbackType)
         }
+    }
+}
+
+// MARK: - FileManager extension
+extension FileManager {
+    func createDirIfNeeded(at url: URL) throws {
+        if !self.fileExists(atPath: url.path) {
+            try? self.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+    }
+}
+
+// MARK: - String as Error
+extension String: @retroactive Error {}
+
+// MARK: - ButtonRole
+extension ButtonRole {
+    static var adaptiveConfirm: ButtonRole? {
+        if #available(iOS 19.0, *) {
+            return .confirm
+        }
+        return nil
     }
 }
 
@@ -113,15 +139,3 @@ struct PlainToggle: View {
         }
     }
 }
-
-// MARK: - FileManager extension
-extension FileManager {
-    func createDirIfNeeded(at url: URL) throws {
-        if !self.fileExists(atPath: url.path) {
-            try? self.createDirectory(at: url, withIntermediateDirectories: true)
-        }
-    }
-}
-
-// MARK: - String as Error
-extension String: @retroactive Error {}
