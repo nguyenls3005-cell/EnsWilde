@@ -1,6 +1,10 @@
 import SwiftUI
 import UserNotifications
 
+enum NavigationTab: String, CaseIterable {
+    case home, settings, about, apply
+}
+
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
@@ -8,63 +12,41 @@ struct MainViewWithNavigation: View {
     @StateObject private var toolRunner = ToolRunner()
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
-    @State private var showApplySheet = false
-    @State private var showStatusSheet = false
-    @State private var isInNestedView = false
-    @State private var isSystemReady = true
-    @State private var heartbeatRunning = false
-    @State private var ddiMounted = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ContentView(
-                themeStore: themeStore,
-                toolStore: toolStore,
-                toolRunner: toolRunner,
-                walletStore: walletStore,
-                featureFlagsStore: featureFlagsStore,
-                showApplySheetBinding: $showApplySheet,
-                showStatusSheetBinding: $showStatusSheet,
-                hideBottomApplyButton: true,
-                isInNestedViewBinding: $isInNestedView,
-                isSystemReadyBinding: $isSystemReady,
-                heartbeatRunningBinding: $heartbeatRunning,
-                ddiMountedBinding: $ddiMounted
-            )
-            .tabItem {
-                Label(L("nav_home"), systemImage: "house.fill")
+            NavigationStack {
+                ContentView(
+                    themeStore: themeStore,
+                    toolStore: toolStore,
+                    toolRunner: toolRunner,
+                    walletStore: walletStore,
+                    featureFlagsStore: featureFlagsStore
+                )
             }
+            .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
 
             NavigationStack {
-                SettingsView(heartbeatRunning: false, ddiMounted: false)
+                SettingsView()
             }
-            .tabItem {
-                Label(L("nav_settings"), systemImage: "gearshape.fill")
-            }
+            .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
 
             NavigationStack {
                 AboutView()
             }
-            .tabItem {
-                Label(L("nav_about"), systemImage: "info.circle.fill")
-            }
+            .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
 
             ApplyTabView(
                 toolStore: toolStore,
                 toolRunner: toolRunner,
-                walletStore: walletStore,
-                themeStore: themeStore,
-                featureFlagsStore: featureFlagsStore,
-                isSystemReady: true
+                themeStore: themeStore
             )
-            .tabItem {
-                Label(L("nav_apply"), systemImage: "checkmark.circle.fill")
-            }
+            .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
             .tag(NavigationTab.apply)
         }
         .tint(Color(hex: userTintColorHex))
@@ -91,13 +73,11 @@ struct ApplyTabView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
-    @ObservedObject var walletStore: AppleWalletStore
     @ObservedObject var themeStore: PasscodeThemeStore
-    @ObservedObject var featureFlagsStore: FeatureFlagsStore
-    var isSystemReady: Bool
 
     @State private var showErrorAlert = false
     @State private var lastError: String?
+    @State private var showSuccessOverlay = false
 
     private var isRunning: Bool {
         if case .running = toolRunner.state { return true }
@@ -106,21 +86,34 @@ struct ApplyTabView: View {
 
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
-        if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
-        if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
+        if toolStore.replaceMobileGestaltEnabled {
+            list.append((L("tool_mobile_gestalt"), "cpu"))
+        }
+        if themeStore.passcodeThemeEnabled {
+            list.append((L("tool_passcode_theme"), "lock.rectangle"))
+        }
         return list
     }
 
     var body: some View {
         NavigationStack {
-            Form {
-                enabledTweaksSection
-                optionsSection
-                statusSection
-                applyButtonSection
+            ZStack {
+                Form {
+                    enabledTweaksSection
+                    optionsSection
+                    statusSection
+                    applyButtonSection
+                }
+                .headerProminence(.increased)
+                .navigationTitle(L("nav_apply"))
+
+                if showSuccessOverlay {
+                    successOverlay
+                        .transition(.opacity.combined(with: .scale))
+                        .zIndex(1)
+                }
             }
-            .headerProminence(.increased)
-            .navigationTitle(L("nav_apply"))
+            .animation(.easeInOut(duration: 0.3), value: showSuccessOverlay)
         }
         .alert(L("alert_error"), isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
@@ -129,6 +122,49 @@ struct ApplyTabView: View {
         }
     }
 
+    // MARK: - Success Overlay
+    @ViewBuilder
+    private var successOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.18))
+                        .frame(width: 110, height: 110)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 72, weight: .bold))
+                        .foregroundStyle(.green)
+                }
+
+                VStack(spacing: 8) {
+                    Text("Tweak Successfully Applied")
+                        .font(.title3.bold())
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white)
+                    Text("Respringing…")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .tint(.white)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 40)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemBackground))
+                    .shadow(color: .black.opacity(0.3), radius: 20)
+            )
+            .padding(.horizontal, 32)
+        }
+    }
+
+    // MARK: - Sections
     @ViewBuilder
     private var enabledTweaksSection: some View {
         Section(header: Text(L("section_tweaks"))) {
@@ -165,7 +201,7 @@ struct ApplyTabView: View {
 
     @ViewBuilder
     private var statusSection: some View {
-        if isRunning || statusText != "" {
+        if isRunning || !statusText.isEmpty {
             Section {
                 HStack(spacing: 12) {
                     if isRunning { ProgressView() }
@@ -179,7 +215,9 @@ struct ApplyTabView: View {
     }
 
     private var latestLogOrStatus: String {
-        if isRunning, let lastLog = toolRunner.logs.last?.text { return lastLog }
+        if isRunning, let lastLog = toolRunner.logs.last?.text {
+            return lastLog
+        }
         return statusText
     }
 
@@ -209,24 +247,30 @@ struct ApplyTabView: View {
         }
     }
 
+    // MARK: - Apply
     private func performApply() {
         Task {
             await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
 
             if case .success = toolRunner.state {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                if toolStore.soundRespringEnabled {
-                    try? RespringHelper.respring()
-                } else {
-                    if let bundleID = Bundle.main.bundleIdentifier {
-                        LSApplicationWorkspaceDefaultWorkspace().openApplication(withBundleID: bundleID)
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showSuccessOverlay = true
                     }
                 }
+
+                // Chờ 2.5 giây để user thấy overlay
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+
+                // Respring
+                try? RespringHelper.respring()
             }
 
             if case .failed(let message) = toolRunner.state {
-                lastError = message
-                showErrorAlert = true
+                await MainActor.run {
+                    lastError = message
+                    showErrorAlert = true
+                }
             }
         }
     }
