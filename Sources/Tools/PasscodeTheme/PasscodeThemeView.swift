@@ -26,7 +26,7 @@ struct PasscodeThemeView: View {
             }
 
             Section(header: Text(L("global_settings"))) {
-                Picker(L("passcode_language_method"), selection: $themeStore.globalCustomPrefixRaw) {
+                Picker(L("passcode_language_method"), selection: $themeStore.globalCustomPrefixRaw) { 
                     ForEach(PasscodeTheme.PrefixLanguage.allCases, id: \.self) { prefix in
                         Text(prefix.displayName).tag(prefix.rawValue)
                     }
