@@ -169,16 +169,10 @@ struct ConfigView: View {
     }
 
     private func apply() {
-        // Chỉ lưu state — không ghi file
-        // Việc ghi file sẽ do ToolRunner làm khi bấm Apply trong tab Apply
         toolStore.configFootnoteText = footnoteText
         toolStore.configTweaksEnabled = true
-
-        // Lưu supervised + orgName vào AppStorage để ToolRunner đọc
         UserDefaults.standard.set(supervised, forKey: "ConfigSupervised")
         UserDefaults.standard.set(orgName, forKey: "ConfigOrgName")
-
-        // Bật tab Apply
         UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
         saveAlertMessage = "Đã lưu. Tab Apply đã được mở ở dưới — chuyển sang để áp dụng."
