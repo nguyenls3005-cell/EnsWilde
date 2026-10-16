@@ -34,7 +34,3 @@ struct MyApp: App {
         }
     }
 }
-
-struct UnsupportedVersionView: View {
-    var body: some View { EmptyView() }
-}
