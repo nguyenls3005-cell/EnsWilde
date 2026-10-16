@@ -22,17 +22,6 @@ jobs:
       - name: List schemes
         run: xcodebuild -list -project EnsWilde.xcodeproj
 
-      - name: Disable String Catalog generation
-        run: |
-          FILE="EnsWilde.xcodeproj/project.pbxproj"
-          # Tắt sinh .stringsdata / symbol từ String Catalog — nguồn gây lỗi
-          # "Multiple commands produce ... .stringsdata" trên Xcode 16
-          perl -i -pe 's/STRING_CATALOG_GENERATE_SYMBOLS = YES;/STRING_CATALOG_GENERATE_SYMBOLS = NO;/g' "$FILE"
-          perl -i -pe 's/LOCALIZATION_PREFERS_STRING_CATALOGS = YES;/LOCALIZATION_PREFERS_STRING_CATALOGS = NO;/g' "$FILE"
-          perl -i -pe 's/SWIFT_EMIT_LOC_STRINGS = YES;/SWIFT_EMIT_LOC_STRINGS = NO;/g' "$FILE"
-          echo "--- after patch ---"
-          grep -n "STRING_CATALOG\|LOCALIZATION_PREFERS\|SWIFT_EMIT_LOC" "$FILE"
-
       - name: Build IPA
         run: bash ./scripts/build-ipa.sh Release
 
