@@ -100,8 +100,6 @@ struct MobileGestaltView: View {
         }
     }
 
-    // MARK: - Body Sections
-
     @ViewBuilder
     private var enableSection: some View {
         Section(header: Text(L("tool_mobile_gestalt"))) {
@@ -113,8 +111,8 @@ struct MobileGestaltView: View {
     private var deviceSubtypeSection: some View {
         Section(header: Text(L("section_device_subtype"))) {
             Picker(L("mg_device_subtype_preset"), selection: $dynamicIslandType) {
-                Text("Default").tag(0)
-                Text(L("mg_subtype_2556")).tag(2)
+                Text(L("mg_subtype_none")).tag(0)
+                Text(L("mg_subtype_2436")).tag(1)
                 Text(L("mg_subtype_2796")).tag(3)
                 Text(L("mg_subtype_2976")).tag(4)
                 Text(L("mg_subtype_2622")).tag(5)
@@ -276,8 +274,6 @@ struct MobileGestaltView: View {
         }
     }
 
-    // MARK: - Bindings
-
     func bindingForAppleIntelligence() -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
             return State(initialValue: false).projectedValue
@@ -354,7 +350,6 @@ struct MobileGestaltView: View {
             "UCG5MkVahJxG1YULbbd5Bg",
             "ZYqko/XM5zD3XBfN5RmaXA",
             "nVh/gwNpy7Jv1NOk00CMrw",
-            "qeaj75wk3HF4DwQ8qbIi7g",
         ]
 
         return Binding(
@@ -395,8 +390,6 @@ struct MobileGestaltView: View {
             }
         )
     }
-
-    // MARK: - Helpers
 
     static func machineName() -> String {
         var systemInfo = utsname()
