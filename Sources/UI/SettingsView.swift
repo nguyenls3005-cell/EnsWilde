@@ -1,462 +1,864 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
-struct MobileGestaltView: View {
+// MARK: - Settings View
+struct SettingsView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
-    let origMGURL, modMGURL, featFlagsURL, resolutionURL: URL
-    @Environment(\.scenePhase) var scenePhase
-    @ObservedObject var toolStore: ToolStore
+    @ObservedObject private var languageManager = LanguageManager.shared
+    @AppStorage("PairingFile") private var pairingFile: String?
+    @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
+    @State private var showPairingFileImporter = false
+    @State private var vpnActive: Bool = false
+    @State private var showVPNAlert = false
+    @State private var pairingImportError: String?
+    @State private var showPairingErrorAlert = false
 
-    @State var mbdb: Backup?
-    @State var eligibilityData = Data()
-    @State var featureFlagsData = Data()
-    @State var mobileGestalt: NSMutableDictionary
-    @State var productType = machineName()
-    @State var respring = true
-    @State var showPairingFileImporter = false
-    @State var showErrorAlert = false
-    @State var taskRunning = false
-    @State var initError: String?
-    @State var lastError: String?
-    @State var dynamicIslandType: Int = 0
-    @State var enableModelName: Bool = false
-    @State var modelName: String = ""
+    // Backup
+    @State private var showBackupImporter = false
+    @State private var showBackupAlert = false
+    @State private var backupAlertMessage = ""
+    @State private var hasBackup: Bool = false
+    @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
+
+    private let tintOptions: [(name: String, hex: String)] = [
+        ("Pink", "#f4b8e4"),
+        ("Mauve", "#ca9ee6"),
+        ("Red", "#e78284"),
+        ("Green", "#a6d189"),
+        ("Blue", "#8caaee"),
+    ]
+
+    @State private var copiedPath: String?
 
     var body: some View {
         Form {
-            enableSection
-            deviceSubtypeSection
-            hardwareFeaturesSection
-            displayAndUISection
-            systemFeaturesSection
-            advancedSection
-            saveResetSection
+            systemStatusSection
+            pairingSection
+            backupSection
+            languageSection
+            colorSection
+            tutorialSection
+            appInfoSection
         }
         .headerProminence(.increased)
-        .alert("Message", isPresented: $showErrorAlert) {
+        .navigationTitle(L("nav_settings"))
+        .onAppear {
+            if languageManager.availableLanguages.isEmpty {
+                Task {
+                    await languageManager.fetchAvailableLanguages()
+                }
+            }
+            refreshVPNStatus()
+            refreshBackupInfo()
+        }
+        .fileImporter(
+            isPresented: $showPairingFileImporter,
+            allowedContentTypes: [
+                .propertyList,
+                UTType(filenameExtension: "plist", conformingTo: .data) ?? .data
+            ]
+        ) { result in
+            handlePairingImport(result)
+        }
+        .fileImporter(
+            isPresented: $showBackupImporter,
+            allowedContentTypes: [
+                .propertyList,
+                UTType(filenameExtension: "plist", conformingTo: .data) ?? .data
+            ]
+        ) { result in
+            handleBackupImport(result)
+        }
+        .alert("LocalDevVPN", isPresented: $showVPNAlert) {
             Button("OK") {}
         } message: {
-            Text(lastError ?? "???")
+            Text("LocalDevVPN chưa bật. Airlift (Wallet / Passcode) sẽ không hoạt động.")
         }
-        .navigationTitle(L("tool_mobile_gestalt"))
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if initError != nil {
-                lastError = initError
-                initError = nil
-                showErrorAlert.toggle()
-                return
-            }
-
-            if let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
-                productType = cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] as? String ?? productType
-
-                if let diValue = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSDictionary,
-                   let subtype = diValue["ArtworkDeviceSubType"] as? Int {
-                    switch subtype {
-                    case 2436: dynamicIslandType = 1
-                    case 2556: dynamicIslandType = 2
-                    case 2796: dynamicIslandType = 3
-                    case 2976: dynamicIslandType = 4
-                    case 2622: dynamicIslandType = 5
-                    case 2868: dynamicIslandType = 6
-                    case 2736: dynamicIslandType = 7
-                    default: dynamicIslandType = 0
-                    }
-                }
-
-                if let diValue = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSDictionary,
-                   let modelNameValue = diValue["ArtworkDeviceProductDescription"] as? String,
-                   !modelNameValue.isEmpty {
-                    enableModelName = true
-                    modelName = modelNameValue
-                }
-            }
+        .alert("Pairing Error", isPresented: $showPairingErrorAlert) {
+            Button("OK") {}
+        } message: {
+            Text(pairingImportError ?? "Unknown error")
         }
-        .onChange(of: enableModelName) { enabled in
-            if enabled {
-                applyModelName()
+        .alert("Backup", isPresented: $showBackupAlert) {
+            Button("OK") {}
+        } message: {
+            Text(backupAlertMessage)
+        }
+    }
+
+    // MARK: - System Status
+    @ViewBuilder
+    private var systemStatusSection: some View {
+        Section(header: Text(L("system_status") + " (For Passcode, Wallet)")) {
+            statusRow(
+                title: L("status_pairing_file"),
+                subtitle: pairingFile != nil ? L("status_pairing_loaded") : L("status_pairing_missing"),
+                ok: pairingFile != nil
+            )
+            statusRow(
+                title: "LocalDevVPN",
+                subtitle: vpnActive ? "Connected" : "Not connected",
+                ok: vpnActive
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
+        HStack {
+            Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+            Spacer()
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Pairing Section
+    @ViewBuilder
+    private var pairingSection: some View {
+        Section(header: Text(L("status_pairing_file"))) {
+            if pairingFile != nil {
+                Button(role: .destructive) {
+                    pairingFile = nil
+                    let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+                    try? FileManager.default.removeItem(at: pairingPath)
+                } label: {
+                    Label(L("button_reset_pairing"), systemImage: "trash")
+                }
             } else {
-                removeModelName()
-            }
-        }
-        .onChange(of: modelName) { _ in
-            if enableModelName && !modelName.isEmpty {
-                applyModelName()
-            }
-        }
-        .onChange(of: scenePhase) { _ in
-            if scenePhase == .inactive {
-                Utils.bgTask = UIApplication.shared.beginBackgroundTask(expirationHandler: {
-                    UIApplication.shared.endBackgroundTask(Utils.bgTask)
-                    Utils.bgTask = .invalid
-                })
-            } else if scenePhase == .active {
-                if Utils.bgTask != .invalid {
-                    UIApplication.shared.endBackgroundTask(Utils.bgTask)
-                    Utils.bgTask = .invalid
+                Button {
+                    showPairingFileImporter = true
+                } label: {
+                    Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
                 }
             }
-        }
-    }
 
-    // MARK: - Body Sections
-
-    @ViewBuilder
-    private var enableSection: some View {
-        Section(header: Text(L("tool_mobile_gestalt"))) {
-            Toggle(L("enable_tweak"), isOn: $toolStore.replaceMobileGestaltEnabled)
-        }
-    }
-
-    @ViewBuilder
-    private var deviceSubtypeSection: some View {
-        Section(header: Text(L("section_device_subtype"))) {
-            Picker(L("mg_device_subtype_preset"), selection: $dynamicIslandType) {
-                Text(L("mg_subtype_none")).tag(0)
-                Text(L("mg_subtype_2436")).tag(1)
-                Text(L("mg_subtype_2556")).tag(2)
-                Text(L("mg_subtype_2796")).tag(3)
-                Text(L("mg_subtype_2976")).tag(4)
-                Text(L("mg_subtype_2622")).tag(5)
-                Text(L("mg_subtype_2868")).tag(6)
-                Text(L("mg_subtype_2736")).tag(7)
-            }
-            .pickerStyle(.menu)
-            .onChange(of: dynamicIslandType) { newValue in
-                applyDynamicIsland(type: newValue)
-            }
-
-            Toggle(L("mg_change_model_name"), isOn: $enableModelName)
-
-            if enableModelName {
-                TextField(L("mg_model_name_placeholder"), text: $modelName)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var hardwareFeaturesSection: some View {
-        Section(header: Text(L("section_hardware_features"))) {
-            Toggle(L("mg_boot_chime"), isOn: bindingForMGKeys(["QHxt+hGLaBPbQJbXiUJX3w"]))
-            Toggle(L("mg_charge_limit"), isOn: bindingForMGKeys(["37NVydb//GP/GrhuTN+exg"]))
-                .disabled(Utils.requiresVersion(17))
-            if UIDevice._hasHomeButton() {
-                Toggle(L("mg_tap_to_wake"), isOn: bindingForMGKeys(["yZf3GTRMGTuwSV/lD7Cagw"]))
-            }
-            Toggle(L("mg_camera_button"), isOn: bindingForMGKeys(["CwvKxM2cEogD3p+HYgaW0Q", "oOV1jhJbdV3AddkcCg0AEA"]))
-                .disabled(Utils.requiresVersion(18))
-        }
-    }
-
-    @ViewBuilder
-    private var displayAndUISection: some View {
-        Section(header: Text(L("section_display_and_ui"))) {
-            Toggle(L("mg_disable_parallax"), isOn: bindingForMGKeys(["UIParallaxCapability"], type: Int.self, defaultValue: 1, enableValue: 0))
-            Toggle(L("mg_stage_manager"), isOn: bindingForMGKeys(["qeaj75wk3HF4DwQ8qbIi7g"]))
-            Toggle(L("mg_aod"), isOn: bindingForMGKeys(["j8/Omm6s1lsmTDFsXjsBfA", "2OOJf1VhaM7NxfRok3HbWQ"]))
-                .disabled(Utils.requiresVersion(18))
-            Toggle(L("mg_aod_vibrancy"), isOn: bindingForMGKeys(["ykpu7qyhqFweVMKtxNylWA"]))
-                .disabled(Utils.requiresVersion(18))
-        }
-    }
-
-    @ViewBuilder
-    private var systemFeaturesSection: some View {
-        Section(header: Text(L("section_system_features"))) {
-            Toggle(L("mg_install_ipad_apps"), isOn: bindingForMGKeys(["9MZ5AdH43csAUajl/dU+IQ"], type: [Int].self, defaultValue: [1], enableValue: [1, 2]))
-            Toggle(L("mg_disable_region"), isOn: bindingForRegionRestriction())
-            Toggle(L("mg_apple_pencil"), isOn: bindingForMGKeys(["yhHcB0iH0d1XzPO/CFd3ow"]))
-            Toggle(L("mg_action_button"), isOn: bindingForMGKeys(["cT44WE1EohiwRzhsZ8xEsw"]))
-                .disabled(Utils.requiresVersion(17))
-            Toggle(L("mg_crash_detection"), isOn: bindingForMGKeys(["HCzWusHQwZDea6nNhaKndw"]))
-        }
-    }
-
-    @ViewBuilder
-    private var advancedSection: some View {
-        Section(header: Text(L("section_internal_features"))) {
-            Toggle(L("mg_internal_storage"), isOn: bindingForMGKeys(["LBJfwOEzExRxzlAnSuI7eg"]))
-            Toggle(L("mg_internal_stuff"), isOn: bindingForInternalStuff())
-            Toggle(L("mg_security_research"), isOn: bindingForMGKeys(["XYlJKKkj2hztRP1NWWnhlw"]))
-            Toggle(L("mg_metal_hud"), isOn: bindingForMGKeys(["EqrsVvjcYDdxHBiQmGhAWw"]))
-            Toggle(L("mg_apple_intelligence"), isOn: bindingForAppleIntelligence())
-                .disabled(Utils.requiresVersion(18))
-            Picker(L("mg_device_model"), selection: $productType) {
-                Text(L("mg_device_model_unchanged")).tag(MobileGestaltView.machineName())
-                if UIDevice.current.userInterfaceIdiom == .pad {
-                    Text("iPad Pro 11 inch 5th Gen").tag("iPad16,3")
-                } else {
-                    Text("iPhone 15 Pro Max").tag("iPhone16,2")
-                    Text("iPhone 16 Pro Max").tag("iPhone17,2")
-                }
-            }
-            .pickerStyle(.menu)
-            let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary
-            Toggle("Become iPadOS", isOn: bindingForTrollPad())
-                .disabled(cacheExtra?["+3Uf0Pm5F8Xy7Onyvko0vA"] as? String != "iPhone")
-        }
-    }
-
-    @ViewBuilder
-    private var saveResetSection: some View {
-        Section(header: Text(L("section_save_reset"))) {
-            Button(action: {
-                do {
-                    saveProductType()
-                    try mobileGestalt.write(to: modMGURL)
-
-                    UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-
-                    lastError = "Đã lưu ModifiedMobileGestalt.plist. Tab Apply đã được mở ở dưới — chuyển sang để áp dụng."
-                    showErrorAlert = true
-                } catch {
-                    lastError = "Save failed: \(error)"
-                    showErrorAlert = true
-                }
-            }) {
-                Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
-            }
-
-            Button(role: .destructive, action: {
-                do {
-                    let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary
-                    let wasTrollPadEnabled = (cacheExtra?["uKc7FPnEO++lVhHWHFlGbQ"] as? Int) == 1
-
-                    try? FileManager.default.removeItem(at: modMGURL)
-                    try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
-                    mobileGestalt = try NSMutableDictionary(contentsOf: modMGURL, error: ())
-                    toolStore.replaceMobileGestaltEnabled = true
-
-                    if wasTrollPadEnabled {
-                        toolStore.bookassetdUUID = nil
-                        lastError = "Reset done. Tab Apply đã được mở. Bookassetd UUID đã xoá (iPadOS was enabled)."
-                    } else {
-                        lastError = "Reset done. Tab Apply đã được mở."
+            Button {
+                refreshVPNStatus(showAlert: true)
+            } label: {
+                HStack {
+                    Label("Check LocalDevVPN", systemImage: "wifi")
+                    Spacer()
+                    if vpnActive {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
                     }
-
-                    UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-
-                    showErrorAlert = true
-                } catch {
-                    lastError = "Reset failed: \(error)"
-                    showErrorAlert = true
                 }
-            }) {
-                Label("Reset Original", systemImage: "arrow.counterclockwise")
             }
         }
     }
 
-    init(toolStore: ToolStore) {
-        self.toolStore = toolStore
+    // MARK: - Backup Section
+    @ViewBuilder
+    private var backupSection: some View {
+        Section(header: Text("MobileGestalt Backup")) {
+            if hasBackup, let info = backupInfo {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundStyle(.green)
+                        Text("Backup có sẵn")
+                            .font(.subheadline.bold())
+                        Spacer()
+                    }
+                    HStack {
+                        Text("Ngày tạo:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(info.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Kích thước:")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("\(info.byteCount) bytes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            } else {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Chưa có backup")
+                            .font(.subheadline.bold())
+                        Text("Sẽ tự tạo khi bấm Save lần đầu, hoặc bấm Backup ngay")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
 
-        let documentsDirectory = URL.documentsDirectory
-        featFlagsURL = documentsDirectory.appendingPathComponent("FeatureFlags.plist", conformingTo: .data)
-        origMGURL = documentsDirectory.appendingPathComponent("OriginalMobileGestalt.plist", conformingTo: .data)
-        modMGURL = documentsDirectory.appendingPathComponent("ModifiedMobileGestalt.plist", conformingTo: .data)
-        resolutionURL = documentsDirectory.appendingPathComponent("Resolution.plist", conformingTo: .data)
+            Button {
+                createBackupNow()
+            } label: {
+                Label("Backup ngay", systemImage: "square.and.arrow.down.on.square")
+            }
 
+            Button {
+                showBackupImporter = true
+            } label: {
+                Label("Import backup", systemImage: "square.and.arrow.down")
+            }
+
+            if hasBackup {
+                Button(role: .destructive) {
+                    deleteBackup()
+                } label: {
+                    Label("Xoá backup", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    // MARK: - Backup Handlers
+    private func refreshBackupInfo() {
+        hasBackup = MobileGestaltBackupManager.shared.hasBackup
+        backupInfo = MobileGestaltBackupManager.shared.info
+    }
+
+    private func createBackupNow() {
         do {
-            if !FileManager.default.fileExists(atPath: origMGURL.path) {
-                let url = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
-                try FileManager.default.copyItem(at: url, to: origMGURL)
-            }
-            chmod(origMGURL.path, 0o644)
+            let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
+            let onDeviceURL = URL(fileURLWithPath: onDevicePath)
+            let data = try Data(contentsOf: onDeviceURL)
 
-            if !FileManager.default.fileExists(atPath: modMGURL.path) {
-                try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
-            }
-            chmod(modMGURL.path, 0o644)
+            let info = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
 
-            _mobileGestalt = State(initialValue: try NSMutableDictionary(contentsOf: modMGURL, error: ()))
+            refreshBackupInfo()
+
+            backupAlertMessage = "Đã tạo backup (\(info.byteCount) bytes). SHA256: \(info.sha256.prefix(16))..."
+            showBackupAlert = true
         } catch {
-            _mobileGestalt = State(initialValue: [:])
-            _initError = State(initialValue: "Failed to copy MobileGestalt: \(error)")
-            taskRunning = true
+            backupAlertMessage = "Backup failed: \(error.localizedDescription)"
+            showBackupAlert = true
         }
     }
 
-    // MARK: - Bindings
+    private func handleBackupImport(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
-    func bindingForAppleIntelligence() -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
-            return State(initialValue: false).projectedValue
-        }
-        let key = "A62OafQ85EJAiiqKn4agtg"
-        return Binding(
-            get: {
-                if let value = cacheExtra[key] as? Int? { return value == 1 }
-                return false
-            },
-            set: { enabled in
-                if enabled {
-                    eligibilityData = try! Data(contentsOf: Bundle.main.url(forResource: "eligibility", withExtension: "plist")!)
-                    featureFlagsData = try! Data(contentsOf: Bundle.main.url(forResource: "FeatureFlags_Global", withExtension: "plist")!)
-                    cacheExtra[key] = 1
-                } else {
-                    featureFlagsData = try! PropertyListSerialization.data(fromPropertyList: [:], format: .xml, options: 0)
-                    eligibilityData = featureFlagsData
-                    cacheExtra.removeObject(forKey: key)
+            do {
+                let data = try Data(contentsOf: url)
+
+                // Validate plist
+                guard (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil else {
+                    backupAlertMessage = "File không phải plist hợp lệ."
+                    showBackupAlert = true
+                    return
                 }
+
+                // Overwrite backup (cần method importBackup trong manager — mình đã thêm)
+                try MobileGestaltBackupManager.shared.importBackup(from: data)
+
+                refreshBackupInfo()
+
+                backupAlertMessage = "Đã import backup (\(data.count) bytes)."
+                showBackupAlert = true
+            } catch {
+                backupAlertMessage = "Import failed: \(error.localizedDescription)"
+                showBackupAlert = true
             }
-        )
+
+        case .failure(let error):
+            backupAlertMessage = "Chọn file thất bại: \(error.localizedDescription)"
+            showBackupAlert = true
+        }
     }
 
-    func bindingForRegionRestriction() -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
-            return State(initialValue: false).projectedValue
+    private func deleteBackup() {
+        do {
+            try MobileGestaltBackupManager.shared.clearBackup()
+            refreshBackupInfo()
+            backupAlertMessage = "Đã xoá backup."
+            showBackupAlert = true
+        } catch {
+            backupAlertMessage = "Xoá thất bại: \(error.localizedDescription)"
+            showBackupAlert = true
         }
-        return Binding<Bool>(
-            get: {
-                return cacheExtra["h63QSdBCiT/z0WU6rdQv6Q"] as? String == "US" &&
-                cacheExtra["zHeENZu+wbg7PUprwNwBWg"] as? String == "LL/A"
-            },
-            set: { enabled in
-                if enabled {
-                    cacheExtra["h63QSdBCiT/z0WU6rdQv6Q"] = "US"
-                    cacheExtra["zHeENZu+wbg7PUprwNwBWg"] = "LL/A"
-                } else {
-                    cacheExtra.removeObject(forKey: "h63QSdBCiT/z0WU6rdQv6Q")
-                    cacheExtra.removeObject(forKey: "zHeENZu+wbg7PUprwNwBWg")
+    }
+
+    // MARK: - Pairing Import Handler
+    private func handlePairingImport(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+
+            do {
+                let data = try Data(contentsOf: url)
+
+                _ = try RPPairingParser.parse(data)
+
+                let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+                try data.write(to: pairingPath)
+                pairingFile = url.lastPathComponent
+
+                print("[Pairing] Imported: \(url.lastPathComponent)")
+
+            } catch let parseError as RPPairingError {
+                pairingImportError = parseError.localizedDescription
+                showPairingErrorAlert = true
+            } catch {
+                pairingImportError = "Đọc file thất bại: \(error.localizedDescription)"
+                showPairingErrorAlert = true
+            }
+
+        case .failure(let error):
+            pairingImportError = "Chọn file thất bại: \(error.localizedDescription)"
+            showPairingErrorAlert = true
+        }
+    }
+
+    // MARK: - VPN Check
+    private func refreshVPNStatus(showAlert: Bool = false) {
+        NetworkStatus.checkVPNStatus { active in
+            self.vpnActive = active
+
+            if showAlert && !active {
+                self.showVPNAlert = true
+            }
+        }
+    }
+
+    // MARK: - Language
+    @ViewBuilder
+    private var languageSection: some View {
+        Section(header: Text(L("settings_language"))) {
+            NavigationLink(destination: LanguageSettingsView()) {
+                Label(L("settings_language"), systemImage: "globe")
+            }
+        }
+    }
+
+    // MARK: - Tutorial
+    @ViewBuilder
+    private var tutorialSection: some View {
+        Section(header: Text(L("settings_tutorial"))) {
+            NavigationLink {
+                TutorialView()
+            } label: {
+                Label(L("tutorial_guide"), systemImage: "book.fill")
+            }
+
+            Button {
+                let version = (UIDevice.current.systemVersion as NSString).floatValue
+                let passcodePath = version >= 26.0
+                    ? "file://a/var/mobile/Library/Caches/TelephonyUI-10/"
+                    : "file://a/var/mobile/Library/Caches/TelephonyUI-9/"
+                UIPasteboard.general.string = passcodePath
+                copiedPath = "passcode"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    if copiedPath == "passcode" { copiedPath = nil }
                 }
-            }
-        )
-    }
-
-    func bindingForInternalStuff() -> Binding<Bool> {
-        guard let cacheData = mobileGestalt["CacheData"] as? NSMutableData else {
-            return State(initialValue: false).projectedValue
-        }
-        let off_appleInternalInstall = FindCacheDataOffset("EqrsVvjcYDdxHBiQmGhAWw")
-        let off_HasInternalSettingsBundle = FindCacheDataOffset("Oji6HRoPi7rH7HPdWVakuw")
-        let off_InternalBuild = FindCacheDataOffset("LBJfwOEzExRxzlAnSuI7eg")
-
-        return Binding(
-            get: { cacheData.bytes.load(fromByteOffset: off_appleInternalInstall, as: Int.self) == 1 },
-            set: { enabled in
-                cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_appleInternalInstall, as: Int.self)
-                cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_HasInternalSettingsBundle, as: Int.self)
-                cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_InternalBuild, as: Int.self)
-            }
-        )
-    }
-
-    func bindingForTrollPad() -> Binding<Bool> {
-        guard let cacheData = mobileGestalt["CacheData"] as? NSMutableData,
-              let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
-            return State(initialValue: false).projectedValue
-        }
-        let valueOffset = FindCacheDataOffset("mtrAoWJ3gsq+I90ZnQ0vQw")
-
-        let keys = [
-            "uKc7FPnEO++lVhHWHFlGbQ",
-            "mG0AnH/Vy1veoqoLRAIgTA",
-            "UCG5MkVahJxG1YULbbd5Bg",
-            "ZYqko/XM5zD3XBfN5RmaXA",
-            "nVh/gwNpy7Jv1NOk00CMrw",
-            "qeaj75wk3HF4DwQ8qbIi7g",
-        ]
-
-        return Binding(
-            get: {
-                if let value = cacheExtra[keys.first!] as? Int? { return value == 1 }
-                return false
-            },
-            set: { enabled in
-                cacheData.mutableBytes.storeBytes(of: enabled ? 3 : 1, toByteOffset: valueOffset, as: Int.self)
-                for key in keys {
-                    if enabled {
-                        cacheExtra[key] = 1
+            } label: {
+                HStack {
+                    Label(L("tutorial_copy_passcode_path"), systemImage: "lock.rectangle")
+                    Spacer()
+                    if copiedPath == "passcode" {
+                        Image(systemName: "checkmark").foregroundStyle(.green)
                     } else {
-                        cacheExtra.removeObject(forKey: key)
+                        Image(systemName: "doc.on.doc").foregroundStyle(.secondary)
                     }
                 }
             }
-        )
-    }
 
-    func bindingForMGKeys<T: Equatable>(_ keys: [String], type: T.Type = Int.self, defaultValue: T? = 0, enableValue: T? = 1) -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
-            return State(initialValue: false).projectedValue
-        }
-        return Binding(
-            get: {
-                if let value = cacheExtra[keys.first!] as? T?, let enableValue { return value == enableValue }
-                return false
-            },
-            set: { enabled in
-                for key in keys {
-                    if enabled {
-                        cacheExtra[key] = enableValue
+            Button {
+                UIPasteboard.general.string = "file://a/var/mobile/Library/Passes/Cards/"
+                copiedPath = "wallet"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    if copiedPath == "wallet" { copiedPath = nil }
+                }
+            } label: {
+                HStack {
+                    Label(L("tutorial_copy_wallet_path"), systemImage: "wallet.pass")
+                    Spacer()
+                    if copiedPath == "wallet" {
+                        Image(systemName: "checkmark").foregroundStyle(.green)
                     } else {
-                        cacheExtra.removeObject(forKey: key)
+                        Image(systemName: "doc.on.doc").foregroundStyle(.secondary)
                     }
                 }
             }
-        )
+        }
     }
 
-    // MARK: - Helpers
+    // MARK: - Color
+    @ViewBuilder
+    private var colorSection: some View {
+        Section(header: Text(L("settings_accent_color"))) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(tintOptions, id: \.hex) { option in
+                        colorOptionView(option: option)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        }
+    }
 
-    static func machineName() -> String {
+    @ViewBuilder
+    private func colorOptionView(option: (name: String, hex: String)) -> some View {
+        let color = Color(hex: option.hex)
+        let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
+        VStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 36, height: 36)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
+                .overlay(
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .opacity(isSelected ? 1 : 0)
+                )
+            Text(option.name)
+                .font(.caption2)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+        }
+        .frame(width: 60)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? color.opacity(0.15) : Color.clear)
+        )
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                userTintColorHex = option.hex
+                let uiColor = UIColor(Color(hex: option.hex))
+                UITabBar.appearance().tintColor = uiColor
+                UINavigationBar.appearance().tintColor = uiColor
+                for scene in UIApplication.shared.connectedScenes {
+                    guard let windowScene = scene as? UIWindowScene else { continue }
+                    for window in windowScene.windows { window.tintColor = uiColor }
+                }
+            }
+        }
+    }
+
+    // MARK: - App Info
+    private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+
+    @ViewBuilder
+    private var appInfoSection: some View {
+        Section(header: Text(L("settings_app_info"))) {
+            HStack {
+                Label("EnsWilde", systemImage: "sparkles")
+                Spacer()
+                Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary)
+            }
+            HStack {
+                Label("iOS", systemImage: "iphone")
+                Spacer()
+                Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary)
+            }
+            HStack {
+                Label("Device", systemImage: "apps.iphone")
+                Spacer()
+                Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func settingsDeviceModelName() -> String {
         var systemInfo = utsname()
         uname(&systemInfo)
         let machineMirror = Mirror(reflecting: systemInfo.machine)
-        return machineMirror.children.reduce("") { identifier, element in
-            guard let value = element.value as? Int8, value != 0 else { return identifier }
-            return identifier + String(UnicodeScalar(UInt8(value)))
+        let identifier = machineMirror.children.reduce("") { id, element in
+            guard let value = element.value as? Int8, value != 0 else { return id }
+            return id + String(UnicodeScalar(UInt8(value)))
+        }
+        return UIDevice.current.name.isEmpty ? identifier : "\(UIDevice.current.name) (\(identifier))"
+    }
+}
+
+// MARK: - About View
+struct AboutView: View {
+    @ObservedObject private var localizationManager = LocalizationManager.shared
+    @ObservedObject private var languageManager = LanguageManager.shared
+    private let contactURL = URL(string: "https://x.com/duongduong0908")!
+
+    var body: some View {
+        Form {
+            donateSection
+            feedbackSection
+            creditsSection
+            translatorsSection
+        }
+        .headerProminence(.increased)
+        .navigationTitle(L("nav_about"))
+        .onAppear {
+            if languageManager.availableLanguages.isEmpty {
+                Task { await languageManager.fetchAvailableLanguages() }
+            }
         }
     }
 
-    func saveProductType() {
-        let cacheExtra = mobileGestalt["CacheExtra"] as! NSMutableDictionary
-        cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] = productType
+    @ViewBuilder
+    private var donateSection: some View {
+        Section {
+            VStack(spacing: 12) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(.pink)
+                    .frame(maxWidth: .infinity)
+
+                Text("Thank you for using EnsWilde! This is a passion project dedicated to providing the best experience for you. Your support is my biggest motivation to keep improving it every day.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Text("If you enjoy the app, please consider buying me a coffee ☕️ to fuel my late-night coding sessions. Every contribution is greatly appreciated!")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button {
+                    if let url = URL(string: "https://ko-fi.com/yangjiii") {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text(L("settings_donate"))
+                        .font(.headline.bold())
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(AppTheme.accent)
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 8)
+        }
     }
 
-    func applyDynamicIsland(type: Int) {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
+    @ViewBuilder
+    private var feedbackSection: some View {
+        Section {
+            Button(action: {
+                if let url = URL(string: "https://github.com/YangJiiii/EnsWilde") {
+                    UIApplication.shared.open(url)
+                }
+            }) {
+                Label(L("settings_guide"), systemImage: "safari")
+            }
+            Button(action: { UIApplication.shared.open(contactURL) }) {
+                Label(L("settings_contact"), systemImage: "paperplane.fill")
+            }
+        }
+    }
 
-        let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
+    @ViewBuilder
+    private var creditsSection: some View {
+        Section(header: Text(L("settings_thanks_to"))) {
+            creditRow(name: "Carrot1211", desc: "For cheering me on and supporting me during development.")
+            creditRow(name: "@khanhduytran0", desc: "is based on SparseBox.")
+            creditRow(name: "@SideStore team", desc: "idevice and C bindings from StikDebug.")
+            creditRow(name: "@JJTech0130", desc: "SparseRestore and backup exploit.")
+            creditRow(name: "@hanakim3945", desc: "bl_sbx exploit files and writeup.")
+            creditRow(name: "@Lakr233", desc: "BBackupp.")
+            creditRow(name: "@libimobiledevice", desc: L("settings_thanks_libimobile"))
+            creditRow(name: "@PoomSmart", desc: "MobileGestalt dump.")
+            creditRow(name: "@paragonarsi", desc: "Apple Wallet Get.")
+            creditRow(name: "@iTechExpert21", desc: "Hide Dynamic Island.")
+            creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring respring.")
+            creditRow(name: "@mak5er", desc: "AirCard-iOS reference.")
+            creditRow(name: "@Nouvborne", desc: "Ketamine reference.")
+        }
+    }
 
-        if type == 0 {
-            cacheExtra.removeObject(forKey: "oPeik/9e8lQWMszEjbPzng")
-            cacheExtra.removeObject(forKey: "YlEtTtHlNesRBMal1CqRaA")
-        } else if type > 0 && type < subtypeValues.count {
-            let subtypeValue = subtypeValues[type]
+    @ViewBuilder
+    private var translatorsSection: some View {
+        Section(header: Text(L("settings_translators"))) {
+            ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
+                creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
+            }
+        }
+    }
 
-            var gestaltDict: NSMutableDictionary
-            if let existing = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSMutableDictionary {
-                gestaltDict = existing
-            } else {
-                gestaltDict = NSMutableDictionary()
-                cacheExtra["oPeik/9e8lQWMszEjbPzng"] = gestaltDict
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary.opacity(0.5))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(desc)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Components Helper
+struct ThanksRow: View {
+    let name: String
+    let description: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary.opacity(0.5))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Tutorial Onboarding View
+struct TutorialView: View {
+    @Environment(\.dismiss) var dismiss
+    @State private var currentStep = 0
+    @State private var copiedPath: String?
+
+    private var steps: [(icon: String, title: String, description: String)] {[
+        ("doc.on.doc", L("tutorial_step_1_title"), L("tutorial_step_1_desc")),
+        ("gear", L("tutorial_step_2_title"), L("tutorial_step_2_desc")),
+        ("hand.tap", L("tutorial_step_3_title"), L("tutorial_step_3_desc")),
+        ("airplayaudio", L("tutorial_step_4_title"), L("tutorial_step_4_desc")),
+        ("archivebox", L("tutorial_step_5_title"), L("tutorial_step_5_desc"))
+    ]}
+
+    private var totalPages: Int { steps.count + 1 }
+    private var isLastStep: Bool { currentStep == totalPages - 1 }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TabView(selection: $currentStep) {
+                ForEach(0..<steps.count, id: \.self) { index in
+                    stepPage(index: index)
+                        .tag(index)
+                }
+
+                copyPathPage
+                    .tag(steps.count)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(.easeInOut(duration: 0.3), value: currentStep)
+
+            VStack(spacing: 16) {
+                HStack(spacing: 8) {
+                    ForEach(0..<totalPages, id: \.self) { index in
+                        Circle()
+                            .fill(index == currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
+                            .frame(width: 8, height: 8)
+                            .scaleEffect(index == currentStep ? 1.2 : 1.0)
+                            .animation(.spring(response: 0.3), value: currentStep)
+                    }
+                }
+                .padding(.bottom, 4)
+
+                HStack(spacing: 16) {
+                    if currentStep > 0 {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentStep -= 1
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: "chevron.left")
+                                Text(L("tutorial_back"))
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color.secondary.opacity(0.12))
+                            .foregroundStyle(.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    }
+
+                    Button {
+                        if isLastStep {
+                            dismiss()
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentStep += 1
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text(isLastStep ? L("tutorial_done") : L("tutorial_next"))
+                            if !isLastStep {
+                                Image(systemName: "chevron.right")
+                            }
+                        }
+                        .font(.headline.weight(.bold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.accentColor)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .padding(.bottom, 30)
+        }
+        .navigationTitle(L("tutorial_title"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private func stepPage(index: Int) -> some View {
+        let step = steps[index]
+        VStack(spacing: 24) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 120, height: 120)
+                Image(systemName: step.icon)
+                    .font(.system(size: 48, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .transition(.scale.combined(with: .opacity))
+
+            Text(L("tutorial_step_of").replacingOccurrences(of: "{current}", with: "\(index + 1)").replacingOccurrences(of: "{total}", with: "\(steps.count)"))
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.accentColor, in: Capsule())
+
+            Text(step.title)
+                .font(.title2)
+                .fontWeight(.bold)
+                .multilineTextAlignment(.center)
+
+            Text(step.description)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer()
+            Spacer()
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private var copyPathPage: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.12))
+                    .frame(width: 120, height: 120)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 48, weight: .medium))
+                    .foregroundStyle(.green)
             }
 
-            gestaltDict["ArtworkDeviceSubType"] = subtypeValue
-            cacheExtra["YlEtTtHlNesRBMal1CqRaA"] = 1
+            Text(L("tutorial_copy_paths"))
+                .font(.title2)
+                .fontWeight(.bold)
+
+            Text(L("tutorial_copy_paths_desc"))
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            VStack(spacing: 12) {
+                let version = (UIDevice.current.systemVersion as NSString).floatValue
+                let passcodePath = version >= 26.0
+                    ? "file://a/var/mobile/Library/Caches/TelephonyUI-10/"
+                    : "file://a/var/mobile/Library/Caches/TelephonyUI-9/"
+                copyPathButton(
+                    label: "Passcode Theme",
+                    icon: "lock.rectangle",
+                    path: passcodePath,
+                    identifier: "passcode"
+                )
+
+                copyPathButton(
+                    label: "Apple Wallet",
+                    icon: "wallet.pass",
+                    path: "file://a/var/mobile/Library/Passes/Cards/",
+                    identifier: "wallet"
+                )
+            }
+            .padding(.horizontal, 24)
+
+            Spacer()
+            Spacer()
         }
+        .padding()
     }
 
-    func applyModelName() {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
+    @ViewBuilder
+    private func copyPathButton(label: String, icon: String, path: String, identifier: String) -> some View {
+        Button {
+            UIPasteboard.general.string = path
+            withAnimation(.spring(response: 0.3)) {
+                copiedPath = identifier
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation { if copiedPath == identifier { copiedPath = nil } }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .frame(width: 36)
+                    .foregroundStyle(Color.accentColor)
 
-        var gestaltDict: NSMutableDictionary
-        if let existing = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSMutableDictionary {
-            gestaltDict = existing
-        } else {
-            gestaltDict = NSMutableDictionary()
-            cacheExtra["oPeik/9e8lQWMszEjbPzng"] = gestaltDict
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(path)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: copiedPath == identifier ? "checkmark.circle.fill" : "doc.on.doc")
+                    .foregroundStyle(copiedPath == identifier ? .green : .secondary)
+                    .animation(.spring(response: 0.3), value: copiedPath)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-
-        gestaltDict["ArtworkDeviceProductDescription"] = modelName
-    }
-
-    func removeModelName() {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-
-        if let gestaltDict = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSMutableDictionary {
-            gestaltDict.removeObject(forKey: "ArtworkDeviceProductDescription")
-        }
+        .buttonStyle(.plain)
     }
 }
