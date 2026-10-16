@@ -33,7 +33,7 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.themeStore)
 
             NavigationStack {
-            SettingsView()
+                SettingsView()
             }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
@@ -62,7 +62,25 @@ struct MainViewWithNavigation: View {
                 withAnimation { selectedTab = .home }
             }
         }
+        .onChange(of: toolStore.replaceMobileGestaltEnabled) { _ in updateShowApplyTab() }
+        .onChange(of: toolStore.disableSoundEnabled) { _ in updateShowApplyTab() }
+        .onChange(of: toolStore.walletEnabled) { _ in updateShowApplyTab() }
+        .onChange(of: themeStore.passcodeThemeEnabled) { _ in updateShowApplyTab() }
         .onAppear { applyTintColor() }
+    }
+
+    private func updateShowApplyTab() {
+        let hasAny = toolStore.replaceMobileGestaltEnabled
+            || toolStore.disableSoundEnabled
+            || toolStore.walletEnabled
+            || themeStore.passcodeThemeEnabled
+
+        if !hasAny {
+            showApplyTab = false
+            if selectedTab == .apply {
+                selectedTab = .home
+            }
+        }
     }
 
     private func applyTintColor() {
@@ -266,11 +284,12 @@ struct ApplyTabView: View {
             if case .success = toolRunner.state {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
 
-                if toolStore.soundRespringEnabled {
-                    do {
-                        try RespringHelper.respring()
-                    } catch {
-                        print("[RESPRING] Failed: \(error)")
+                do {
+                    try RespringHelper.respring()
+                } catch {
+                    await MainActor.run {
+                        lastError = "Respring failed: \(error.localizedDescription)"
+                        showErrorAlert = true
                     }
                 }
             }
