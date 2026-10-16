@@ -100,6 +100,8 @@ struct MobileGestaltView: View {
         }
     }
 
+    // MARK: - Body Sections
+
     @ViewBuilder
     private var enableSection: some View {
         Section(header: Text(L("tool_mobile_gestalt"))) {
@@ -200,12 +202,23 @@ struct MobileGestaltView: View {
         Section(header: Text(L("section_save_reset"))) {
             Button(action: {
                 do {
+                    // Tạo pristine backup lần đầu (nếu chưa có)
+                    let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
+                    let onDeviceURL = URL(fileURLWithPath: onDevicePath)
+                    if let originalData = try? Data(contentsOf: onDeviceURL) {
+                        try? MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
+                    }
+
                     saveProductType()
                     try mobileGestalt.write(to: modMGURL)
 
                     UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
-                    lastError = "Đã lưu ModifiedMobileGestalt.plist. Tab Apply đã được mở ở dưới — chuyển sang để áp dụng."
+                    if MobileGestaltBackupManager.shared.hasBackup {
+                        lastError = "Đã lưu + tạo backup pristine. Tab Apply đã được mở ở dưới."
+                    } else {
+                        lastError = "Đã lưu. Tab Apply đã được mở ở dưới."
+                    }
                     showErrorAlert = true
                 } catch {
                     lastError = "Save failed: \(error)"
@@ -217,23 +230,16 @@ struct MobileGestaltView: View {
 
             Button(role: .destructive, action: {
                 do {
-                    let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary
-                    let wasTrollPadEnabled = (cacheExtra?["uKc7FPnEO++lVhHWHFlGbQ"] as? Int) == 1
+                    // Restore pristine backup vào modMGURL
+                    let pristineData = try MobileGestaltBackupManager.shared.restoreData()
+                    try pristineData.write(to: modMGURL)
 
-                    try? FileManager.default.removeItem(at: modMGURL)
-                    try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
                     mobileGestalt = try NSMutableDictionary(contentsOf: modMGURL, error: ())
                     toolStore.replaceMobileGestaltEnabled = true
 
-                    if wasTrollPadEnabled {
-                        toolStore.bookassetdUUID = nil
-                        lastError = "Reset done. Tab Apply đã được mở. Bookassetd UUID đã xoá (iPadOS was enabled)."
-                    } else {
-                        lastError = "Reset done. Tab Apply đã được mở."
-                    }
-
                     UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
+                    lastError = "Đã reset về pristine backup. Tab Apply đã được mở — bấm Apply để ghi lại vào hệ thống."
                     showErrorAlert = true
                 } catch {
                     lastError = "Reset failed: \(error)"
@@ -273,6 +279,8 @@ struct MobileGestaltView: View {
             taskRunning = true
         }
     }
+
+    // MARK: - Bindings
 
     func bindingForAppleIntelligence() -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
@@ -344,6 +352,7 @@ struct MobileGestaltView: View {
         }
         let valueOffset = FindCacheDataOffset("mtrAoWJ3gsq+I90ZnQ0vQw")
 
+        // CHỈ 5 key — giống Ketamine, BỎ "qeaj75wk3HF4DwQ8qbIi7g"
         let keys = [
             "uKc7FPnEO++lVhHWHFlGbQ",
             "mG0AnH/Vy1veoqoLRAIgTA",
@@ -390,6 +399,8 @@ struct MobileGestaltView: View {
             }
         )
     }
+
+    // MARK: - Helpers
 
     static func machineName() -> String {
         var systemInfo = utsname()
