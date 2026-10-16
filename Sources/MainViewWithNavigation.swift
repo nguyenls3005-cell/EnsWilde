@@ -278,24 +278,37 @@ struct ApplyTabView: View {
 
     private func performApply() {
         displayedLogs.removeAll()
+
+        // Capture toggle value ở đầu — tránh bị thay đổi giữa chừng
+        let shouldRespring = toolStore.soundRespringEnabled
+
         Task {
             await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
 
             if case .success = toolRunner.state {
                 await MainActor.run {
                     toolRunner.log("✓ Tweak applied successfully")
-                    toolRunner.log("Respringing after 3 seconds...")
+                    if shouldRespring {
+                        toolRunner.log("Respringing after 3 seconds...")
+                    } else {
+                        toolRunner.log("Respring skipped (toggle off)")
+                    }
                 }
 
+                // Đợi log reveal
                 try? await Task.sleep(nanoseconds: 800_000_000)
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
 
-                do {
-                    try RespringHelper.respring()
-                } catch {
-                    await MainActor.run {
-                        lastError = "Respring failed: \(error.localizedDescription)"
-                        showErrorAlert = true
+                if shouldRespring {
+                    // Đợi 3 giây như log đã báo
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+
+                    do {
+                        try RespringHelper.respring()
+                    } catch {
+                        await MainActor.run {
+                            lastError = "Respring failed: \(error.localizedDescription)"
+                            showErrorAlert = true
+                        }
                     }
                 }
             }
