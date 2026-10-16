@@ -14,6 +14,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Downgrade project format for Xcode 15
+        run: |
+          sed -i '' 's/objectVersion = 77;/objectVersion = 63;/' EnsWilde.xcodeproj/project.pbxproj
+
       - name: Show toolchain
         run: |
           xcodebuild -version
@@ -22,12 +26,6 @@ jobs:
       - name: List schemes
         run: xcodebuild -list -project EnsWilde.xcodeproj
 
-      # The only supported build path.  It drives EnsWilde.xcodeproj
-      # through xcodebuild and packages build/EnsWilde.ipa; the same script is
-      # what the local workflow runs, so CI and the host cannot drift apart.
-      #
-      # Invoked via `bash` rather than as an executable so the checkout's file
-      # mode (which iOS / the GitHub web editor cannot set to +x) is irrelevant.
       - name: Build IPA
         run: bash ./scripts/build-ipa.sh Release
 
