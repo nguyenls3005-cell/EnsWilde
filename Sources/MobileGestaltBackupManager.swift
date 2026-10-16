@@ -20,7 +20,7 @@ final class MobileGestaltBackupManager {
             switch self {
             case .writeFailed: return "Không ghi được file backup."
             case .readFailed: return "Không đọc được file backup."
-            case .noBackup: return "Chưa có backup. Bấm Save lần đầu để tạo."
+            case .noBackup: return "Chưa có backup. Bấm Save lần đầu hoặc Backup ngay."
             case .invalidData: return "File không phải MobileGestalt plist hợp lệ."
             }
         }
@@ -72,6 +72,31 @@ final class MobileGestaltBackupManager {
         }
 
         return BackupInfo(createdAt: Date(), byteCount: data.count, sha256: Self.sha256(data))
+    }
+
+    /// Ghi đè backup (dùng khi import từ Files)
+    func importBackup(from data: Data) throws {
+        // Validate plist
+        guard (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil else {
+            throw BackupError.invalidData
+        }
+
+        try fm.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+
+        do {
+            try data.write(to: backupURL, options: .atomic)
+        } catch {
+            throw BackupError.writeFailed
+        }
+
+        let meta: [String: Any] = [
+            "createdAt": ISO8601DateFormatter().string(from: Date()),
+            "byteCount": data.count,
+            "sha256": Self.sha256(data)
+        ]
+        if let metaData = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted]) {
+            try? metaData.write(to: metaURL)
+        }
     }
 
     /// Đọc pristine backup
