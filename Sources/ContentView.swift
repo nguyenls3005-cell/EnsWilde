@@ -30,16 +30,23 @@ struct ContentView: View {
         Section {
             HStack(spacing: 14) {
                 ZStack {
-                    Circle().fill(Color.green.opacity(0.18)).frame(width: 48, height: 48)
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 24, weight: .semibold))
+                    Circle()
+                        .fill(Color.green.opacity(0.18))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 26, weight: .semibold))
                         .foregroundStyle(.green)
                 }
                 VStack(alignment: .leading, spacing: 3) {
+                    Text("Status Exploit")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
                     Text("bad_query")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                     Text("Sandbox Escape • Active")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
@@ -110,14 +117,19 @@ struct ContentView: View {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(title)
-                        Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
                 } icon: {
                     Image(systemName: icon)
                 }
                 Spacer()
                 if isEnabled {
-                    Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).font(.caption)
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
                 }
             }
         }
