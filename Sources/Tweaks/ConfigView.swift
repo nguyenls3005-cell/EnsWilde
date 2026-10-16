@@ -62,11 +62,14 @@ struct ConfigView: View {
                 .padding(.top, 25).padding(.bottom, 10)
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(
-                    LinearGradient(
-                        colors: [Color.black, Color.gray.opacity(0.4), Color.black],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    ZStack {
+                        Color.black
+                        Image(systemName: "pawprint.fill")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 100, maxHeight: 100)
+                            .foregroundStyle(.orange.opacity(0.4))
+                    }
                 )
 
                 TextField("Custom Footnote", text: $footnoteText)
