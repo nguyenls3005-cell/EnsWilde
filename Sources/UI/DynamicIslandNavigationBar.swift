@@ -10,16 +10,11 @@ enum NavigationTab: String, CaseIterable {
 
     var icon: String {
         switch self {
-        case .home:
-            return "house.fill"
-        case .themeStore:
-            return "square.grid.2x2.fill"
-        case .settings:
-            return "gearshape.fill"
-        case .apply:
-            return "checkmark.circle.fill"
-        case .about:
-            return "info.circle.fill"
+        case .home: return "house.fill"
+        case .themeStore: return "square.grid.2x2.fill"
+        case .settings: return "gearshape.fill"
+        case .apply: return "checkmark.circle.fill"
+        case .about: return "info.circle.fill"
         }
     }
 
