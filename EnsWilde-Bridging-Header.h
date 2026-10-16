@@ -22,5 +22,8 @@ LSApplicationWorkspace *LSApplicationWorkspaceDefaultWorkspace(void);
 + (BOOL)_hasHomeButton;
 @end
 #import "bad_query/bad_query.h"
-int bad_query(const char *path, bool flag1, void *arg, bool flag2);
-void bad_query_release(int handle);
+#include <stdint.h>
+#include <stdbool.h>
+int64_t bad_query(char* path, bool create, char *group_identifier, bool is_group);
+char *bad_query_list(char *path, int64_t max_inode);
+void bad_query_release(int64_t handle);
