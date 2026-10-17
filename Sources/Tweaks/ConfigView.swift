@@ -36,8 +36,8 @@ struct ConfigView: View {
             Section(header: Text("Config Tweaks")) {
                 Toggle("Enable Tweak", isOn: $toolStore.configTweaksEnabled)
                     .onChange(of: toolStore.configTweaksEnabled) { isEnabled in
+                        // Tắt Enable Tweak -> Xoá cờ (ẩn tab Apply nếu đang hiện)
                         if !isEnabled {
-                            // Tắt toggle -> Ẩn tab Apply ngay lập tức
                             UserDefaults.standard.set(false, forKey: "ShowApplyTab")
                         }
                     }
@@ -177,19 +177,21 @@ struct ConfigView: View {
         }
     }
 
+    // MARK: - SỬA LOGIC Ở ĐÂY (Chỉ bật Tab khi ấn Save)
     private func apply() {
         toolStore.configFootnoteText = footnoteText
         toolStore.configTweaksEnabled = true
         UserDefaults.standard.set(supervised, forKey: "ConfigSupervised")
         UserDefaults.standard.set(orgName, forKey: "ConfigOrgName")
         
-        // Hiện tab Apply
+        // Bật cờ để hiện Tab Apply
         UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
         saveAlertMessage = "Đã lưu. Chuyển sang tab Apply để áp dụng."
         showSaveAlert = true
     }
 
+    // MARK: - SỬA LOGIC Ở ĐÂY (Chỉ bật Tab khi ấn Restore)
     private func reset() {
         ccCurrentDict["IsSupervised"] = false
         ccCurrentDict.removeObject(forKey: "OrganizationName")
@@ -206,7 +208,7 @@ struct ConfigView: View {
             UserDefaults.standard.set(false, forKey: "ConfigSupervised")
             UserDefaults.standard.removeObject(forKey: "ConfigOrgName")
             
-            // Hiện tab Apply
+            // Bật cờ để hiện Tab Apply
             UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
             saveAlertMessage = "Đã reset. Chuyển sang tab Apply để áp dụng."
