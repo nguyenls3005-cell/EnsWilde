@@ -3,10 +3,15 @@ import SwiftUI
 struct ThemeStoreView: View {
     @ObservedObject var themeStore: PasscodeThemeStore
     @StateObject private var storeManager = ThemeStoreManager()
-    @State private var selectedTheme: RemoteTheme?
+    @State private var selectedRemoteTheme: RemoteTheme?
     
-    // ViewModel để truyền vào ThemeDetailView
-    @StateObject private var viewModel = PasscodeThemeViewModel()
+    // SỬA LỖI 1: Truyền themeStore vào khởi tạo ViewModel
+    @StateObject private var viewModel: PasscodeThemeViewModel
+    
+    init(themeStore: PasscodeThemeStore) {
+        self.themeStore = themeStore
+        _viewModel = StateObject(wrappedValue: PasscodeThemeViewModel(store: themeStore))
+    }
 
     var body: some View {
         Group {
@@ -30,10 +35,11 @@ struct ThemeStoreView: View {
             } else {
                 List(storeManager.themes) { theme in
                     Button {
-                        selectedTheme = theme
+                        selectedRemoteTheme = theme
                     } label: {
                         HStack(spacing: 12) {
-                            AsyncImage(url: URL(string: theme.baseURL + theme.preview)) { image in
+                            // Sửa lại URL preview cho đúng (nếu cần)
+                            AsyncImage(url: URL(string: theme.preview)) { image in
                                 image.resizable().aspectRatio(contentMode: .fill)
                             } placeholder: {
                                 Color.gray.opacity(0.3)
@@ -56,9 +62,85 @@ struct ThemeStoreView: View {
                 await storeManager.fetchThemes()
             }
         }
-        .sheet(item: $selectedTheme) { theme in
-            // Gọi ThemeDetailView với đúng tham số viewModel
-            ThemeDetailView(theme: theme, themeStore: themeStore, viewModel: viewModel)
+        // SỬA LỖI 2: Hiển thị sheet tải theme từ xa
+        .sheet(item: $selectedRemoteTheme) { remoteTheme in
+            RemoteThemeDownloadView(remoteTheme: remoteTheme, themeStore: themeStore, viewModel: viewModel)
         }
+    }
+}
+
+// Thêm View mới để xử lý việc tải RemoteTheme
+struct RemoteThemeDownloadView: View {
+    let remoteTheme: RemoteTheme
+    @ObservedObject var themeStore: PasscodeThemeStore
+    @ObservedObject var viewModel: PasscodeThemeViewModel
+    @Environment(\.dismiss) var dismiss
+    
+    @State private var isDownloading = false
+    @State private var errorMessage: String?
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                AsyncImage(url: URL(string: remoteTheme.preview)) { image in
+                    image.resizable().aspectRatio(contentMode: .fit)
+                } placeholder: {
+                    ProgressView()
+                }
+                .frame(height: 200)
+                .cornerRadius(12)
+                
+                Text(remoteTheme.name).font(.title2.bold())
+                Text(remoteTheme.description ?? "").foregroundStyle(.secondary)
+                
+                if let errorMessage = errorMessage {
+                    Text(errorMessage).foregroundStyle(.red)
+                }
+                
+                if isDownloading {
+                    ProgressView("Downloading and Importing...")
+                } else {
+                    Button("Download & Import Theme") {
+                        Task {
+                            await downloadAndImport()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+            .navigationTitle("Theme Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+    
+    private func downloadAndImport() async {
+        isDownloading = true
+        errorMessage = nil
+        
+        do {
+            guard let url = URL(string: remoteTheme.url) else {
+                throw PasscodeThemeError.invalidFormat
+            }
+            
+            // Tải file ZIP về bộ nhớ tạm
+            let (tempURL, _) = try await URLSession.shared.download(from: url)
+            
+            // Gọi hàm import có sẵn trong ViewModel của bạn
+            try await viewModel.importTheme(from: tempURL, name: remoteTheme.name)
+            
+            // Import thành công, đóng view
+            dismiss()
+            
+        } catch {
+            errorMessage = "Failed to import: \(error.localizedDescription)"
+        }
+        
+        isDownloading = false
     }
 }
