@@ -1,15 +1,15 @@
 import Foundation
+import SwiftUI
 
 // MARK: - Remote Theme Model
 struct RemoteTheme: Identifiable, Codable {
-    var id: String { url } // Dùng url làm id
+    var id: String { url }
     let name: String
-    let description: String
+    let description: String?
     let url: String
     let preview: String
     let authors: String
     
-    // Base URL được gán vào lúc tải để biết đường dẫn tải file
     var baseURL: String = ""
 }
 
@@ -20,7 +20,7 @@ class ThemeStoreManager: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    // Link index.json trên repo của bạn (chỉ chứa source SerStars)
+    // Đã sửa: Chỉ tải từ file index.json của repo bạn (chỉ chứa SerStars)
     private let indexURL = URL(string: "https://raw.githubusercontent.com/nguyenls3005-cell/EnsWilde/refs/heads/main/themes-store/index.json")!
 
     func fetchThemes() async {
@@ -29,7 +29,7 @@ class ThemeStoreManager: ObservableObject {
         themes = []
 
         do {
-            // 1. Tải danh sách các nguồn từ index.json
+            // 1. Tải index.json (chứa danh sách nguồn)
             let (data, _) = try await URLSession.shared.data(from: indexURL)
             let sources = try JSONDecoder().decode([ThemeSource].self, from: data)
             
