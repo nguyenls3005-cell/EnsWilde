@@ -47,7 +47,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - System Status (Giao diện y hệt ảnh gốc)
+    // MARK: - System Status
     @ViewBuilder
     private var statusSection: some View {
         Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
@@ -60,7 +60,7 @@ struct ContentView: View {
                     Text("System Status")
                         .font(.body)
                     Text("Ready - Bad_query")
-                        .font(.footnote) // Cỡ chữ nhỏ màu xám y hệt ảnh
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -69,7 +69,7 @@ struct ContentView: View {
         .listRowBackground(Color(.secondarySystemGroupedBackground))
     }
 
-    // MARK: - Tweaks
+    // MARK: - Tweaks (Đã thêm lại Config Tweaks)
     @ViewBuilder
     private var tweaksSection: some View {
         Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
@@ -79,6 +79,14 @@ struct ContentView: View {
                 subtitle: L("tool_mobile_gestalt_desc"),
                 icon: "cpu",
                 isEnabled: toolStore.replaceMobileGestaltEnabled
+            )
+
+            toolNavigationLink(
+                value: "ConfigTweaks",
+                title: "Config Tweaks",
+                subtitle: "Custom Lock Screen Footnote",
+                icon: "textformat",
+                isEnabled: toolStore.configTweaksEnabled
             )
 
             toolNavigationLink(
@@ -112,6 +120,8 @@ struct ContentView: View {
     private func destinationView(for route: String) -> some View {
         if route == "MobileGestalt" {
             MobileGestaltView(toolStore: toolStore)
+        } else if route == "ConfigTweaks" {
+            ConfigView(toolStore: toolStore)
         } else if route == "AppleWallet" {
             AppleWalletView(walletStore: walletStore)
         } else if route == "PasscodeTheme" {
