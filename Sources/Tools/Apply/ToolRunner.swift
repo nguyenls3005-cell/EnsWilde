@@ -11,11 +11,11 @@ final class ToolRunner: ObservableObject {
         logs.removeAll()
     }
 
-    func log(_ s: String) {
+    func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        // Delay 1.2s để log chạy chậm rãi
-        Thread.sleep(forTimeInterval: 1.2)
+        // Dùng Task.sleep thay vì Thread.sleep để UI không bị đóng băng
+        try? await Task.sleep(nanoseconds: 800_000_000) // 0.8 giây mỗi dòng
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -28,16 +28,16 @@ final class ToolRunner: ObservableObject {
         }
 
         resetLogs()
+        state = .running(toolName: "Initializing")
         
-        // Bắt đầu
-        log("Initializing Bad_Query exploit...")
-        log("Checking system permissions...")
+        await log("Initializing Bad_Query exploit...")
+        await log("Checking system permissions...")
         
         do {
             if hasMobileGestalt {
                 state = .running(toolName: "MobileGestalt")
+                await log("Locating ModifiedMobileGestalt.plist...")
                 
-                log("Locating ModifiedMobileGestalt.plist...")
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
                 
@@ -45,45 +45,39 @@ final class ToolRunner: ObservableObject {
                     throw NSError(domain: "ToolRunner", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing ModifiedMobileGestalt.plist."])
                 }
                 
-                log("Reading plist data...")
+                await log("Reading plist data...")
                 let mgData = try Data(contentsOf: modMGURL)
-                log("Plist size: \(mgData.count) bytes")
+                await log("Plist size: \(mgData.count) bytes")
                 
                 let targetPath = MobileGestaltApplyTask.onDeviceMGPath
-                log("Target path: \(targetPath)")
+                await log("Target path: \(targetPath)")
                 
-                log("Writing MobileGestalt via bad_query...")
+                await log("Writing MobileGestalt via bad_query...")
                 try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
-                
-                log("Verifying write operation...")
-                try await Task.sleep(nanoseconds: 500_000_000)
-                log("✓ MobileGestalt written successfully.")
+                await log("✓ MobileGestalt written successfully.")
             }
 
             if hasConfigTweaks {
                 state = .running(toolName: "Config Tweaks")
-                log("Preparing Config Tweaks...")
+                await log("Preparing Config Tweaks...")
                 
                 let footnote = store.configFootnoteText
                 let supervised = UserDefaults.standard.bool(forKey: "ConfigSupervised")
                 let orgName = UserDefaults.standard.string(forKey: "ConfigOrgName") ?? ""
                 
-                log("Footnote text: \(footnote.isEmpty ? "(none)" : footnote)")
-                
                 let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
                 let sharedDevConfigPath = "\(configDir)/SharedDeviceConfiguration.plist"
                 let cloudConfigPath = "\(configDir)/CloudConfigurationDetails.plist"
 
-                log("Granting access to ConfigurationProfiles...")
+                await log("Granting access to ConfigurationProfiles...")
                 let access = bq.grantAccess(atPath: configDir)
                 guard access.0 else {
                     throw NSError(domain: "ToolRunner", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to grant access."])
                 }
-                log("✓ Access granted.")
 
                 let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
                 let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
-                log("Writing SharedDeviceConfiguration.plist...")
+                await log("Writing SharedDeviceConfiguration.plist...")
                 try ftData.write(to: URL(fileURLWithPath: sharedDevConfigPath))
 
                 var ccDict: NSMutableDictionary = [:]
@@ -92,17 +86,17 @@ final class ToolRunner: ObservableObject {
                 if supervised && !orgName.isEmpty { ccDict["OrganizationName"] = orgName }
                 else { ccDict.removeObject(forKey: "OrganizationName") }
                 
-                log("Writing CloudConfigurationDetails.plist...")
+                await log("Writing CloudConfigurationDetails.plist...")
                 let ccData = try PropertyListSerialization.data(fromPropertyList: ccDict, format: .binary, options: 0)
                 try ccData.write(to: URL(fileURLWithPath: cloudConfigPath))
-                log("✓ Config Tweaks applied.")
+                await log("✓ Config Tweaks applied.")
             }
 
             state = .success
-            log("✓ All tweaks applied successfully.")
+            await log("✓ All tweaks applied successfully.")
         } catch {
             state = .failed(message: "\(error)")
-            log("✗ Failed: \(error.localizedDescription)")
+            await log("✗ Failed: \(error.localizedDescription)")
         }
     }
 }
