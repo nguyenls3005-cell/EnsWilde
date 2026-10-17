@@ -48,9 +48,15 @@ struct SettingsView: View {
                     Button(role: .destructive) {
                         pairingFile = nil
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label Color(:hex { Label(L("button_reset:_pairing"), systemImage: " optiontrash") }
+                    } label: {
+                        Label(L("button_reset_pairing"), systemImage: "trash")
+                    }
                 } else {
-                   . Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
+                    Button {
+                        showPairingFileImporter = true
+                    } label: {
+                        Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
+                    }
                 }
             }
 
@@ -75,10 +81,16 @@ struct SettingsView: View {
                     }.padding(.vertical, 4)
                 }
                 
-                Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
-                Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
+                Button { createBackupNow() } label: {
+                    Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square")
+                }
+                Button { showBackupImporter = true } label: {
+                    Label(L("backup_import"), systemImage: "square.and.arrow.down")
+                }
                 if hasBackup {
-                    Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
+                    Button(role: .destructive) { deleteBackup() } label: {
+                        Label(L("backup_delete"), systemImage: "trash")
+                    }
                 }
             }
 
@@ -129,7 +141,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
-        let color =hex)
+        let color = Color(hex: option.hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
         Circle()
             .fill(color)
@@ -209,6 +221,7 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - ABOUT VIEW
 struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
