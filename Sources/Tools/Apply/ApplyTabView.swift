@@ -5,60 +5,55 @@ struct ApplyTabView: View {
     @ObservedObject var toolRunner: ToolRunner
     @ObservedObject var themeStore: PasscodeThemeStore
 
+    @AppStorage("RespringAfterApply") private var respringAfterApply: Bool = true
+
     var body: some View {
         NavigationStack {
             List {
-                Section(header: Text("Trạng thái")) {
-                    HStack {
-                        Image(systemName: stateIcon)
-                            .foregroundStyle(stateColor)
-                        Text(stateText)
-                            .font(.subheadline)
-                    }
-                }
-
-                Section(header: Text("Tweaks đang bật")) {
-                    if !toolStore.replaceMobileGestaltEnabled
-                        && !toolStore.configTweaksEnabled {
-                        Text("Chưa có tweak nào được bật.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
+                Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).padding(.bottom, 4)) {
                     if toolStore.replaceMobileGestaltEnabled {
                         Label("MobileGestalt", systemImage: "cpu")
+                            .padding(.vertical, 4)
                     }
                     if toolStore.configTweaksEnabled {
-                        Label("Config Tweaks", systemImage: "slider.horizontal.3")
+                        Label("Config Tweaks", systemImage: "textformat")
+                            .padding(.vertical, 4)
+                    }
+                    if !toolStore.replaceMobileGestaltEnabled && !toolStore.configTweaksEnabled {
+                        Text("No tweaks enabled.")
+                            .foregroundStyle(.secondary)
                     }
                 }
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
+
+                Section(header: Text("Options").font(.headline).foregroundColor(.primary).padding(.bottom, 4)) {
+                    Toggle(isOn: $respringAfterApply) {
+                        Label("Respring after apply", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
 
                 Section {
                     Button {
                         Task {
-                            await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
+                            await runApply()
                         }
                     } label: {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                            Text("Apply All").font(.headline)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
+                        Text("Apply Enabled Tweaks")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.orange)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-
-                    if case .running(let name) = toolRunner.state {
-                        HStack {
-                            ProgressView()
-                            Text("Đang chạy: \(name)...")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                 }
 
                 if !toolRunner.logs.isEmpty {
-                    Section(header: Text("Log")) {
+                    Section(header: Text("Log").font(.headline)) {
                         ForEach(Array(toolRunner.logs.enumerated()), id: \.offset) { _, line in
                             Text(line.text)
                                 .font(.system(.caption, design: .monospaced))
@@ -68,43 +63,15 @@ struct ApplyTabView: View {
                 }
             }
             .navigationTitle("Apply")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if !toolRunner.logs.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Clear") {
-                            toolRunner.resetLogs()
-                        }
-                    }
-                }
-            }
+            .navigationBarTitleDisplayMode(.large)
         }
     }
 
-    private var stateIcon: String {
-        switch toolRunner.state {
-        case .idle: return "circle.dashed"
-        case .running: return "arrow.triangle.2.circlepath"
-        case .success: return "checkmark.circle.fill"
-        case .failed: return "xmark.circle.fill"
-        }
-    }
-
-    private var stateColor: Color {
-        switch toolRunner.state {
-        case .idle: return .secondary
-        case .running: return .blue
-        case .success: return .green
-        case .failed: return .red
-        }
-    }
-
-    private var stateText: String {
-        switch toolRunner.state {
-        case .idle: return "Sẵn sàng"
-        case .running(let name): return "Đang chạy: \(name)"
-        case .success: return "Thành công"
-        case .failed(let msg): return "Lỗi: \(msg)"
+    private func runApply() async {
+        await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
+        
+        if respringAfterApply, case .success = toolRunner.state {
+            RespringHelper.shared.respring()
         }
     }
 }
