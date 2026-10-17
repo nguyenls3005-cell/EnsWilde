@@ -9,8 +9,6 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
-    // Không cần mấy cái trạng thái isSystemReady, heartbeatRunning, ddiMounted nữa
-    
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
@@ -92,12 +90,9 @@ struct ApplyTabView: View {
         var list: [(String, String)] = []
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         if toolStore.configTweaksEnabled { list.append(("Config Tweaks", "slider.horizontal.3")) }
-        if toolStore.disableSoundEnabled { list.append((L("tool_disable_sound"), "speaker.slash")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
-        if toolStore.themesUIEnabled { list.append((L("tool_themes_ui"), "paintbrush")) }
         if toolStore.zPatchCustomEnabled { list.append((L("tool_zpatch_custom"), "wrench.and.screwdriver")) }
-        if featureFlagsStore.featureFlagsEnabled { list.append((L("tool_feature_flags"), "flag")) }
         return list
     }
 
