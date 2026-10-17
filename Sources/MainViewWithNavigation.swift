@@ -1,7 +1,28 @@
 import SwiftUI
 import UserNotifications
 
-// MARK: - Main View with Navigation (Feather-style TabView)
+// MARK: - Navigation Tab
+enum NavigationTab: String, CaseIterable {
+    case home = "nav_home"
+    case themeStore = "nav_theme_store"
+    case settings = "nav_settings"
+    case about = "nav_about"
+    case apply = "nav_apply"
+
+    var icon: String {
+        switch self {
+        case .home: return "house.fill"
+        case .themeStore: return "square.grid.2x2.fill"
+        case .settings: return "gearshape.fill"
+        case .apply: return "checkmark.circle.fill"
+        case .about: return "info.circle.fill"
+        }
+    }
+
+    var localizedTitle: String { return L(self.rawValue) }
+}
+
+// MARK: - Main View with Navigation
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
@@ -9,53 +30,65 @@ struct MainViewWithNavigation: View {
     @StateObject private var toolRunner = ToolRunner()
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
-    @State private var showApplySheet = false
-    @State private var showStatusSheet = false
-    @State private var isInNestedView = false
+    
     @State private var isSystemReady = false
     @State private var heartbeatRunning = false
     @State private var ddiMounted = false
+    @State private var isInNestedView = false
+    @State private var showApplySheet = false
+    @State private var showStatusSheet = false
+    
+    // Cờ quyết định ẩn/hiện Tab Apply (Mặc định ẩn)
+    @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
+    
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            ContentView(
-                themeStore: themeStore,
-                toolStore: toolStore,
-                toolRunner: toolRunner,
-                walletStore: walletStore,
-                featureFlagsStore: featureFlagsStore,
-                showApplySheetBinding: $showApplySheet,
-                showStatusSheetBinding: $showStatusSheet,
-                hideBottomApplyButton: true,
-                isInNestedViewBinding: $isInNestedView,
-                isSystemReadyBinding: $isSystemReady,
-                heartbeatRunningBinding: $heartbeatRunning,
-                ddiMountedBinding: $ddiMounted
-            )
+            // 1. HOME TAB
+            NavigationStack {
+                ContentView(
+                    themeStore: themeStore,
+                    toolStore: toolStore,
+                    toolRunner: toolRunner,
+                    walletStore: walletStore,
+                    featureFlagsStore: featureFlagsStore,
+                    showApplySheetBinding: $showApplySheet,
+                    showStatusSheetBinding: $showStatusSheet,
+                    hideBottomApplyButton: true,
+                    isInNestedViewBinding: $isInNestedView,
+                    isSystemReadyBinding: $isSystemReady,
+                    heartbeatRunningBinding: $heartbeatRunning,
+                    ddiMountedBinding: $ddiMounted
+                )
+            }
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
             
+            // 2. THEME STORE
             NavigationStack {
                 ThemeStoreView(themeStore: themeStore)
             }
             .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
             
+            // 3. SETTINGS
             NavigationStack {
                 SettingsView()
             }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
             
+            // 4. ABOUT
             NavigationStack {
                 AboutView()
             }
             .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            if isSystemReady {
+            // 5. APPLY TAB (Chỉ hiện khi cờ ShowApplyTab == true)
+            if showApplyTab {
                 ApplyTabView(
                     toolStore: toolStore,
                     toolRunner: toolRunner,
@@ -88,9 +121,8 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - Apply Tab View (inline)
+// MARK: - Apply Tab View (Đúng giao diện ảnh)
 struct ApplyTabView: View {
-    @ObservedObject private var localizationManager = LocalizationManager.shared
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
     @ObservedObject var walletStore: AppleWalletStore
@@ -122,12 +154,48 @@ struct ApplyTabView: View {
     var body: some View {
         NavigationStack {
             Form {
-                enabledTweaksSection
-                optionsSection
-                statusSection
-                applyButtonSection
+                Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
+                    if enabledTweaks.isEmpty {
+                        Text("No tweaks enabled.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(enabledTweaks, id: \.0) { tweak in
+                            Label {
+                                Text(tweak.0)
+                            } icon: {
+                                Image(systemName: tweak.1).foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                }
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
+
+                Section(header: Text("Options").font(.headline).foregroundColor(.primary).textCase(nil)) {
+                    Toggle(isOn: $toolStore.soundRespringEnabled) {
+                        Label(L("respring_after_apply"), systemImage: "arrow.clockwise")
+                    }
+                }
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
+
+                Section {
+                    WalletStyleButton(
+                        title: isRunning ? L("applying") : L("apply_enabled_tweaks"),
+                        isLoading: isRunning,
+                        disabled: isRunning || enabledTweaks.isEmpty,
+                        action: performApply
+                    )
+                }
+
+                if !toolRunner.logs.isEmpty {
+                    Section(header: Text("Log").font(.headline)) {
+                        ForEach(toolRunner.logs, id: \.text) { log in
+                            Text(log.text)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
-            .headerProminence(.increased)
             .navigationTitle(L("nav_apply"))
         }
         .alert(L("alert_uuid_required"), isPresented: $showUUIDAlert) {
@@ -140,104 +208,6 @@ struct ApplyTabView: View {
             Button(L("alert_ok"), role: .cancel) { }
         } message: {
             Text(lastError ?? L("msg_error_unknown"))
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .applyTweaksFromShortcut)) { _ in
-            if !isRunning && !enabledTweaks.isEmpty {
-                performApply()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var enabledTweaksSection: some View {
-        Section(header: Text(L("section_tweaks"))) {
-            if enabledTweaks.isEmpty {
-                Label {
-                    Text(L("apply_no_tweaks_hint"))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } icon: {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                ForEach(enabledTweaks, id: \.0) { tweak in
-                    Label {
-                        Text(tweak.0)
-                    } icon: {
-                        Image(systemName: tweak.1)
-                            .foregroundStyle(.tint)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var optionsSection: some View {
-        Section(header: Text(L("section_options"))) {
-            Toggle(isOn: $toolStore.soundRespringEnabled) {
-                Label(L("respring_after_apply"), systemImage: "arrow.clockwise")
-            }
-            Button(role: .destructive) {
-                toolStore.bookassetdUUID = nil
-            } label: {
-                Label(L("clear_uuid"), systemImage: "xmark.circle")
-            }
-            .disabled(toolStore.bookassetdUUID == nil || toolStore.bookassetdUUID?.isEmpty == true)
-        }
-    }
-
-    @ViewBuilder
-    private var statusSection: some View {
-        if isRunning || statusText != "" {
-            Section {
-                HStack(spacing: 12) {
-                    if isRunning {
-                        ProgressView()
-                    }
-                    Text(latestLogOrStatus)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-        }
-    }
-
-    private var latestLogOrStatus: String {
-        if isRunning, let lastLog = toolRunner.logs.last?.text {
-            return lastLog
-        }
-        return statusText
-    }
-
-    @ViewBuilder
-    private var applyButtonSection: some View {
-        Section {
-            WalletStyleButton(
-                title: isRunning ? L("applying") : L("apply_enabled_tweaks"),
-                isLoading: isRunning,
-                disabled: isRunning || enabledTweaks.isEmpty,
-                action: performApply
-            )
-        }
-    }
-
-    private var statusText: String {
-        switch toolRunner.state {
-        case .idle:
-            if enabledTweaks.isEmpty {
-                return L("apply_enable_first")
-            } else {
-                return L("apply_ready").replacingOccurrences(of: "{count}", with: "\(enabledTweaks.count)")
-            }
-        case .running(let toolName):
-            return L("apply_running").replacingOccurrences(of: "{toolName}", with: toolName)
-        case .success:
-            return L("apply_done")
-        case .failed(let message):
-            return L("apply_failed").replacingOccurrences(of: "{message}", with: message)
         }
     }
 
@@ -257,7 +227,6 @@ struct ApplyTabView: View {
             )
 
             if case .success = toolRunner.state {
-                sendLocalNotification(title: "EnsWilde", body: L("apply_done"))
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
                 if toolStore.soundRespringEnabled {
                     try? RespringHelper.respring()
@@ -269,7 +238,6 @@ struct ApplyTabView: View {
             }
 
             if case .failed(let message) = toolRunner.state {
-                sendLocalNotification(title: "EnsWilde", body: L("apply_failed").replacingOccurrences(of: "{message}", with: message))
                 lastError = message
                 showErrorAlert = true
             }
@@ -289,19 +257,6 @@ struct ApplyTabView: View {
                 lastError = L("msg_uuid_capture_failed").replacingOccurrences(of: "{error}", with: error.localizedDescription)
                 showErrorAlert = true
             }
-        }
-    }
-
-    private func sendLocalNotification(title: String, body: String) {
-        let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .authorized else { return }
-            let content = UNMutableNotificationContent()
-            content.title = title
-            content.body = body
-            content.sound = .default
-            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            center.add(request)
         }
     }
 }
