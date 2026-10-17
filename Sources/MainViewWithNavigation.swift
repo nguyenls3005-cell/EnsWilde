@@ -34,33 +34,25 @@ struct MainViewWithNavigation: View {
                 heartbeatRunningBinding: $heartbeatRunning,
                 ddiMountedBinding: $ddiMounted
             )
-            .tabItem {
-                Label(L("nav_home"), systemImage: "house.fill")
-            }
+            .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
             
             NavigationStack {
                 ThemeStoreView(themeStore: themeStore)
             }
-            .tabItem {
-                Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill")
-            }
+            .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
             
             NavigationStack {
-                SettingsView(heartbeatRunning: heartbeatRunning, ddiMounted: ddiMounted)
+                SettingsView() // <-- Đã bỏ tham số
             }
-            .tabItem {
-                Label(L("nav_settings"), systemImage: "gearshape.fill")
-            }
+            .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
             
             NavigationStack {
                 AboutView()
             }
-            .tabItem {
-                Label(L("nav_about"), systemImage: "info.circle.fill")
-            }
+            .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
             if isSystemReady {
@@ -72,20 +64,14 @@ struct MainViewWithNavigation: View {
                     featureFlagsStore: featureFlagsStore,
                     isSystemReady: isSystemReady
                 )
-                .tabItem {
-                    Label(L("nav_apply"), systemImage: "checkmark.circle.fill")
-                }
+                .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
             }
         }
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
-        .onChange(of: userTintColorHex) { _ in
-            applyTintColor()
-        }
-        .onAppear {
-            applyTintColor()
-        }
+        .onChange(of: userTintColorHex) { _ in applyTintColor() }
+        .onAppear { applyTintColor() }
     }
     
     private func applyTintColor() {
@@ -102,7 +88,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - Apply Tab View (inline — shows enabled tweaks and apply controls)
+// MARK: - Apply Tab View (inline)
 struct ApplyTabView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @ObservedObject var toolStore: ToolStore
@@ -196,7 +182,7 @@ struct ApplyTabView: View {
             Button(role: .destructive) {
                 toolStore.bookassetdUUID = nil
             } label: {
-                Label(L("clear_uuid"), systemImage: "xmark.circle")
+                Label(L("clear_uuid"), systemImage: "xmark.c case .success =ircle tool")
             }
             .disabled(toolStore.bookassetdUUID == nil || toolStore.bookassetdUUID?.isEmpty == true)
         }
@@ -270,7 +256,7 @@ struct ApplyTabView: View {
                 featureFlagsStore: featureFlagsStore
             )
 
-            if case .success = toolRunner.state {
+            ifRunner.state {
                 sendLocalNotification(title: "EnsWilde", body: L("apply_done"))
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
                 if toolStore.soundRespringEnabled {
