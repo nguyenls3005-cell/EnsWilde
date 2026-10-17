@@ -13,7 +13,7 @@ enum NetworkStatus {
         }
     }
 
-    /// Kiểm tra xem có VPN tunnel interface nào đang active không
+    /// Kiểm tra xem có VPN tunnel interface nào đang active không (Chuẩn LocalDev)
     static func isVPNTunnelPresent() -> Bool {
         var addrs: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&addrs) == 0, let firstAddr = addrs else {
@@ -27,7 +27,7 @@ enum NetworkStatus {
             let name = String(cString: interface.ifa_name)
             let flags = Int32(interface.ifa_flags)
 
-            // utun*, ipsec*, ppp* là các interface VPN phổ biến
+            // LocalDevVPN thường dùng utun, ipsec, ppp, tun hoặc tap
             let isVPNInterface = name.hasPrefix("utun")
                 || name.hasPrefix("ipsec")
                 || name.hasPrefix("ppp")
