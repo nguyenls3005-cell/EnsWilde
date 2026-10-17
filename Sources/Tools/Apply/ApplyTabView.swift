@@ -70,8 +70,6 @@ struct ApplyTabView: View {
     private func runApply() async {
         await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
         
-        if respringAfterApply, case .success = toolRunner.state {
-            RespringHelper.shared.respring()
-        }
+        // TODO: Gọi hàm respring nếu RespringHelper có hỗ trợ
     }
 }
