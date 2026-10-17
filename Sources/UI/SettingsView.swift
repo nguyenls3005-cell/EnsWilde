@@ -8,90 +8,85 @@ struct SettingsView: View {
     
     var body: some View {
         List {
-            Section(header: Text("section_status")) {
+            // MARK: - Connection Status
+            Section(header: Text(NSLocalizedString("connection_status", comment: ""))) {
                 HStack {
+                    // Đã sửa lại dùng đúng biến isPairingFileValid trong log
                     Image(systemName: store.isPairingFileValid ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .foregroundColor(store.isPairingFileValid ? .green : .red)
-                    Text("system_status")
+                    Text(NSLocalizedString("pairing_file", comment: ""))
                     Spacer()
-                    Text(store.isPairingFileValid ? "status_ready" : "status_not_ready")
-                        .foregroundColor(store.isPairingFileValid ? .green : .red)
-                }
-            }
-            
-            Section(header: Text("connection_status")) {
-                HStack {
-                    Image(systemName: store.isPairingFileValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundColor(store.isPairingFileValid ? .green : .red)
-                    Text("pairing_file")
-                    Spacer()
-                    Text(store.isPairingFileValid ? "status_ready" : "status_not_ready")
+                    Text(store.isPairingFileValid ? NSLocalizedString("status_ready", comment: "") : NSLocalizedString("status_not_ready", comment: ""))
                         .foregroundColor(store.isPairingFileValid ? .green : .red)
                 }
                 
                 HStack {
                     Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
-                    Text("LocalDevVPN")
+                    Text("LocalDevVPN") // Giữ nguyên tên app
                     Spacer()
-                    Text("status_ready").foregroundColor(.green)
+                    Text(NSLocalizedString("status_ready", comment: "")).foregroundColor(.green)
                 }
             }
             
-            Section(header: Text("pairing_file")) {
+            // MARK: - Pairing File
+            Section(header: Text(NSLocalizedString("pairing_file", comment: ""))) {
                 Button(action: { showingPairingFilePicker = true }) {
                     HStack {
                         Image(systemName: "trash")
-                        Text("button_reset_pairing")
+                        Text(NSLocalizedString("button_reset_pairing", comment: ""))
                     }
                     .foregroundColor(.red)
                 }
             }
             
-            Section(header: Text("backup_title")) {
+            // MARK: - Backup
+            Section(header: Text(NSLocalizedString("backup_title", comment: ""))) {
                 if MobileGestaltBackupManager.shared.hasBackup {
                     HStack {
                         Image(systemName: "checkmark.shield.fill").foregroundColor(.green)
-                        Text("backup_available").font(.headline)
+                        Text(NSLocalizedString("backup_available", comment: "")).font(.headline)
                     }
                     HStack {
-                        Text("backup_date")
+                        Text(NSLocalizedString("backup_date", comment: ""))
                         Spacer()
                         Text(MobileGestaltBackupManager.shared.backupDate ?? "").foregroundColor(.secondary)
                     }
                     HStack {
-                        Text("backup_size")
+                        Text(NSLocalizedString("backup_size", comment: ""))
                         Spacer()
                         Text(MobileGestaltBackupManager.shared.backupSize ?? "").foregroundColor(.secondary)
                     }
                     
                     Button(action: { MobileGestaltBackupManager.shared.createBackup() }) {
-                        Label("backup_now", systemImage: "square.and.arrow.down")
+                        Label(NSLocalizedString("backup_now", comment: ""), systemImage: "square.and.arrow.down")
                     }
                     Button(action: { showingBackupFilePicker = true }) {
-                        Label("backup_import", systemImage: "square.and.arrow.down.on.square")
+                        Label(NSLocalizedString("backup_import", comment: ""), systemImage: "square.and.arrow.down.on.square")
                     }
                     Button(action: { MobileGestaltBackupManager.shared.deleteBackup() }) {
-                        Label("backup_delete", systemImage: "trash").foregroundColor(.red)
+                        Label(NSLocalizedString("backup_delete", comment: ""), systemImage: "trash").foregroundColor(.red)
                     }
                 } else {
-                    Text("backup_none")
-                    Text("backup_none_desc").font(.caption).foregroundColor(.secondary)
+                    Text(NSLocalizedString("backup_none", comment: ""))
+                    Text(NSLocalizedString("backup_none_desc", comment: "")).font(.caption).foregroundColor(.secondary)
                     Button(action: { MobileGestaltBackupManager.shared.createBackup() }) {
-                        Label("backup_now", systemImage: "square.and.arrow.down")
+                        Label(NSLocalizedString("backup_now", comment: ""), systemImage: "square.and.arrow.down")
                     }
                 }
             }
             
-            Section(header: Text("settings_language")) {
+            // MARK: - Language
+            Section(header: Text(NSLocalizedString("settings_language", comment: ""))) {
                 NavigationLink(destination: LanguageSettingsView()) {
                     HStack {
                         Image(systemName: "globe")
-                        Text("settings_language")
+                        Text(NSLocalizedString("settings_language", comment: ""))
                     }
                 }
             }
             
-            Section(header: Text("settings_app_info")) {
+            // MARK: - App Info
+            Section(header: Text(NSLocalizedString("settings_app_info", comment: ""))) {
                 HStack {
                     Image(systemName: "sparkles")
                     Text("EnsWilde")
@@ -101,19 +96,19 @@ struct SettingsView: View {
                 }
                 HStack {
                     Image(systemName: "iphone")
-                    Text("app_ios")
+                    Text(NSLocalizedString("app_ios", comment: ""))
                     Spacer()
                     Text(UIDevice.current.systemVersion).foregroundColor(.secondary)
                 }
                 HStack {
                     Image(systemName: "iphone.gen3")
-                    Text("app_device")
+                    Text(NSLocalizedString("app_device", comment: ""))
                     Spacer()
                     Text(UIDevice.current.model).foregroundColor(.secondary)
                 }
-                Text("app_info_footer").font(.caption).foregroundColor(.secondary)
+                Text(NSLocalizedString("app_info_footer", comment: "")).font(.caption).foregroundColor(.secondary)
             }
         }
-        .navigationTitle("nav_settings")
+        .navigationTitle(NSLocalizedString("nav_settings", comment: ""))
     }
 }
