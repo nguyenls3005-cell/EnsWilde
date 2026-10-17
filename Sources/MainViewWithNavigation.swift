@@ -36,7 +36,7 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.settings)
             
             NavigationStack { AboutView() }
-            .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
+            .tabItem { Label("nav_about", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
             if showApplyTab {
@@ -86,19 +86,27 @@ struct ApplyTabView: View {
         return false
     }
 
+    // Chỉ hiển thị những tweak đang được BẬT
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         if toolStore.configTweaksEnabled { list.append(("Config Tweaks", "slider.horizontal.3")) }
+        if toolStore.disableSoundEnabled { list.append((L("tool_disable_sound"), "speaker.slash")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
+        if featureFlagsStore.featureFlagsEnabled { list.append((L("tool_feature_flags"), "flag")) }
         if toolStore.zPatchCustomEnabled { list.append((L("tool_zpatch_custom"), "wrench.and.screwdriver")) }
         return list
+    }
+
+    private var latestLog: String {
+        return toolRunner.logs.last?.text ?? "Ready to apply."
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                // 1. Hiển thị Tweaks đang bật
                 Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     if enabledTweaks.isEmpty {
                         Text("No tweaks enabled.").foregroundStyle(.secondary)
@@ -110,28 +118,45 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                Section(header: Text("Options").font(.headline).foregroundColor(.primary).textCase(nil)) {
+                // 2. Toggle Respring
+                Section {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
-                        Label(L("respring_after_apply"), systemImage: "arrow.clockwise")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Respring after apply")
+                            Text("Using Neospring to Respring device")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
+                // 3. Khung Status (hiện Log)
+                Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
+                    HStack(spacing: 10) {
+                        if isRunning {
+                            ProgressView()
+                                .tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(toolRunner.state == .success ? .green : .secondary)
+                        }
+                        
+                        Text(latestLog)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
+
+                // 4. Nút Apply
                 Section {
                     WalletStyleButton(
-                        title: isRunning ? L("applying") : L("apply_enabled_tweaks"),
+                        title: isRunning ? "Applying..." : L("apply_enabled_tweaks"),
                         isLoading: isRunning,
                         disabled: isRunning || enabledTweaks.isEmpty,
                         action: performApply
                     )
-                }
-
-                if !toolRunner.logs.isEmpty {
-                    Section(header: Text("Log").font(.headline)) {
-                        ForEach(toolRunner.logs, id: \.text) { log in
-                            Text(log.text).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
-                        }
-                    }
                 }
             }
             .navigationTitle(L("nav_apply"))
@@ -158,7 +183,6 @@ struct ApplyTabView: View {
                 if toolStore.soundRespringEnabled {
                     try? RespringHelper.respring()
                 }
-                // Đã xoá hoàn toàn lệnh mở app gây treo/đơ và tự nhảy app
             }
 
             if case .failed(let message) = toolRunner.state {
