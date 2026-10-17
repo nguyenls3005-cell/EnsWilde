@@ -3,10 +3,5 @@
     "name": "SerStars - Nugget Passcode",
     "baseURL": "https://raw.githubusercontent.com/SerStars/Nugget-Wallpapers/refs/heads/main/",
     "themesURL": "https://raw.githubusercontent.com/SerStars/Nugget-Wallpapers/refs/heads/main/wallpapers-passthemes.json"
-  },
-  {
-    "name": "YangJiii - Passcode",
-    "baseURL": "https://kocpxhkcvrccqsyumxlq.supabase.co/storage/v1/object/public/uploads/",
-    "themesURL": "https://yangens.vercel.app/themestore/passcode-enswilde.json"
   }
 ]
