@@ -12,10 +12,18 @@
   "Pairing File": "配对文件",
   "settings_localdevvpn": "LocalDevVPN",
   "LocalDevVPN": "LocalDevVPN",
+  
   "status_ready": "就绪",
-  "Ready": "就绪",
   "status_not_ready": "未就绪",
+  "ready": "就绪",
+  "not_ready": "未就绪",
+  "Ready": "就绪",
   "Not Ready": "未就绪",
+  "System Status": "系统状态",
+  "system_status": "系统状态",
+  "Status": "状态",
+  "section_status": "状态",
+
   "button_reset_pairing": "重置配对",
   "Reset Pairing": "重置配对",
   "button_select_pairing": "导入配对",
@@ -37,6 +45,7 @@
   "Delete backup": "删除备份",
   "backup_none": "暂无备份",
   "backup_none_desc": "首次保存时将创建",
+  "backup_date_placeholder": "日期：",
 
   "settings_language": "语言",
   "Language": "语言",
@@ -59,7 +68,7 @@
   "custom_footnote_placeholder": "自定义脚注",
   "Custom Footnote": "自定义脚注",
   "swipe_up_to_open": "向上滑动以打开",
-  "Swipe up to open": "向上滑动以打开 "",
+  "Swipe up to open": "向上滑动以打开",
   "supervision_title": "监管",
   "Supervision": "监管",
   "enable_supervision": "启用监管",
@@ -75,8 +84,6 @@
   "Cancel": "取消",
   "I Understand": "我明白",
 
-  "section_status": "状态",
-  "Status": "状态",
   "section_tweaks": "微调",
   "Tweaks": "微调",
   "Ready to apply.": "准备就绪，可以应用。",
@@ -117,7 +124,7 @@
   "mg_disable_region": "禁用区域限制",
   "mg_apple_pencil": "Apple Pencil",
   "mg_action_button": "操作按钮",
-  "mg_crash_detectionreset_original":": " "车祸检测",
+  "mg_crash_detection": "车祸检测",
   
   "section_internal_features": "内部功能",
   "mg_internal_storage": "内部存储",
@@ -131,7 +138,7 @@
   "section_save_reset": "保存与重置",
   "mg_save_settings": "保存设置",
   "mg_reset_original": "重置为原始",
- 重置为原始",
+  "reset_original": "重置为原始",
   
   "passcode_theme_manager": "密码主题管理器",
   "passcode_enable_theme": "启用主题",
