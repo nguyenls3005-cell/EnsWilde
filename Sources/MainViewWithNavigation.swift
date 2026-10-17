@@ -9,9 +9,8 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
-    @AppStorage("ShowApplyTab") private varRunner
-    showApplyTab: Bool = false @
-   Obs @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
+    @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
+    @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
     var body: some View {
@@ -63,7 +62,8 @@ struct MainViewWithNavigation: View {
 
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
-    @ObservedObject var toolRunner: ToolervedObject var walletStore: AppleWalletStore
+    @ObservedObject var toolRunner: ToolRunner
+    @ObservedObject var walletStore: AppleWalletStore
     @ObservedObject var themeStore: PasscodeThemeStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
 
@@ -104,7 +104,6 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Khung Toggle
                 Section {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
                         Text("Respring after apply")
@@ -112,7 +111,6 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Chữ Neospring sát (Ép âm)
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
