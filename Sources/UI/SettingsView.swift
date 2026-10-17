@@ -2,7 +2,6 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-// MARK: - Settings View
 struct SettingsView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @ObservedObject private var languageManager = LanguageManager.shared
@@ -40,15 +39,14 @@ struct SettingsView: View {
             backupSection
             languageSection
             colorSection
+            maintenanceSection // Khung Reset
             appInfoSection
         }
         .headerProminence(.increased)
         .navigationTitle(L("nav_settings"))
         .onAppear {
             if languageManager.availableLanguages.isEmpty {
-                Task {
-                    await languageManager.fetchAvailableLanguages()
-                }
+                Task { await languageManager.fetchAvailableLanguages() }
             }
             refreshVPNStatus()
             refreshBackupInfo()
@@ -60,7 +58,6 @@ struct SettingsView: View {
                 UTType(filenameExtension: "plist", conformingTo: .data) ?? .data
             ]
         ) { result in
-            print("[Pairing] File picker result: \(result)")
             handlePairingImport(result)
         }
         .fileImporter(
@@ -91,6 +88,47 @@ struct SettingsView: View {
             Button("OK") {}
         } message: {
             Text(backupAlertMessage)
+        }
+    }
+
+    // MARK: - Maintenance Section (Mới thêm)
+    @ViewBuilder
+    private var maintenanceSection: some View {
+        Section(header: Text("Maintenance")) {
+            Button(role: .destructive) {
+                // Xoá file cache MobileGestalt
+                let mgPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
+                do {
+                    let access = bq.grantAccess(atPath: mgPath)
+                    if access.0 {
+                        try FileManager.default.removeItem(atPath: mgPath)
+                        Alertinator.shared.alert(title: "Success", body: "MobileGestalt cache cleared. Please respring to apply changes cleanly.")
+                    } else {
+                        Alertinator.shared.alert(title: "Error", body: "Failed to grant access to clear cache.")
+                    }
+                } catch {
+                    Alertinator.shared.alert(title: "Error", body: "Failed to clear cache: \(error.localizedDescription)")
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Reset MobileGestalt Cache")
+                    Text("Reset cache")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Button {
+                // Gọi hàm Respring
+                try? RespringHelper.respring()
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Respring")
+                    Text("Clean all environment")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -136,7 +174,6 @@ struct SettingsView: View {
                 }
             } else {
                 Button {
-                    print("[Pairing] Import button tapped")
                     showPairingFileImporter = true
                 } label: {
                     Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
@@ -298,25 +335,20 @@ struct SettingsView: View {
     private func handlePairingImport(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
-            print("[Pairing] Selected file: \(url.lastPathComponent)")
-
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
 
             do {
                 let data = try Data(contentsOf: url)
-                print("[Pairing] Data size: \(data.count) bytes")
 
                 do {
                     let parsed = try RPPairingParser.parse(data)
                     print("[Pairing] Parsed OK. identifier=\(parsed.identifier)")
                 } catch let parseError as RPPairingError {
-                    print("[Pairing] Parse error: \(parseError.localizedDescription)")
                     pairingImportError = parseError.localizedDescription
                     showPairingErrorAlert = true
                     return
                 } catch {
-                    print("[Pairing] Unknown parse error: \(error)")
                     pairingImportError = "Parse failed: \(error.localizedDescription)"
                     showPairingErrorAlert = true
                     return
@@ -324,22 +356,18 @@ struct SettingsView: View {
 
                 let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
                 try data.write(to: pairingPath)
-                print("[Pairing] Saved to: \(pairingPath.path)")
 
                 pairingFile = url.lastPathComponent
-                print("[Pairing] pairingFile set to: \(url.lastPathComponent)")
 
                 pairingImportSuccess = "Đã import pairing: \(url.lastPathComponent)\nKích thước: \(data.count) bytes"
                 showPairingSuccessAlert = true
 
             } catch {
-                print("[Pairing] Read/write error: \(error)")
                 pairingImportError = "Đọc file thất bại: \(error.localizedDescription)"
                 showPairingErrorAlert = true
             }
 
         case .failure(let error):
-            print("[Pairing] File picker failed: \(error)")
             pairingImportError = "Chọn file thất bại: \(error.localizedDescription)"
             showPairingErrorAlert = true
         }
@@ -572,31 +600,6 @@ struct AboutView: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 Text(desc)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-}
-
-// MARK: - Components Helper
-struct ThanksRow: View {
-    let name: String
-    let description: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.circle.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(.secondary.opacity(0.5))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text(description)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
