@@ -76,7 +76,6 @@ struct ApplyTabView: View {
         var list: [(String, String)] = []
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         if toolStore.configTweaksEnabled { list.append(("Config Tweaks", "slider.horizontal.3")) }
-        if toolStore.disableSoundEnabled { list.append((L("tool_disable_sound"), "speaker.slash")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if featureFlagsStore.featureFlagsEnabled { list.append((L("tool_feature_flags"), "flag")) }
@@ -84,6 +83,7 @@ struct ApplyTabView: View {
         return list
     }
 
+    // Lấy dòng log cuối cùng để hiển thị trong khung Status
     private var latestLog: String {
         return toolRunner.logs.last?.text ?? "Ready to apply."
     }
@@ -106,12 +106,18 @@ struct ApplyTabView: View {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
                         Text("Respring after apply")
                     }
+                }
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
+
+                Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .listRowBackground(Color(.secondarySystemGroupedBackground))
+                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 8, trailing: 16))
+                .listRowBackground(Color.clear)
 
+                // Khung Status - Chạy log realtime
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     HStack(spacing: 10) {
                         if isRunning {
@@ -125,6 +131,9 @@ struct ApplyTabView: View {
                         Text(latestLog)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .animation(.easeInOut, value: latestLog) // Hiệu ứng chữ chạy mượt
                     }
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
@@ -133,7 +142,7 @@ struct ApplyTabView: View {
                     WalletStyleButton(
                         title: isRunning ? "Applying..." : L("apply_enabled_tweaks"),
                         isLoading: isRunning,
-                        disabled: isRunning || enabledTweaks.isEmpty, // Nút sẽ xám khi isRunning == true
+                        disabled: isRunning || enabledTweaks.isEmpty,
                         action: performApply
                     )
                 }
@@ -158,7 +167,7 @@ struct ApplyTabView: View {
             )
 
             if case .success = toolRunner.state {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if toolStore.soundRespringEnabled {
                     try? RespringHelper.respring()
                 }
