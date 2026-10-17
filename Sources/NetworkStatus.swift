@@ -12,17 +12,8 @@ enum NetworkStatus {
         }
     }
 
-    // Check chuẩn xác xem app LocalDevVPN có đang chạy không thay vì quét interface chung chung
+    // Check IP của tunnel LocalDev (thường là 10.7.0.1) thay vì dùng API bị lỗi
     static func isLocalDevVPNRunning() -> Bool {
-        // 1. Check xem tiến trình LocalDevVPN có đang chạy không
-        let runningApps = LSApplicationWorkspaceDefaultWorkspace().allInstalledApplications()
-        if let localDevApp = runningApps.first(where: { $0.bundleIdentifier == "com.LocalDev.VPN" || $0.localizedName?.contains("LocalDevVPN") == true }) {
-            if localDevApp.isRunning() {
-                return true
-            }
-        }
-        
-        // 2. Check IP của tunnel LocalDev (thường là 10.7.0.1)
         var addrs: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&addrs) == 0, let firstAddr = addrs else { return false }
         defer { freeifaddrs(addrs) }
