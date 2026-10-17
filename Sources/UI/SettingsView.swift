@@ -3,11 +3,6 @@ import UIKit
 import UniformTypeIdentifiers
 import Network
 
-// Hàm dịch toàn cục cho file này
-private func L(_ key: String) -> String {
-    return LocalizationManager.shared.localizedString(forKey: key)
-}
-
 struct SettingsView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @AppStorage("PairingFile") private var pairingFile: String?
