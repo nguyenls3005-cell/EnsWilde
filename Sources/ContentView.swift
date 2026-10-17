@@ -1,39 +1,46 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject var themeStore = PasscodeThemeStore()
-    @StateObject var toolStore = ToolStore()
+    @ObservedObject var themeStore: PasscodeThemeStore
+    @ObservedObject var toolStore: ToolStore
+    @ObservedObject var toolRunner: ToolRunner
+    @ObservedObject var walletStore: AppleWalletStore
+    @ObservedObject var featureFlagsStore: FeatureFlagsStore
     @State private var selectedTab = 0
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView(store: toolStore)
+            // Gọi đúng tên HomeView như trong dự án gốc
+            HomeView(store: toolStore) 
                 .tabItem {
-                    Label("nav_home", systemImage: "house.fill")
+                    Label(NSLocalizedString("nav_home", comment: ""), systemImage: "house.fill")
                 }
                 .tag(0)
             
             ThemeStoreView(themeStore: themeStore)
                 .tabItem {
-                    Label("nav_theme_store", systemImage: "square.grid.2x2.fill")
+                    Label(NSLocalizedString("nav_theme_store", comment: ""), systemImage: "square.grid.2x2.fill")
                 }
                 .tag(1)
             
+            // Gọi đúng tham số SettingsView
             SettingsView(store: toolStore)
                 .tabItem {
-                    Label("nav_settings", systemImage: "gearshape.fill")
+                    Label(NSLocalizedString("nav_settings", comment: ""), systemImage: "gearshape.fill")
                 }
                 .tag(2)
             
+            // Sửa lỗi "About" thành key dịch
             AboutView()
                 .tabItem {
-                    Label("nav_about", systemImage: "info.circle.fill") // Đã sửa "About" thành "nav_about"
+                    Label(NSLocalizedString("nav_about", comment: ""), systemImage: "info.circle.fill")
                 }
                 .tag(3)
                 
-            ApplyView(store: toolStore) // Nếu có tab Apply
+            // Giữ nguyên ApplyView
+            ApplyView(store: toolStore, toolRunner: toolRunner)
                 .tabItem {
-                    Label("nav_apply", systemImage: "checkmark.circle.fill")
+                    Label(NSLocalizedString("nav_apply", comment: ""), systemImage: "checkmark.circle.fill")
                 }
                 .tag(4)
         }
