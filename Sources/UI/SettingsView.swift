@@ -4,55 +4,34 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
-    @ObservedObject private var languageManager = LanguageManager.shared
     @AppStorage("PairingFile") private var pairingFile: String?
-    @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var showPairingFileImporter = false
     @State private var vpnActive: Bool = false
-    @State private var showVPNAlert = false
-
-    private let tintOptions: [(name: String, hex: String)] = [
-        ("Pink", "#f4b8e4"),
-        ("Mauve", "#ca9ee6"),
-        ("Red", "#e78284"),
-        ("Green", "#a6d189"),
-        ("Blue", "#8caaee"),
-    ]
 
     var body: some View {
         Form {
-            // System Status
+            // Khung System Status
             Section(header: Text("System Status")) {
                 HStack(spacing: 12) {
                     if pairingFile != nil && vpnActive {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 22))
                             .foregroundStyle(.green)
-                        Text("Ready")
-                            .font(.body)
+                        Text("Ready").font(.body)
                     } else {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 22))
                             .foregroundStyle(.red)
-                        Text("Not Ready")
-                            .font(.body)
+                        Text("Not Ready").font(.body)
                     }
                 }
                 .padding(.vertical, 4)
             }
 
-            // Connection Status
+            // Chi tiết
             Section(header: Text("Connection Status")) {
-                statusRow(
-                    title: "Pairing File",
-                    subtitle: pairingFile != nil ? "Ready" : "Not Ready",
-                    ok: pairingFile != nil
-                )
-                statusRow(
-                    title: "LocalDevVPN",
-                    subtitle: vpnActive ? "Ready" : "Not Ready",
-                    ok: vpnActive
-                )
+                statusRow(title: "Pairing File", subtitle: pairingFile != nil ? "Ready" : "Not Ready", ok: pairingFile != nil)
+                statusRow(title: "LocalDevVPN", subtitle: vpnActive ? "Ready" : "Not Ready", ok: vpnActive)
             }
 
             // Pairing
@@ -60,8 +39,7 @@ struct SettingsView: View {
                 if pairingFile != nil {
                     Button(role: .destructive) {
                         pairingFile = nil
-                        let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
-                        try? FileManager.default.removeItem(at: pairingPath)
+                        try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
                     } label: {
                         Label("Reset Pairing", systemImage: "trash")
                     }
@@ -95,11 +73,9 @@ struct SettingsView: View {
                         if access.0 {
                             try FileManager.default.removeItem(atPath: mgPath)
                             Alertinator.shared.alert(title: "Success", body: "MobileGestalt cache cleared.")
-                        } else {
-                            Alertinator.shared.alert(title: "Error", body: "Failed to grant access.")
                         }
                     } catch {
-                        Alertinator.shared.alert(title: "Error", body: "Failed to clear cache: \(error.localizedDescription)")
+                        Alertinator.shared.alert(title: "Error", body: "Failed to clear cache.")
                     }
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
@@ -116,18 +92,7 @@ struct SettingsView: View {
                 }
             }
 
-            // Color
-            Section(header: Text(L("settings_accent_color"))) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(tintOptions, id: \.hex) { option in
-                            colorOptionView(option: option)
-                        }
-                    }
-                }
-            }
-
-            // App Info
+            // App Info (Hiển thị rõ Version, iOS và Device)
             Section(header: Text(L("settings_app_info"))) {
                 HStack {
                     Label("EnsWilde", systemImage: "sparkles")
@@ -147,9 +112,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle(L("nav_settings"))
-        .onAppear {
-            refreshVPNStatus()
-        }
+        .onAppear { refreshVPNStatus() }
         .fileImporter(
             isPresented: $showPairingFileImporter,
             allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing", conformingTo: .data) ?? .data]
@@ -162,9 +125,7 @@ struct SettingsView: View {
             Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(ok ? .green : .red)
             Spacer()
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(ok ? .green : .red)
+            Text(subtitle).font(.caption).foregroundStyle(ok ? .green : .red)
         }
     }
 
@@ -185,27 +146,6 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
-    private func colorOptionView(option: (name: String, hex: String)) -> some View {
-        let color = Color(hex: option.hex)
-        let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
-        Circle()
-            .fill(color)
-            .frame(width: 36, height: 36)
-            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
-            .overlay(
-                Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
-                    .opacity(isSelected ? 1 : 0)
-            )
-            .onTapGesture {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    userTintColorHex = option.hex
-                }
-            }
-    }
-
     private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
     private func settingsDeviceModelName() -> String {
@@ -220,14 +160,59 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - About View
+// MARK: - About View (Khôi phục lại bảng Credits)
 struct AboutView: View {
+    private let contactURL = URL(string: "https://x.com/duongduong0908")!
+
     var body: some View {
         Form {
             Section {
-                Text("EnsWilde")
+                VStack(spacing: 12) {
+                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
+                    Text("Thank you for using EnsWilde!").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button {
+                        if let url = URL(string: "https://ko-fi.com/yangjiii") { UIApplication.shared.open(url) }
+                    } label: {
+                        Text("Donate")
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(AppTheme.accent)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }.buttonStyle(.plain)
+                }
+            }
+            Section {
+                Button(action: { if let url = URL(string: "https://github.com/YangJiiii/EnsWilde") { UIApplication.shared.open(url) } }) {
+                    Label("Guide", systemImage: "safari")
+                }
+                Button(action: { UIApplication.shared.open(contactURL) }) {
+                    Label("Contact", systemImage: "paperplane.fill")
+                }
+            }
+            Section(header: Text("Thanks To")) {
+                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
+                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
+                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
+                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
+                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
             }
         }
         .navigationTitle(L("nav_about"))
+    }
+
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.subheadline).fontWeight(.semibold)
+                Text(desc).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
