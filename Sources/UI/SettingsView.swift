@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
-import Network // Import Network để check VPN
+import Network
 
 struct SettingsView: View {
     @AppStorage("PairingFile") private var pairingFile: String?
@@ -103,12 +103,10 @@ struct SettingsView: View {
         }
     }
 
-    // Dùng NWPathMonitor để check VPN liên tục (chuẩn nhất)
     private func startMonitoringVPN() {
         monitor = NWPathMonitor()
         monitor?.pathUpdateHandler = { path in
             DispatchQueue.main.async {
-                // Nếu có interface VPN (utun) đang active
                 let hasVPN = path.availableInterfaces.contains { $0.type == .other || $0.name.hasPrefix("utun") || $0.name.hasPrefix("ipsec") }
                 self.vpnActive = hasVPN
             }
@@ -117,7 +115,6 @@ struct SettingsView: View {
     }
 
     private func checkVPNNow() {
-        // Check thủ công qua getifaddrs dự phòng
         var addrs: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&addrs) == 0, let firstAddr = addrs else { return }
         defer { freeifaddrs(addrs) }
@@ -145,5 +142,52 @@ struct SettingsView: View {
             return id + String(UnicodeScalar(UInt8(value)))
         }
         return identifier
+    }
+}
+
+// MARK: - ABOUT VIEW (Khôi phục Credits)
+struct AboutView: View {
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
+                    Text("Thank you for using EnsWilde!").font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button {
+                        if let url = URL(string: "https://ko-fi.com/yangjiii") { UIApplication.shared.open(url) }
+                    } label: {
+                        Text("Donate")
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(AppTheme.accent)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }.buttonStyle(.plain)
+                }
+            }
+            Section(header: Text("Thanks To")) {
+                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
+                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
+                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
+                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
+                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
+            }
+        }
+        .navigationTitle("About")
+    }
+
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.subheadline).fontWeight(.semibold)
+                Text(desc).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
