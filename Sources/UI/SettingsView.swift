@@ -28,14 +28,14 @@ struct SettingsView: View {
                         Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                         Text(L("status_ready")).font(.body)
                     } else {
-                        Image(systemName: "x:mark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
                         Text(L("status_not_ready")).font(.body)
                     }
                 }.padding(.vertical, 4)
             }
 
             Section(header: Text(L("connection_status"))) {
-                statusRow(title L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
+                statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
                 statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
             }
 
