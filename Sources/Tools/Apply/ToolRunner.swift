@@ -53,7 +53,6 @@ final class ToolRunner: ObservableObject {
                 let targetPath = MobileGestaltApplyTask.onDeviceMGPath
 
                 log("Writing MobileGestalt via bad_query...")
-                // Ghi trực tiếp bằng bad_query
                 try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
                 log("✓ MobileGestalt written.")
             }
@@ -81,14 +80,12 @@ final class ToolRunner: ObservableObject {
                 }
                 log("✓ Access granted.")
 
-                // Ghi SharedDeviceConfiguration.plist
                 let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
                 let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
                 log("Writing SharedDeviceConfiguration.plist...")
                 try ftData.write(to: URL(fileURLWithPath: sharedDevConfigPath))
                 log("✓ SharedDeviceConfiguration.plist written.")
 
-                // Ghi CloudConfigurationDetails.plist
                 var ccDict: NSMutableDictionary = [:]
                 if let existing = NSMutableDictionary(contentsOfFile: cloudConfigPath) {
                     ccDict = existing
