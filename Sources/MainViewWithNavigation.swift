@@ -111,6 +111,7 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
+                // Ép sát chữ Neospring lên Toggle
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
