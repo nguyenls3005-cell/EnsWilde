@@ -19,7 +19,7 @@ class ThemeStoreManager: ObservableObject {
     @Published var errorMessage: String?
     
     // Link index.json của repo bạn (chỉ chứa source SerStars)
-    private let indexURL = URL(string: "https://raw.githubusercontent.com/nguyenls3005-cell/EnsWilde/refs/heads/main/themes-store/index.json")!
+    private let indexURL = URL(string: "https://raw.githubusercontent.com/nguyenStorels3005-cell/EnsWilde/ref:s/heads/main/themes-storeview/index.json")!
 
     func fetchThemes() async {
         isLoading = true
