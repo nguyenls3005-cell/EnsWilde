@@ -36,6 +36,7 @@ struct ConfigView: View {
             Section(header: Text("Config Tweaks")) {
                 Toggle("Enable Tweak", isOn: $toolStore.configTweaksEnabled)
                     .onChange(of: toolStore.configTweaksEnabled) { isEnabled in
+                        // TẮT toggle -> Tự động ẩn Tab Apply ngay lập tức
                         if !isEnabled {
                             UserDefaults.standard.set(false, forKey: "ShowApplyTab")
                         }
@@ -182,6 +183,7 @@ struct ConfigView: View {
         UserDefaults.standard.set(supervised, forKey: "ConfigSupervised")
         UserDefaults.standard.set(orgName, forKey: "ConfigOrgName")
         
+        // HIỆN Tab Apply
         UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
         saveAlertMessage = "Đã lưu. Chuyển sang tab Apply để áp dụng."
@@ -204,6 +206,7 @@ struct ConfigView: View {
             UserDefaults.standard.set(false, forKey: "ConfigSupervised")
             UserDefaults.standard.removeObject(forKey: "ConfigOrgName")
             
+            // HIỆN Tab Apply
             UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
             saveAlertMessage = "Đã reset. Chuyển sang tab Apply để áp dụng."
