@@ -13,6 +13,13 @@ struct MainViewWithNavigation: View {
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
+    // Theo dõi xem có Tweak nào đang bật không để ẩn/hiện tab Apply
+    private var isAnyTweakEnabled: Bool {
+        toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || 
+        toolStore.disableSoundEnabled || walletStore.appleWalletEnabled || 
+        themeStore.passcodeThemeEnabled || featureFlagsStore.featureFlagsEnabled
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -33,21 +40,22 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            // Chỉ hiển thị khi ShowApplyTab = true (được bật bởi Save/Restore)
-            if showApplyTab {
+            // Tab Apply chỉ hiện khi đã Save/Restore (showApplyTab == true) VÀ đang bật ít nhất 1 tweak
+            if showApplyTab && isAnyTweakEnabled {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
+intColor() }
             }
-        }
+           }
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
-        .onChange(of: showApplyTab) { isShowing in
-            if !isShowing && selectedTab == .apply { selectedTab = .home }
+        // Nếu đang ở tab Apply mà tắt hết tweak thì tự văng về Home
+        .onChange(of: isAnyTweakEnabled) { newValue in
+            if !newValue && selectedTab == .apply { selectedTab = .home }
         }
-        .onAppear { applyTintColor() }
-    }
+        .onAppear { applyT }
     
     private func applyTintColor() {
         let uiColor = UIColor(Color(hex: userTintColorHex))
@@ -84,7 +92,6 @@ struct ApplyTabView: View {
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if featureFlagsStore.featureFlagsEnabled { list.append((L("tool_feature_flags"), "flag")) }
-        if toolStore.zPatchCustomEnabled { list.append((L("tool_zpatch_custom"), "wrench.and.screwdriver")) }
         return list
     }
 
@@ -106,7 +113,6 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Toggle Respring
                 Section {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
                         Text("Respring after apply")
@@ -114,7 +120,6 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Khung riêng cho chữ Neospring
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
@@ -122,7 +127,6 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Status
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     HStack(spacing: 10) {
                         if isRunning {
