@@ -4,8 +4,9 @@ struct ThemeStoreView: View {
     @ObservedObject var themeStore: PasscodeThemeStore
     @StateObject private var storeManager = ThemeStoreManager()
     @State private var selectedTheme: RemoteTheme?
-    @State private var showErrorAlert = false
-    @State private var errorMessage = ""
+    
+    // ViewModel để truyền vào ThemeDetailView
+    @StateObject private var viewModel = PasscodeThemeViewModel()
 
     var body: some View {
         Group {
@@ -56,8 +57,8 @@ struct ThemeStoreView: View {
             }
         }
         .sheet(item: $selectedTheme) { theme in
-            // Dùng ThemeDetailView CÓ SẴN trong dự án
-            ThemeDetailView(theme: theme, themeStore: themeStore, storeManager: storeManager)
+            // Gọi ThemeDetailView với đúng tham số viewModel
+            ThemeDetailView(theme: theme, themeStore: themeStore, viewModel: viewModel)
         }
     }
 }
