@@ -176,8 +176,9 @@ struct ConfigView: View {
         toolStore.configTweaksEnabled = true
         UserDefaults.standard.set(supervised, forKey: "ConfigSupervised")
         UserDefaults.standard.set(orgName, forKey: "ConfigOrgName")
+        UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
-        saveAlertMessage = "Đã lưu cấu hình."
+        saveAlertMessage = "Đã lưu. Tab Apply đã hiện ở dưới — chuyển sang để áp dụng."
         showSaveAlert = true
     }
 
@@ -197,7 +198,7 @@ struct ConfigView: View {
             UserDefaults.standard.set(false, forKey: "ConfigSupervised")
             UserDefaults.standard.removeObject(forKey: "ConfigOrgName")
 
-            saveAlertMessage = "Đã reset."
+            saveAlertMessage = "Đã reset. Bấm Apply trong tab Apply để áp dụng vào hệ thống."
             showSaveAlert = true
         } catch {
             print("(cn) failed to reset config files: \(error.localizedDescription)")
