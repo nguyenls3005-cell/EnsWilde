@@ -92,6 +92,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
+// MARK: - Apply Tab View
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -170,7 +171,6 @@ struct ApplyTabView: View {
 
     private func performApply() {
         Task {
-            // Chạy trực tiếp, không check UUID
             await toolRunner.applyAll(
                 isSystemReady: isSystemReady,
                 store: toolStore,
@@ -180,7 +180,7 @@ struct ApplyTabView: View {
             )
 
             if case .success = toolRunner.state {
-                try? await Task.sleep(nanoseconds: 3_000_000_000) // Chờ 3s cho log chạy xong
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
                 if toolStore.soundRespringEnabled {
                     try? RespringHelper.respring()
                 } else {
