@@ -157,11 +157,8 @@ struct ApplyTabView: View {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 if toolStore.soundRespringEnabled {
                     try? RespringHelper.respring()
-                } else {
-                    if let bundleID = Bundle.main.bundleIdentifier {
-                        LSApplicationWorkspaceDefaultWorkspace().openApplication(withBundleID: bundleID)
-                    }
                 }
+                // Đã xoá hoàn toàn lệnh mở app gây treo/đơ và tự nhảy app
             }
 
             if case .failed(let message) = toolRunner.state {
