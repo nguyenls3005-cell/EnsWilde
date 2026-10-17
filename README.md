@@ -39,6 +39,6 @@ Special thanks to the following for their contributions and support:
 
 * **YangJiii**: [For supporting me during development](https://x.com/duongduong0908)
 * **YangJiii**: [Original Developer of EnsWilde](https://github.com/yangjiiii/EnsWilde)
-* **@forcequitOS**: [Bad_query](forcequitOS)
+* **@forcequitOS**: [Bad_query]([forcequitOS](https://github.com/forcequitOS/bad_query/tree/main)
 * **@SideStore team**: [`StikPair`Get Pairing File](https://github.com/sidestore)
 * **0xjohnnydev**: [Airlift](https://github.com/0xjohnnydev/airlift)
