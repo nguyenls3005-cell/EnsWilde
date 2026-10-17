@@ -11,6 +11,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            // System Status
             Section(header: Text("System Status")) {
                 HStack(spacing: 12) {
                     if pairingFile != nil && vpnActive {
@@ -23,11 +24,13 @@ struct SettingsView: View {
                 }.padding(.vertical, 4)
             }
 
+            // Connection Status (Chỉ hiện, không có nút Check)
             Section(header: Text("Connection Status")) {
                 statusRow(title: "Pairing File", subtitle: pairingFile != nil ? "Ready" : "Not Ready", ok: pairingFile != nil)
                 statusRow(title: "LocalDevVPN", subtitle: vpnActive ? "Ready" : "Not Ready", ok: vpnActive)
             }
 
+            // Pairing
             Section(header: Text("Pairing File")) {
                 if pairingFile != nil {
                     Button(role: .destructive) {
@@ -37,18 +40,9 @@ struct SettingsView: View {
                 } else {
                     Button { showPairingFileImporter = true } label: { Label("Import Pairing", systemImage: "doc.badge.plus") }
                 }
-
-                Button {
-                    checkVPNNow()
-                } label: {
-                    HStack {
-                        Label("Check LocalDevVPN", systemImage: "wifi")
-                        Spacer()
-                        if vpnActive { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                    }
-                }
             }
 
+            // Maintenance
             Section(header: Text("Maintenance")) {
                 Button(role: .destructive) {
                     let mgPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
@@ -71,6 +65,7 @@ struct SettingsView: View {
                 }
             }
 
+            // App Info
             Section(header: Text(L("settings_app_info"))) {
                 HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary) }
                 HStack { Label("iOS", systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
@@ -114,24 +109,6 @@ struct SettingsView: View {
         monitor?.start(queue: DispatchQueue(label: "VPNMonitor"))
     }
 
-    private func checkVPNNow() {
-        var addrs: UnsafeMutablePointer<ifaddrs>?
-        guard getifaddrs(&addrs) == 0, let firstAddr = addrs else { return }
-        defer { freeifaddrs(addrs) }
-        var pointer: UnsafeMutablePointer<ifaddrs>? = firstAddr
-        while let current = pointer {
-            let interface = current.pointee
-            let name = String(cString: interface.ifa_name)
-            let flags = Int32(interface.ifa_flags)
-            if (name.hasPrefix("utun") || name.hasPrefix("ipsec")) && (flags & IFF_UP) == IFF_UP {
-                self.vpnActive = true
-                return
-            }
-            pointer = interface.ifa_next
-        }
-        self.vpnActive = false
-    }
-
     private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     private func settingsDeviceModelName() -> String {
         var systemInfo = utsname()
@@ -145,7 +122,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ABOUT VIEW (Khôi phục Credits)
+// MARK: - ABOUT VIEW (Cập nhật link Tele)
 struct AboutView: View {
     var body: some View {
         Form {
@@ -166,6 +143,28 @@ struct AboutView: View {
                     }.buttonStyle(.plain)
                 }
             }
+            
+            // Feedback Section với Link Tele
+            Section {
+                Button(action: {
+                    if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) }
+                }) {
+                    Label("Group Tele YangJiii", systemImage: "safari")
+                }
+                
+                Button(action: {
+                    if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) }
+                }) {
+                    Label("Group Tele LSNguyen", systemImage: "safari")
+                }
+                
+                Button(action: {
+                    if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) }
+                }) {
+                    Label("Contact Me", systemImage: "paperplane.fill")
+                }
+            }
+            
             Section(header: Text("Thanks To")) {
                 creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
                 creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
