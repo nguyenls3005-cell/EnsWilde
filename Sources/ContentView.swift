@@ -1,96 +1,42 @@
 import SwiftUI
-import UniformTypeIdentifiers
-import UIKit
 
 struct ContentView: View {
-    @ObservedObject private var localizationManager = LocalizationManager.shared
-    @State private var path = NavigationPath()
-    
-    @ObservedObject var toolStore: ToolStore
-    @ObservedObject var toolRunner: ToolRunner
-    @ObservedObject var walletStore: AppleWalletStore
-    @ObservedObject var themeStore: PasscodeThemeStore
-    @ObservedObject var featureFlagsStore: FeatureFlagsStore
-
-    init(
-        themeStore: PasscodeThemeStore,
-        toolStore: ToolStore,
-        toolRunner: ToolRunner,
-        walletStore: AppleWalletStore,
-        featureFlagsStore: FeatureFlagsStore,
-        showApplySheetBinding: Binding<Bool>? = nil,
-        showStatusSheetBinding: Binding<Bool>? = nil,
-        hideBottomApplyButton: Bool = false,
-        isInNestedViewBinding: Binding<Bool>? = nil,
-        isSystemReadyBinding: Binding<Bool>? = nil,
-        heartbeatRunningBinding: Binding<Bool>? = nil,
-        ddiMountedBinding: Binding<Bool>? = nil
-    ) {
-        self.themeStore = themeStore
-        self.toolStore = toolStore
-        self.toolRunner = toolRunner
-        self.walletStore = walletStore
-        self.featureFlagsStore = featureFlagsStore
-    }
+    @StateObject var themeStore = PasscodeThemeStore()
+    @StateObject var toolStore = ToolStore()
+    @State private var selectedTab = 0
 
     var body: some View {
-        NavigationStack(path: $path) {
-            Form {
-                statusSection
-                tweaksSection
-            }
-            .headerProminence(.increased)
-            .navigationTitle("EnsWilde")
-            .navigationDestination(for: String.self) { route in
-                destinationView(for: route)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusSection: some View {
-        Section(header: Text(L("section_status")).font(.headline).foregroundColor(.primary).textCase(nil)) {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("system_status")).font(.body)
-                    Text("Ready - Bad_query").font(.footnote).foregroundStyle(.secondary)
+        TabView(selection: $selectedTab) {
+            HomeView(store: toolStore)
+                .tabItem {
+                    Label("nav_home", systemImage: "house.fill")
                 }
-            }.padding(.vertical, 4)
-        }.listRowBackground(Color(.secondarySystemGroupedBackground))
-    }
-
-    @ViewBuilder
-    private var tweaksSection: some View {
-        Section(header: Text(L("section_tweaks")).font(.headline).foregroundColor(.primary).textCase(nil)) {
-            toolNavigationLink(value: "MobileGestalt", title: L("tool_mobile_gestalt"), subtitle: L("tool_mobile_gestalt_desc"), icon: "cpu", isEnabled: toolStore.replaceMobileGestaltEnabled)
-            toolNavigationLink(value: "ConfigTweaks", title: L("tool_config_tweaks"), subtitle: L("tool_config_tweaks_desc"), icon: "textformat", isEnabled: toolStore.configTweaksEnabled)
-            toolNavigationLink(value: "PasscodeTheme", title: L("tool_passcode_theme"), subtitle: L("tool_passcode_theme_desc"), icon: "lock.rectangle", isEnabled: themeStore.passcodeThemeEnabled)
-            toolNavigationLink(value: "AppleWallet", title: L("tool_apple_wallet"), subtitle: L("tool_apple_wallet_desc"), icon: "wallet.pass", isEnabled: walletStore.appleWalletEnabled)
-        }.listRowBackground(Color(.secondarySystemGroupedBackground))
-    }
-
-    @ViewBuilder
-    private func destinationView(for route: String) -> some View {
-        if route == "MobileGestalt" { MobileGestaltView(toolStore: toolStore) }
-        else if route == "ConfigTweaks" { ConfigView(toolStore: toolStore) }
-        else if route == "AppleWallet" { AppleWalletView(walletStore: walletStore) }
-        else if route == "PasscodeTheme" { PasscodeThemeView(themeStore: themeStore) }
-    }
-
-    @ViewBuilder
-    private func toolNavigationLink(value: String, title: String, subtitle: String, icon: String, isEnabled: Bool) -> some View {
-        NavigationLink(value: value) {
-            HStack {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title)
-                        Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                } icon: { Image(systemName: icon) }
-                Spacer()
-                if isEnabled { Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).font(.caption) }
-            }
+                .tag(0)
+            
+            ThemeStoreView(themeStore: themeStore)
+                .tabItem {
+                    Label("nav_theme_store", systemImage: "square.grid.2x2.fill")
+                }
+                .tag(1)
+            
+            SettingsView(store: toolStore)
+                .tabItem {
+                    Label("nav_settings", systemImage: "gearshape.fill")
+                }
+                .tag(2)
+            
+            AboutView()
+                .tabItem {
+                    Label("nav_about", systemImage: "info.circle.fill") // Đã sửa "About" thành "nav_about"
+                }
+                .tag(3)
+                
+            ApplyView(store: toolStore) // Nếu có tab Apply
+                .tabItem {
+                    Label("nav_apply", systemImage: "checkmark.circle.fill")
+                }
+                .tag(4)
         }
+        .accentColor(.orange)
     }
 }
