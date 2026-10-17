@@ -9,12 +9,7 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
-    @State private var isSystemReady = true
-    @State private var heartbeatRunning = true
-    @State private var ddiMounted = true
-    @State private var isInNestedView = false
-    @State private var showApplySheet = false
-    @State private var showStatusSheet = false
+    // Không cần mấy cái trạng thái isSystemReady, heartbeatRunning, ddiMounted nữa
     
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
@@ -28,14 +23,7 @@ struct MainViewWithNavigation: View {
                     toolStore: toolStore,
                     toolRunner: toolRunner,
                     walletStore: walletStore,
-                    featureFlagsStore: featureFlagsStore,
-                    showApplySheetBinding: $showApplySheet,
-                    showStatusSheetBinding: $showStatusSheet,
-                    hideBottomApplyButton: true,
-                    isInNestedViewBinding: $isInNestedView,
-                    isSystemReadyBinding: $isSystemReady,
-                    heartbeatRunningBinding: $heartbeatRunning,
-                    ddiMountedBinding: $ddiMounted
+                    featureFlagsStore: featureFlagsStore
                 )
             }
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
@@ -59,8 +47,7 @@ struct MainViewWithNavigation: View {
                     toolRunner: toolRunner,
                     walletStore: walletStore,
                     themeStore: themeStore,
-                    featureFlagsStore: featureFlagsStore,
-                    isSystemReady: true
+                    featureFlagsStore: featureFlagsStore
                 )
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
@@ -78,7 +65,9 @@ struct MainViewWithNavigation: View {
         UINavigationBar.appearance().tintColor = uiColor
         for scene in UIApplication.shared.connectedScenes {
             guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows { window.tintColor = uiColor }
+            for window in windowScene.windows {
+                window.tintColor = uiColor
+            }
         }
         tintRefreshID = UUID()
     }
@@ -90,7 +79,6 @@ struct ApplyTabView: View {
     @ObservedObject var walletStore: AppleWalletStore
     @ObservedObject var themeStore: PasscodeThemeStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
-    var isSystemReady: Bool
 
     @State private var showErrorAlert = false
     @State private var lastError: String?
