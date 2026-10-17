@@ -8,7 +8,6 @@ struct SettingsView: View {
     
     var body: some View {
         List {
-            // MARK: - System Status
             Section(header: Text("section_status")) {
                 HStack {
                     Image(systemName: store.isPairingFileValid ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -20,7 +19,6 @@ struct SettingsView: View {
                 }
             }
             
-            // MARK: - Connection Status
             Section(header: Text("connection_status")) {
                 HStack {
                     Image(systemName: store.isPairingFileValid ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -39,7 +37,6 @@ struct SettingsView: View {
                 }
             }
             
-            // MARK: - Pairing File
             Section(header: Text("pairing_file")) {
                 Button(action: { showingPairingFilePicker = true }) {
                     HStack {
@@ -50,7 +47,6 @@ struct SettingsView: View {
                 }
             }
             
-            // MARK: - MobileGestalt Backup
             Section(header: Text("backup_title")) {
                 if MobileGestaltBackupManager.shared.hasBackup {
                     HStack {
@@ -86,7 +82,6 @@ struct SettingsView: View {
                 }
             }
             
-            // MARK: - Language & Accent Color
             Section(header: Text("settings_language")) {
                 NavigationLink(destination: LanguageSettingsView()) {
                     HStack {
@@ -96,7 +91,6 @@ struct SettingsView: View {
                 }
             }
             
-            // MARK: - App Info
             Section(header: Text("settings_app_info")) {
                 HStack {
                     Image(systemName: "sparkles")
