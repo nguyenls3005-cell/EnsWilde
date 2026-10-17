@@ -13,6 +13,13 @@ struct MainViewWithNavigation: View {
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
+    private var hasEnabledTweaks: Bool {
+        toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || 
+        toolStore.disableSoundEnabled || walletStore.appleWalletEnabled || 
+        themeStore.passcodeThemeEnabled || featureFlagsStore.featureFlagsEnabled || 
+        toolStore.zPatchCustomEnabled
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -33,7 +40,7 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            if showApplyTab {
+            if showApplyTab && hasEnabledTweaks {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
@@ -42,6 +49,9 @@ struct MainViewWithNavigation: View {
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
+        .onChange(of: hasEnabledTweaks) { newValue in
+            if !newValue { selectedTab = .home } // Tự văng về Home nếu tắt hết
+        }
         .onAppear { applyTintColor() }
     }
     
@@ -83,7 +93,6 @@ struct ApplyTabView: View {
         return list
     }
 
-    // Lấy dòng log cuối cùng để hiển thị trong khung Status
     private var latestLog: String {
         return toolRunner.logs.last?.text ?? "Ready to apply."
     }
@@ -109,20 +118,19 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
+                // Sát lên
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 8, trailing: 16))
+                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
                 .listRowBackground(Color.clear)
 
-                // Khung Status - Chạy log realtime
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     HStack(spacing: 10) {
                         if isRunning {
-                            ProgressView()
-                                .tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
+                            ProgressView().tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
                         } else {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(toolRunner.state == .success ? .green : .secondary)
@@ -133,7 +141,6 @@ struct ApplyTabView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .animation(.easeInOut, value: latestLog) // Hiệu ứng chữ chạy mượt
                     }
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
@@ -158,13 +165,7 @@ struct ApplyTabView: View {
 
     private func performApply() {
         Task {
-            await toolRunner.applyAll(
-                isSystemReady: true,
-                store: toolStore,
-                walletStore: walletStore,
-                themeStore: themeStore,
-                featureFlagsStore: featureFlagsStore
-            )
+            await toolRunner.applyAll(isSystemReady: true, store: toolStore, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
 
             if case .success = toolRunner.state {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
