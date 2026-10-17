@@ -49,11 +49,11 @@ struct ContentView: View {
 
     @ViewBuilder
     private var statusSection: some View {
-        Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
+        Section(header: Text(L("section_status")).font(.headline).foregroundColor(.primary).textCase(nil)) {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("System Status").font(.body)
+                    Text(L("system_status")).font(.body)
                     Text("Ready - Bad_query").font(.footnote).foregroundStyle(.secondary)
                 }
             }.padding(.vertical, 4)
@@ -62,12 +62,11 @@ struct ContentView: View {
 
     @ViewBuilder
     private var tweaksSection: some View {
-        Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
+        Section(header: Text(L("section_tweaks")).font(.headline).foregroundColor(.primary).textCase(nil)) {
             toolNavigationLink(value: "MobileGestalt", title: L("tool_mobile_gestalt"), subtitle: L("tool_mobile_gestalt_desc"), icon: "cpu", isEnabled: toolStore.replaceMobileGestaltEnabled)
-            toolNavigationLink(value: "ConfigTweaks", title: "Config Tweaks", subtitle: "Custom Lock Screen Footnote", icon: "textformat", isEnabled: toolStore.configTweaksEnabled)
+            toolNavigationLink(value: "ConfigTweaks", title: L("tool_config_tweaks"), subtitle: L("tool_config_tweaks_desc"), icon: "textformat", isEnabled: toolStore.configTweaksEnabled)
             toolNavigationLink(value: "PasscodeTheme", title: L("tool_passcode_theme"), subtitle: L("tool_passcode_theme_desc"), icon: "lock.rectangle", isEnabled: themeStore.passcodeThemeEnabled)
             toolNavigationLink(value: "AppleWallet", title: L("tool_apple_wallet"), subtitle: L("tool_apple_wallet_desc"), icon: "wallet.pass", isEnabled: walletStore.appleWalletEnabled)
-            toolNavigationLink(value: "FeatureFlags", title: L("tool_feature_flags"), subtitle: L("tool_feature_flags_desc"), icon: "flag", isEnabled: featureFlagsStore.featureFlagsEnabled)
         }.listRowBackground(Color(.secondarySystemGroupedBackground))
     }
 
@@ -77,7 +76,6 @@ struct ContentView: View {
         else if route == "ConfigTweaks" { ConfigView(toolStore: toolStore) }
         else if route == "AppleWallet" { AppleWalletView(walletStore: walletStore) }
         else if route == "PasscodeTheme" { PasscodeThemeView(themeStore: themeStore) }
-        else if route == "FeatureFlags" { FeatureFlagsView(store: featureFlagsStore) }
     }
 
     @ViewBuilder
