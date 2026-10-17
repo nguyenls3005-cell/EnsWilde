@@ -9,8 +9,9 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
-    @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
-    @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
+    @AppStorage("ShowApplyTab") private varRunner
+    showApplyTab: Bool = false @
+   Obs @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
     var body: some View {
@@ -62,8 +63,7 @@ struct MainViewWithNavigation: View {
 
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
-    @ObservedObject var toolRunner: ToolRunner
-    @ObservedObject var walletStore: AppleWalletStore
+    @ObservedObject var toolRunner: ToolervedObject var walletStore: AppleWalletStore
     @ObservedObject var themeStore: PasscodeThemeStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
 
@@ -112,13 +112,13 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Chữ Neospring sát ngay dưới khung
+                // Chữ Neospring sát (Ép âm)
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .listRowInsets(EdgeInsets(top: -15, leading: 16, bottom: 0, trailing: 16)) // Kéo sát lên
+                .listRowInsets(EdgeInsets(top: -20, leading: 16, bottom: 0, trailing: 16)) 
                 .listRowBackground(Color.clear)
 
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
