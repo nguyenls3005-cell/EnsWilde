@@ -35,6 +35,12 @@ struct ConfigView: View {
         Form {
             Section(header: Text("Config Tweaks")) {
                 Toggle("Enable Tweak", isOn: $toolStore.configTweaksEnabled)
+                    .onChange(of: toolStore.configTweaksEnabled) { isEnabled in
+                        if !isEnabled {
+                            // Tắt toggle -> Ẩn tab Apply ngay lập tức
+                            UserDefaults.standard.set(false, forKey: "ShowApplyTab")
+                        }
+                    }
             }
 
             Section {
@@ -176,9 +182,11 @@ struct ConfigView: View {
         toolStore.configTweaksEnabled = true
         UserDefaults.standard.set(supervised, forKey: "ConfigSupervised")
         UserDefaults.standard.set(orgName, forKey: "ConfigOrgName")
+        
+        // Hiện tab Apply
         UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
-        saveAlertMessage = "Đã lưu. Tab Apply đã hiện ở dưới — chuyển sang để áp dụng."
+        saveAlertMessage = "Đã lưu. Chuyển sang tab Apply để áp dụng."
         showSaveAlert = true
     }
 
@@ -197,8 +205,11 @@ struct ConfigView: View {
             toolStore.configTweaksEnabled = false
             UserDefaults.standard.set(false, forKey: "ConfigSupervised")
             UserDefaults.standard.removeObject(forKey: "ConfigOrgName")
+            
+            // Hiện tab Apply
+            UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
-            saveAlertMessage = "Đã reset. Bấm Apply trong tab Apply để áp dụng vào hệ thống."
+            saveAlertMessage = "Đã reset. Chuyển sang tab Apply để áp dụng."
             showSaveAlert = true
         } catch {
             print("(cn) failed to reset config files: \(error.localizedDescription)")
