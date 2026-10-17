@@ -32,7 +32,6 @@
   
   "button_reset_pairing": "Reset Pairing",
   "button_select_pairing": "Import Pairing",
-  "button_mount_ddi": "Mount DDI",
   
   "backup_title": "MobileGestalt Backup",
   "backup_available": "Backup available",
@@ -49,7 +48,7 @@
   "settings_app_info": "App Info",
   "app_ios": "iOS",
   "app_device": "Device",
-  "app_info_footer": "iOS 27+: bad_query can modify lock screen text (swipe up text) and PosterBoard wallpaper. iOS 26: Airlift only (Wallet/Passcode).",
+  "app_info_footer": "iOS 27+: bad_query can modify lock screen text and PosterBoard wallpaper. iOS 26: Airlift only.",
   
   "settings_donate": "Donate",
   "settings_guide": "Guide",
@@ -66,43 +65,9 @@
   "respring_after_apply": "Respring after apply",
   "apply_enabled_tweaks": "Apply Enabled Tweaks",
   "applying": "Applying...",
-  "logs": "Logs",
-  "clear_uuid": "Clear UUID",
   
-  "alert_uuid_required": "UUID Required",
-  "alert_uuid_instruction": "Please open Books app and download a book to capture UUID. The app will automatically return and apply tweaks.",
   "alert_error": "Error",
   "alert_ok": "OK",
   "alert_cancel": "Cancel",
-  "msg_error_unknown": "Unknown error",
-  "msg_uuid_capture_failed": "Failed to capture UUID: {error}",
-  
-  "apply_no_tweaks_hint": "No tweaks enabled.",
-  "apply_enable_first": "Enable at least one tweak to apply.",
-  "apply_ready": pairing file on "Ready. {count} tweak(s) enabled.",
-  "apply_running": "Running {toolName}...",
-  "apply_done": "Done.",
-  "apply_failed": "Failed: {message}",
-  "section_options": "Options",
-  "section_actions": "Actions",
-  
-  "tool_disable_sound": "Disable Sound",
-  "tool_disable_sound_desc": "Disable call recording sound",
-  "tool_themes_ui": "Themes UI",
-  "tool_themes_ui_desc": "Photos & Liquid Glass themes",
-  "tool_feature_flags": "Feature Flags",
-  "tool_feature_flags_desc": "Enable hidden iOS features",
-  "tool_zpatch_custom": "zPatch Custom",
-  "tool_zpatch_custom_desc": "Custom patches",
-  
-  "alert_system_message": "System Message",
-  "error_pairing_invalid_appstorage": "Invalid pairing file in AppStorage.",
-  "error_pairing_invalid_disk": "Invalid disk.",
-  
-  "settings_permission": "Permission",
-  "ddi_not_mounted": "DDI Not Mounted",
-  "ddi_auto_mount_attempt": "Attempting to auto-mount DDI...",
-  "ddi_mount_personal_success": "Personal DDI mounted successfully.",
-  "heartbeat_not_running": "Heartbeat not running",
-  "heartbeat_enable_vpn": "Please enable LocalDevVPN"
+  "msg_error_unknown": "Unknown error"
 }
