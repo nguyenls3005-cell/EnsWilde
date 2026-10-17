@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import Network
 
 struct SettingsView: View {
+    @ObservedObject private var localizationManager = LocalizationManager.shared
     @AppStorage("PairingFile") private var pairingFile: String?
     @State private var showPairingFileImporter = false
     @State private var vpnActive: Bool = false
@@ -21,76 +22,69 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            // System Status
-            Section(header: Text("System Status")) {
+            Section(header: Text(L("system_status"))) {
                 HStack(spacing: 12) {
                     if pairingFile != nil && vpnActive {
                         Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
-                        Text("Ready").font(.body)
+                        Text(L("status_ready")).font(.body)
                     } else {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
-                        Text("Not Ready").font(.body)
+                        Image(systemName: "x:mark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
+                        Text(L("status_not_ready")).font(.body)
                     }
                 }.padding(.vertical, 4)
             }
 
-            // Connection Status
-            Section(header: Text("Connection Status")) {
-                statusRow(title: "Pairing File", subtitle: pairingFile != nil ? "Ready" : "Not Ready", ok: pairingFile != nil)
-                statusRow(title: "LocalDevVPN", subtitle: vpnActive ? "Ready" : "Not Ready", ok: vpnActive)
+            Section(header: Text(L("connection_status"))) {
+                statusRow(title L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
+                statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
             }
 
-            // Pairing
-            Section(header: Text("Pairing File")) {
+            Section(header: Text(L("pairing_file"))) {
                 if pairingFile != nil {
                     Button(role: .destructive) {
                         pairingFile = nil
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label: { Label("Reset Pairing", systemImage: "trash") }
+                    } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
                 } else {
-                    Button { showPairingFileImporter = true } label: { Label("Import Pairing", systemImage: "doc.badge.plus") }
+                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
                 }
             }
 
-            // MobileGestalt Backup (Y hệt ảnh 2)
-            Section(header: Text("MobileGestalt Backup")) {
+            Section(header: Text(L("backup_title"))) {
                 if hasBackup, let info = backupInfo {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
-                            Text("Backup có sẵn").font(.subheadline.bold())
+                            Text(L("backup_available")).font(.subheadline.bold())
                             Spacer()
                         }
-                        Text("Ngày tạo: \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                        Text("Kích thước: \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 4)
+                        Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+                        Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
+                    }.padding(.vertical, 4)
                 } else {
                     HStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Chưa có backup").font(.subheadline.bold())
-                            Text("Sẽ tự tạo khi bấm Save lần đầu").font(.caption).foregroundStyle(.secondary)
+                            Text(L("backup_none")).font(.subheadline.bold())
+                            Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
                         }
                     }.padding(.vertical, 4)
                 }
                 
-                Button { createBackupNow() } label: { Label("Backup ngay", systemImage: "square.and.arrow.down.on.square") }
-                Button { showBackupImporter = true } label: { Label("Import backup", systemImage: "square.and.arrow.down") }
+                Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
+                Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
                 if hasBackup {
-                    Button(role: .destructive) { deleteBackup() } label: { Label("Xoá backup", systemImage: "trash") }
+                    Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
                 }
             }
 
-            // Language
-            Section(header: Text("Language")) {
+            Section(header: Text(L("settings_language"))) {
                 NavigationLink(destination: LanguageSettingsView()) {
-                    Label("Language", systemImage: "globe")
+                    Label(L("settings_language"), systemImage: "globe")
                 }
             }
 
-            // Accent Color
-            Section(header: Text("Accent Color")) {
+            Section(header: Text(L("settings_accent_color"))) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(tintOptions, id: \.hex) { option in
@@ -100,13 +94,11 @@ struct SettingsView: View {
                 }
             }
 
-            // App Info
-            Section(header: Text("App Info")) {
+            Section(header: Text(L("settings_app_info"))) {
                 HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary) }
-                HStack { Label("iOS", systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
-                HStack { Label("Device", systemImage: "apps.iphone"); Spacer(); Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary) }
-                
-                Text("iOS 27+: bad_query có thể chỉnh chữ trên màn hình khoá (swipe up text) và PosterBoard wallpaper. iOS 26: chỉ Airlift (Wallet/Passcode).")
+                HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
+                HStack { Label(L("app_device"), systemImage: "apps.iphone"); Spacer(); Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary) }
+                Text(L("app_info_footer"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -213,7 +205,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ABOUT VIEW (Cập nhật text và link)
+// MARK: - ABOUT VIEW
 struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
@@ -222,7 +214,7 @@ struct AboutView: View {
             Section {
                 VStack(spacing: 12) {
                     Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
-                    Text("Thanks for using Enswilde, Rebuild with bad_query, If you love this app, you can support by donate to me.")
+                    Text(L("about_desc"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -230,7 +222,7 @@ struct AboutView: View {
                     Button {
                         if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
                     } label: {
-                        Text("Donate")
+                        Text(L("button_donate"))
                             .font(.headline.bold())
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
@@ -243,17 +235,17 @@ struct AboutView: View {
             
             Section {
                 Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
-                    Label("Group Tele YangJiii", systemImage: "safari")
+                    Label(L("about_group_yang"), systemImage: "safari")
                 }
                 Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) {
-                    Label("Group Tele LSNguyen", systemImage: "safari")
+                    Label(L("about_group_ls"), systemImage: "safari")
                 }
                 Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
-                    Label("Contact Me", systemImage: "paperplane.fill")
+                    Label(L("about_contact"), systemImage: "paperplane.fill")
                 }
             }
             
-            Section(header: Text("Thanks To")) {
+            Section(header: Text(L("settings_thanks_to"))) {
                 creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
                 creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
                 creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
@@ -264,14 +256,13 @@ struct AboutView: View {
                 creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
             }
             
-            // Translators Section
-            Section(header: Text("Translators")) {
+            Section(header: Text(L("settings_translators"))) {
                 ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
                     creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
                 }
             }
         }
-        .navigationTitle("About")
+        .navigationTitle(L("nav_about"))
         .onAppear {
             if languageManager.availableLanguages.isEmpty {
                 Task { await languageManager.fetchAvailableLanguages() }
