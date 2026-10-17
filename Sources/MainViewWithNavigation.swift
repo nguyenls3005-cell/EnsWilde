@@ -9,7 +9,6 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
-    // Cờ điều khiển hiển thị Tab Apply (Mặc định là false - ẩn)
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
@@ -34,7 +33,6 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            // Chỉ hiển thị Tab Apply nếu cờ showApplyTab == true
             if showApplyTab {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
@@ -45,10 +43,7 @@ struct MainViewWithNavigation: View {
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
         .onChange(of: showApplyTab) { isShowing in
-            // Nếu tab Apply bị ẩn đột ngột trong lúc đang đứng ở Tab Apply, tự động văng về Home
-            if !isShowing && selectedTab == .apply {
-                selectedTab = .home
-            }
+            if !isShowing && selectedTab == .apply { selectedTab = .home }
         }
         .onAppear { applyTintColor() }
     }
@@ -109,6 +104,7 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
+                // Khung Toggle
                 Section {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
                         Text("Respring after apply")
@@ -116,13 +112,13 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Chữ Using Neospring - Ép sát lên không có khoảng trắng
+                // Chữ Neospring sát ngay dưới khung
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowInsets(EdgeInsets(top: -15, leading: 16, bottom: 0, trailing: 16)) // Kéo sát lên
                 .listRowBackground(Color.clear)
 
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
