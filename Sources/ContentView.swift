@@ -1118,9 +1118,7 @@ struct ContentView: View {
         try RespringHelper.respring()
     }
 
-    private func getRunningProcesses() throws -> [Int32 : String?] {
-        try RespringHelper.getRunningProcesses()
-    }
+    // Đã xoá hàm getRunningProcesses() gây lỗi ở đây
 
     private struct RemoteVersion: Decodable {
         let version: String
