@@ -13,11 +13,6 @@ struct MainViewWithNavigation: View {
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
-    // Kiểm tra xem có ít nhất 1 Tweak đang bật không
-    private var isAnyTweakEnabled: Bool {
-        toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || toolStore.disableSoundEnabled || toolStore.themesUIEnabled || toolStore.zPatchCustomEnabled || walletStore.appleWalletEnabled || themeStore.passcodeThemeEnabled || featureFlagsStore.featureFlagsEnabled
-    }
-
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -38,8 +33,8 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            // Chỉ hiện khi ShowApplyTab = true VÀ có ít nhất 1 Tweak đang bật
-            if showApplyTab && isAnyTweakEnabled {
+            // Chỉ hiển thị khi ShowApplyTab = true (được bật bởi Save/Restore)
+            if showApplyTab {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
@@ -48,9 +43,8 @@ struct MainViewWithNavigation: View {
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
-        .onChange(of: isAnyTweakEnabled) { newValue in
-            // Nếu tắt hết tweak, tự văng về Home
-            if !newValue && selectedTab == .apply { selectedTab = .home }
+        .onChange(of: showApplyTab) { isShowing in
+            if !isShowing && selectedTab == .apply { selectedTab = .home }
         }
         .onAppear { applyTintColor() }
     }
@@ -67,7 +61,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW (Nằm ở đây)
+// MARK: - APPLY TAB VIEW
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -112,6 +106,7 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
+                // Toggle Respring
                 Section {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
                         Text("Respring after apply")
@@ -119,15 +114,15 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Ép sát chữ Neospring lên Toggle (âm 20)
+                // Khung riêng cho chữ Neospring
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .listRowInsets(EdgeInsets(top: -20, leading: 16, bottom: 0, trailing: 16))
-                .listRowBackground(Color.clear)
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
 
+                // Status
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     HStack(spacing: 10) {
                         if isRunning {
