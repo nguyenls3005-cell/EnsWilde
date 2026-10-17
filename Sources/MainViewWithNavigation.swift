@@ -30,7 +30,7 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.settings)
             
             NavigationStack { AboutView() }
-            .tabItem { Label("About", systemImage: "info.circle.fill") } // Đã sửa thành About
+            .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
             if showApplyTab {
@@ -106,7 +106,7 @@ struct ApplyTabView: View {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
                         Text("Respring after apply")
                     }
-                    Text("Using Neospring to Respring device") // Đưa ra dưới khung
+                    Text("Using Neospring to Respring device")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -133,7 +133,7 @@ struct ApplyTabView: View {
                     WalletStyleButton(
                         title: isRunning ? "Applying..." : L("apply_enabled_tweaks"),
                         isLoading: isRunning,
-                        disabled: enabledTweaks.isEmpty, // Đã bỏ disable khi đang chạy (nút không bị xám)
+                        disabled: isRunning || enabledTweaks.isEmpty, // Nút sẽ xám khi isRunning == true
                         action: performApply
                     )
                 }
