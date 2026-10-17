@@ -9,17 +9,11 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
+    // Cờ điều khiển hiển thị Tab Apply (Mặc định là false - ẩn)
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
-    private var hasEnabledTweaks: Bool {
-        toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || 
-        toolStore.disableSoundEnabled || walletStore.appleWalletEnabled || 
-        themeStore.passcodeThemeEnabled || featureFlagsStore.featureFlagsEnabled || 
-        toolStore.zPatchCustomEnabled
-    }
-
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -40,7 +34,8 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            if showApplyTab && hasEnabledTweaks {
+            // Chỉ hiển thị Tab Apply nếu cờ showApplyTab == true
+            if showApplyTab {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
@@ -49,8 +44,11 @@ struct MainViewWithNavigation: View {
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
-        .onChange(of: hasEnabledTweaks) { newValue in
-            if !newValue { selectedTab = .home } // Tự văng về Home nếu tắt hết
+        .onChange(of: showApplyTab) { isShowing in
+            // Nếu tab Apply bị ẩn đột ngột trong lúc đang đứng ở Tab Apply, tự động văng về Home
+            if !isShowing && selectedTab == .apply {
+                selectedTab = .home
+            }
         }
         .onAppear { applyTintColor() }
     }
@@ -118,13 +116,13 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // Sát lên
+                // Chữ Using Neospring - Ép sát lên không có khoảng trắng
                 Section {
                     Text("Using Neospring to Respring device")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 2, trailing: 16))
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .listRowBackground(Color.clear)
 
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
