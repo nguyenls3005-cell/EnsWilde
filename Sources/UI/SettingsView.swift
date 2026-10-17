@@ -208,9 +208,12 @@ struct SettingsView: View {
             let data = try Data(contentsOf: URL(fileURLWithPath: onDevicePath))
             let info = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
             refreshBackupInfo()
-            backupAlertMessage = "Đã tạo backup."
+            backupAlertMessage = "Đã tạo backup (\(info.byteCount) bytes)."
             showBackupAlert = true
-        } catch { showBackupAlert = true }
+        } catch {
+            backupAlertMessage = "Backup failed: \(error.localizedDescription)"
+            showBackupAlert = true
+        }
     }
 
     private func handleBackupImport(_ result: Result<URL, Error>) {
@@ -250,14 +253,160 @@ struct SettingsView: View {
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
-        Circle()
-            .fill(color)
-            .frame(width: 36, height: 36)
-            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
-            .onTapGesture {
+        VStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 36, height: 36)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
+                .overlay(
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .opacity(isSelected ? 1 : 0)
+                )
+            Text(option.name)
+                .font(.caption2)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+        }
+        .frame(width: 60)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? color.opacity(0.15) : Color.clear)
+        )
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
                 userTintColorHex = option.hex
+                let uiColor = UIColor(Color(hex: option.hex))
+                UITabBar.appearance().tintColor = uiColor
+                UINavigationBar.appearance().tintColor = uiColor
+                for scene in UIApplication.shared.connectedScenes {
+                    guard let windowScene = scene as? UIWindowScene else { continue }
+                    for window in windowScene.windows { window.tintColor = uiColor }
+                }
             }
+        }
     }
 
     private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+}
+
+// MARK: - About View
+struct AboutView: View {
+    @ObservedObject private var localizationManager = LocalizationManager.shared
+    @ObservedObject private var languageManager = LanguageManager.shared
+    private let contactURL = URL(string: "https://x.com/duongduong0908")!
+
+    var body: some View {
+        Form {
+            donateSection
+            feedbackSection
+            creditsSection
+            translatorsSection
+        }
+        .headerProminence(.increased)
+        .navigationTitle(L("nav_about"))
+        .onAppear {
+            if languageManager.availableLanguages.isEmpty {
+                Task { await languageManager.fetchAvailableLanguages() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var donateSection: some View {
+        Section {
+            VStack(spacing: 12) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(.pink)
+                    .frame(maxWidth: .infinity)
+
+                Text("Thank you for using EnsWilde! This is a passion project dedicated to providing the best experience for you.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Text("If you enjoy the app, please consider buying me a coffee ☕️ to fuel my late-night coding sessions. Every contribution is greatly appreciated!")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button {
+                    if let url = URL(string: "https://ko-fi.com/yangjiii") {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Text(L("settings_donate"))
+                        .font(.headline.bold())
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(AppTheme.accent)
+                        .foregroundColor(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 8)
+        }
+    }
+
+    @ViewBuilder
+    private var feedbackSection: some View {
+        Section {
+            Button(action: {
+                if let url = URL(string: "https://github.com/YangJiiii/EnsWilde") {
+                    UIApplication.shared.open(url)
+                }
+            }) {
+                Label(L("settings_guide"), systemImage: "safari")
+            }
+            Button(action: { UIApplication.shared.open(contactURL) }) {
+                Label(L("settings_contact"), systemImage: "paperplane.fill")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var creditsSection: some View {
+        Section(header: Text(L("settings_thanks_to"))) {
+            creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
+            creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
+            creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
+            creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+            creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
+            creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+            creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+            creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
+        }
+    }
+
+    @ViewBuilder
+    private var translatorsSection: some View {
+        Section(header: Text(L("settings_translators"))) {
+            ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
+                creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary.opacity(0.5))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(desc)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
+    }
 }
