@@ -62,8 +62,6 @@ class ThemeStoreManager: ObservableObject {
     @Published var downloadingThemes: Set<String> = []
     @Published var selectedRepository: ThemeRepository?
     
-    private let indexURL = URL(string: "https://raw.githubusercontent.com/YangJiiii/EnsWilde/refs/heads/main/themes-store/index.json")!
-    
     func fetchRepositories() async {
         isLoading = true
         errorMessage = nil
