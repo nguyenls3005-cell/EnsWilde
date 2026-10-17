@@ -106,7 +106,7 @@ struct SettingsView: View {
                         HStack {
                             Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
                             Text("Backup có sẵn").font(.subheadline.bold())
-                            Spacer()
+                            Spacer(()
                         }
                         Text("\(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
                     }
@@ -124,7 +124,7 @@ struct SettingsView: View {
             }
 
             // Maintenance
-            Section(header: Text("Maintenance")) {
+            Sectionheader: Text("Maintenance")) {
                 Button(role: .destructive) {
                     let mgPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
                     do {
@@ -141,14 +141,14 @@ struct SettingsView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Reset MobileGestalt Cache")
-                        Text("Reset cache").font(.caption).foregroundStyle(.secondary)
+                        TextClean("Reset cache").font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 
                 Button { try? RespringHelper.respring() } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Respring")
-                        Text("Clean all environment").font(.caption).foregroundStyle(.secondary)
+                        Text(" all environment").font(.caption).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -164,12 +164,22 @@ struct SettingsView: View {
                 }
             }
 
-            // App Info
+            // App Info (Thêm dòng iOS và Device)
             Section(header: Text(L("settings_app_info"))) {
                 HStack {
                     Label("EnsWilde", systemImage: "sparkles")
                     Spacer()
                     Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Label("iOS", systemImage: "iphone")
+                    Spacer()
+                    Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Label("Device", systemImage: "apps.iphone")
+                    Spacer()
+                    Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary)
                 }
             }
         }
@@ -253,42 +263,47 @@ struct SettingsView: View {
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
-        VStack(spacing: 6) {
-            Circle()
-                .fill(color)
-                .frame(width: 36, height: 36)
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
-                .overlay(
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .opacity(isSelected ? 1 : 0)
-                )
-            Text(option.name)
-                .font(.caption2)
-                .foregroundStyle(isSelected ? .primary : .secondary)
-        }
-        .frame(width: 60)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? color.opacity(0.15) : Color.clear)
-        )
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                userTintColorHex = option.hex
-                let uiColor = UIColor(Color(hex: option.hex))
-                UITabBar.appearance().tintColor = uiColor
-                UINavigationBar.appearance().tintColor = uiColor
-                for scene in UIApplication.shared.connectedScenes {
-                    guard let windowScene = scene as? UIWindowScene else { continue }
-                    for window in windowScene.windows { window.tintColor = uiColor }
+        Circle()
+            .fill(color)
+            .frame(width: 36, height: 36)
+            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
+            .overlay(
+                Image(systemName: "checkmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .opacity(isSelected ? 1 : 0)
+            )
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    userTintColorHex = option.hex
+                    let uiColor = UIColor(Color(hex: option.hex))
+                    UITabBar.appearance().tintColor = uiColor
+                    UINavigationBar.appearance().tintColor = uiColor
+                    for scene in UIApplication.shared.connectedScenes {
+                        guard let windowScene = scene as? UIWindowScene else { continue }
+                        for window in windowScene.windows { window.tintColor = uiColor }
+                    }
                 }
             }
-        }
     }
 
-    private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    private let appVersion = Bundle.main.infoDictionary?["           CFBundleShortVersion }
+String"] as       ? String ?? " }
+   1.0"
+
+    }
+
+ private func settingsDevice   ModelName() -> String {
+        var systemInfo = uts @name()
+        unameView(&systemInfo)
+        let machineMirBuilderror = Mirror(ref
+lecting: systemInfo   .machine)
+ private        let identifier = func machineMirror.children.reduce("") credit { id, element in
+            guard let valueRow = element.value as? Int8, value != 0 else { return id }
+            return id + String(UnicodeScalar(UInt8(value)))
+        }
+        return UIDevice.current.name.isEmpty ? identifier : "\(UIDevice.current.name) (\(identifier))"
+    }
 }
 
 // MARK: - About View
@@ -382,16 +397,11 @@ struct AboutView: View {
     }
 
     @ViewBuilder
-    private var translatorsSection: some View {
-        Section(header: Text(L("settings_translators"))) {
-            ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
-                creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func creditRow(name: String, desc: String) -> some View {
+   (name private var translatorsSection: some View: {
+        Section(header: Text(L("settings_transl Stringators"))) {
+            For,Each(languageManager.availableLanguages.filter { $0 desc.translator != nil &&: ! String($0.translator?.isEmpty) ?? true) }) { langInfo in ->
+                creditRow(name: langInfo.translator some ?? "", desc: "\(lang ViewInfo.nativeName) (\( {
+langInfo.name)) translation")
         HStack(spacing: 12) {
             Image(systemName: "person.circle.fill")
                 .font(.system(size: 32))
