@@ -2,16 +2,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-// MARK: - Main ContentView
-
 struct ContentView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
-    
     @State private var path = NavigationPath()
-    @State private var showErrorAlert = false
-    @State private var lastError: String?
     
-    // Tools
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
     @ObservedObject var walletStore: AppleWalletStore
@@ -53,30 +47,32 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Body Sections
-
+    // MARK: - System Status (Giao diện y hệt ảnh gốc)
     @ViewBuilder
     private var statusSection: some View {
-        Section(header: Text(L("section_status"))) {
+        Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 20))
+                    .font(.system(size: 22))
                     .foregroundStyle(.green)
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("system_status"))
+                    Text("System Status")
                         .font(.body)
                     Text("Ready - Bad_query")
-                        .font(.body) // Cỡ chữ y hệt như cũ, màu trắng tự động
+                        .font(.footnote) // Cỡ chữ nhỏ màu xám y hệt ảnh
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 4)
         }
+        .listRowBackground(Color(.secondarySystemGroupedBackground))
     }
 
+    // MARK: - Tweaks
     @ViewBuilder
     private var tweaksSection: some View {
-        Section(header: Text(L("section_tweaks"))) {
+        Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
             toolNavigationLink(
                 value: "MobileGestalt",
                 title: L("tool_mobile_gestalt"),
@@ -109,9 +105,8 @@ struct ContentView: View {
                 isEnabled: toolStore.zPatchCustomEnabled
             )
         }
+        .listRowBackground(Color(.secondarySystemGroupedBackground))
     }
-
-    // MARK: - Navigation Destination
 
     @ViewBuilder
     private func destinationView(for route: String) -> some View {
@@ -125,8 +120,6 @@ struct ContentView: View {
             zPatchCustomView()
         }
     }
-
-    // MARK: - Tool Navigation Link
 
     @ViewBuilder
     private func toolNavigationLink(value: String, title: String, subtitle: String, icon: String, isEnabled: Bool) -> some View {
