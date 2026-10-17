@@ -13,7 +13,6 @@ struct MainViewWithNavigation: View {
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
-    // Theo dõi xem có Tweak nào đang bật không để ẩn/hiện tab Apply
     private var isAnyTweakEnabled: Bool {
         toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || 
         toolStore.disableSoundEnabled || walletStore.appleWalletEnabled || 
@@ -40,22 +39,20 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            // Tab Apply chỉ hiện khi đã Save/Restore (showApplyTab == true) VÀ đang bật ít nhất 1 tweak
             if showApplyTab && isAnyTweakEnabled {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
-intColor() }
             }
-           }
+        }
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
-        // Nếu đang ở tab Apply mà tắt hết tweak thì tự văng về Home
         .onChange(of: isAnyTweakEnabled) { newValue in
             if !newValue && selectedTab == .apply { selectedTab = .home }
         }
-        .onAppear { applyT }
+        .onAppear { applyTintColor() }
+    } // <-- ĐÃ ĐÓNG NGOẶC Ở ĐÂY
     
     private func applyTintColor() {
         let uiColor = UIColor(Color(hex: userTintColorHex))
