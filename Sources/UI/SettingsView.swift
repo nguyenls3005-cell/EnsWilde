@@ -3,6 +3,11 @@ import UIKit
 import UniformTypeIdentifiers
 import Network
 
+// Hàm dịch toàn cục cho file này
+private func L(_ key: String) -> String {
+    return LocalizationManager.shared.localizedString(forKey: key)
+}
+
 struct SettingsView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @AppStorage("PairingFile") private var pairingFile: String?
@@ -10,7 +15,6 @@ struct SettingsView: View {
     @State private var vpnActive: Bool = false
     @State private var monitor: NWPathMonitor?
     
-    // Backup
     @State private var showBackupImporter = false
     @State private var hasBackup: Bool = false
     @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
@@ -44,9 +48,9 @@ struct SettingsView: View {
                     Button(role: .destructive) {
                         pairingFile = nil
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
+                    } label Color(:hex { Label(L("button_reset:_pairing"), systemImage: " optiontrash") }
                 } else {
-                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
+                   . Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
                 }
             }
 
@@ -125,7 +129,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
-        let color = Color(hex: option.hex)
+        let color =hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
         Circle()
             .fill(color)
@@ -205,7 +209,6 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ABOUT VIEW
 struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
@@ -246,14 +249,14 @@ struct AboutView: View {
             }
             
             Section(header: Text(L("settings_thanks_to"))) {
-                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
-                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
-                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
-                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
-                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
-                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
-                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
-                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
+                creditRow(name: "@YangJiii", desc: L("developed_enswilde"))
+                creditRow(name: "@LSNguyen", desc: L("rebuild_enswilde"))
+                creditRow(name: "@skadz108 & @rooootdev", desc: L("neospring_method"))
+                creditRow(name: "@Sidestore team", desc: L("get_pairing_file"))
+                creditRow(name: "@0xjohnnydev", desc: L("developed_airlift"))
+                creditRow(name: "@forcequit", desc: L("developed_badquery"))
+                creditRow(name: "@jailbreakdotparty", desc: L("source_changing_mg"))
+                creditRow(name: "@mak5er", desc: L("dev_aircard"))
             }
             
             Section(header: Text(L("settings_translators"))) {
