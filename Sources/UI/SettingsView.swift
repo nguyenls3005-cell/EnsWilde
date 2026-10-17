@@ -34,13 +34,215 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            systemStatusSection
-            pairingSection
-            backupSection
-            languageSection
-            colorSection
-            maintenanceSection // Khung Reset
-            appInfoSection
+            // Khung System Status tổng (Ready / Not Ready)
+            Section(header: Text("System Status")) {
+                HStack(spacing: 12) {
+                    if pairingFile != nil && vpnActive {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.green)
+                        Text("Ready")
+                            .font(.body)
+                    } else {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(.red)
+                        Text("Not Ready")
+                            .font(.body)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            // Khung chi tiết từng mục
+            Section(header: Text("Connection Status")) {
+                statusRow(
+                    title: "Pairing File",
+                    subtitle: pairingFile != nil ? "Ready" : "Not Ready",
+                    ok: pairingFile != nil
+                )
+                statusRow(
+                    title: "LocalDevVPN",
+                    subtitle: vpnActive ? "Ready" : "Not Ready",
+                    ok: vpnActive
+                )
+            }
+
+            // Import Pairing
+            Section(header: Text("Pairing File")) {
+                if pairingFile != nil {
+                    Button(role: .destructive) {
+                        pairingFile = nil
+                        let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+                        try? FileManager.default.removeItem(at: pairingPath)
+                    } label: {
+                        Label("Reset Pairing", systemImage: "trash")
+                    }
+                } else {
+                    Button {
+                        showPairingFileImporter = true
+                    } label: {
+                        Label("Import Pairing", systemImage: "doc.badge.plus")
+                    }
+                }
+
+                Button {
+                    refreshVPNStatus(showAlert: true)
+                } label: {
+                    HStack {
+                        Label("Check LocalDevVPN", systemImage: "wifi")
+                        Spacer()
+                        if vpnActive {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+            }
+
+            // Backup
+            Section(header: Text("MobileGestalt Backup")) {
+                if hasBackup, let info = backupInfo {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Image(systemName: "checkmark.shield.fill")
+                                .foregroundStyle(.green)
+                            Text("Backup có sẵn")
+                                .font(.subheadline.bold())
+                            Spacer()
+                        }
+                        HStack {
+                            Text("Ngày tạo:")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(info.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("Kích thước:")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("\(info.byteCount) bytes")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Chưa có backup")
+                                .font(.subheadline.bold())
+                            Text("Sẽ tự tạo khi bấm Save lần đầu, hoặc bấm Backup ngay")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Button {
+                    createBackupNow()
+                } label: {
+                    Label("Backup ngay", systemImage: "square.and.arrow.down.on.square")
+                }
+
+                Button {
+                    showBackupImporter = true
+                } label: {
+                    Label("Import backup", systemImage: "square.and.arrow.down")
+                }
+
+                if hasBackup {
+                    Button(role: .destructive) {
+                        deleteBackup()
+                    } label: {
+                        Label("Xoá backup", systemImage: "trash")
+                    }
+                }
+            }
+
+            // Maintenance
+            Section(header: Text("Maintenance")) {
+                Button(role: .destructive) {
+                    let mgPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
+                    do {
+                        let access = bq.grantAccess(atPath: mgPath)
+                        if access.0 {
+                            try FileManager.default.removeItem(atPath: mgPath)
+                            Alertinator.shared.alert(title: "Success", body: "MobileGestalt cache cleared. Please respring to apply changes cleanly.")
+                        } else {
+                            Alertinator.shared.alert(title: "Error", body: "Failed to grant access to clear cache.")
+                        }
+                    } catch {
+                        Alertinator.shared.alert(title: "Error", body: "Failed to clear cache: \(error.localizedDescription)")
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Reset MobileGestalt Cache")
+                        Text("Reset cache")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Button {
+                    try? RespringHelper.respring()
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Respring")
+                        Text("Clean all environment")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            // Language
+            Section(header: Text(L("settings_language"))) {
+                NavigationLink(destination: LanguageSettingsView()) {
+                    Label(L("settings_language"), systemImage: "globe")
+                }
+            }
+
+            // Color
+            Section(header: Text(L("settings_accent_color"))) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(tintOptions, id: \.hex) { option in
+                            colorOptionView(option: option)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            }
+
+            // App Info
+            Section(header: Text(L("settings_app_info"))) {
+                HStack {
+                    Label("EnsWilde_query", systemImage: "sparkles")
+                    Spacer()
+                    Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Label("iOS", systemImage: "iphone")
+                    Spacer()
+                    Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Label("Device", systemImage: "apps.iphone")
+                    Spacer()
+                    Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary)
+                }
+                Text("iOS 27+: bad có thể chỉnh chữ trên màn hình khoá (swipe up text) và PosterBoard wallpaper. iOS 26: chỉ Airlift (Wallet/Passcode).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
         }
         .headerProminence(.increased)
         .navigationTitle(L("nav_settings"))
@@ -55,6 +257,7 @@ struct SettingsView: View {
             isPresented: $showPairingFileImporter,
             allowedContentTypes: [
                 .propertyList,
+                UTType(filenameExtension: "mobiledevicepairing", conformingTo: .data) ?? .data,
                 UTType(filenameExtension: "plist", conformingTo: .data) ?? .data
             ]
         ) { result in
@@ -91,179 +294,18 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Maintenance Section (Mới thêm)
-    @ViewBuilder
-    private var maintenanceSection: some View {
-        Section(header: Text("Maintenance")) {
-            Button(role: .destructive) {
-                // Xoá file cache MobileGestalt
-                let mgPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
-                do {
-                    let access = bq.grantAccess(atPath: mgPath)
-                    if access.0 {
-                        try FileManager.default.removeItem(atPath: mgPath)
-                        Alertinator.shared.alert(title: "Success", body: "MobileGestalt cache cleared. Please respring to apply changes cleanly.")
-                    } else {
-                        Alertinator.shared.alert(title: "Error", body: "Failed to grant access to clear cache.")
-                    }
-                } catch {
-                    Alertinator.shared.alert(title: "Error", body: "Failed to clear cache: \(error.localizedDescription)")
-                }
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Reset MobileGestalt Cache")
-                    Text("Reset cache")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            
-            Button {
-                // Gọi hàm Respring
-                try? RespringHelper.respring()
-            } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Respring")
-                    Text("Clean all environment")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    // MARK: - System Status
-    @ViewBuilder
-    private var systemStatusSection: some View {
-        Section(header: Text(L("system_status") + " (For Passcode, Wallet)")) {
-            statusRow(
-                title: L("status_pairing_file"),
-                subtitle: pairingFile != nil ? L("status_pairing_loaded") : L("status_pairing_missing"),
-                ok: pairingFile != nil
-            )
-            statusRow(
-                title: "LocalDevVPN",
-                subtitle: vpnActive ? "Connected" : "Not connected",
-                ok: vpnActive
-            )
-        }
-    }
-
     @ViewBuilder
     private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
         HStack {
             Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(ok ? .primary : .primary)
             Spacer()
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ok ? .green : .red)
         }
     }
 
-    // MARK: - Pairing Section
-    @ViewBuilder
-    private var pairingSection: some View {
-        Section(header: Text(L("status_pairing_file"))) {
-            if pairingFile != nil {
-                Button(role: .destructive) {
-                    pairingFile = nil
-                    let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
-                    try? FileManager.default.removeItem(at: pairingPath)
-                } label: {
-                    Label(L("button_reset_pairing"), systemImage: "trash")
-                }
-            } else {
-                Button {
-                    showPairingFileImporter = true
-                } label: {
-                    Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
-                }
-            }
-
-            Button {
-                refreshVPNStatus(showAlert: true)
-            } label: {
-                HStack {
-                    Label("Check LocalDevVPN", systemImage: "wifi")
-                    Spacer()
-                    if vpnActive {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Backup Section
-    @ViewBuilder
-    private var backupSection: some View {
-        Section(header: Text("MobileGestalt Backup")) {
-            if hasBackup, let info = backupInfo {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Image(systemName: "checkmark.shield.fill")
-                            .foregroundStyle(.green)
-                        Text("Backup có sẵn")
-                            .font(.subheadline.bold())
-                        Spacer()
-                    }
-                    HStack {
-                        Text("Ngày tạo:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(info.createdAt.formatted(date: .abbreviated, time: .shortened))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("Kích thước:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("\(info.byteCount) bytes")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 4)
-            } else {
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Chưa có backup")
-                            .font(.subheadline.bold())
-                        Text("Sẽ tự tạo khi bấm Save lần đầu, hoặc bấm Backup ngay")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 4)
-            }
-
-            Button {
-                createBackupNow()
-            } label: {
-                Label("Backup ngay", systemImage: "square.and.arrow.down.on.square")
-            }
-
-            Button {
-                showBackupImporter = true
-            } label: {
-                Label("Import backup", systemImage: "square.and.arrow.down")
-            }
-
-            if hasBackup {
-                Button(role: .destructive) {
-                    deleteBackup()
-                } label: {
-                    Label("Xoá backup", systemImage: "trash")
-                }
-            }
-        }
-    }
-
-    // MARK: - Backup Handlers
     private func refreshBackupInfo() {
         hasBackup = MobileGestaltBackupManager.shared.hasBackup
         backupInfo = MobileGestaltBackupManager.shared.info
@@ -274,11 +316,8 @@ struct SettingsView: View {
             let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
             let onDeviceURL = URL(fileURLWithPath: onDevicePath)
             let data = try Data(contentsOf: onDeviceURL)
-
             let info = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
-
             refreshBackupInfo()
-
             backupAlertMessage = "Đã tạo backup (\(info.byteCount) bytes). SHA256: \(info.sha256.prefix(16))..."
             showBackupAlert = true
         } catch {
@@ -292,27 +331,21 @@ struct SettingsView: View {
         case .success(let url):
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-
             do {
                 let data = try Data(contentsOf: url)
-
                 guard (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil else {
                     backupAlertMessage = "File không phải plist hợp lệ."
                     showBackupAlert = true
                     return
                 }
-
                 try MobileGestaltBackupManager.shared.importBackup(from: data)
-
                 refreshBackupInfo()
-
                 backupAlertMessage = "Đã import backup (\(data.count) bytes)."
                 showBackupAlert = true
             } catch {
                 backupAlertMessage = "Import failed: \(error.localizedDescription)"
                 showBackupAlert = true
             }
-
         case .failure(let error):
             backupAlertMessage = "Chọn file thất bại: \(error.localizedDescription)"
             showBackupAlert = true
@@ -331,16 +364,13 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Pairing Import Handler
     private func handlePairingImport(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-
             do {
                 let data = try Data(contentsOf: url)
-
                 do {
                     let parsed = try RPPairingParser.parse(data)
                     print("[Pairing] Parsed OK. identifier=\(parsed.identifier)")
@@ -353,60 +383,27 @@ struct SettingsView: View {
                     showPairingErrorAlert = true
                     return
                 }
-
                 let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
                 try data.write(to: pairingPath)
-
                 pairingFile = url.lastPathComponent
-
                 pairingImportSuccess = "Đã import pairing: \(url.lastPathComponent)\nKích thước: \(data.count) bytes"
                 showPairingSuccessAlert = true
-
             } catch {
                 pairingImportError = "Đọc file thất bại: \(error.localizedDescription)"
                 showPairingErrorAlert = true
             }
-
         case .failure(let error):
             pairingImportError = "Chọn file thất bại: \(error.localizedDescription)"
             showPairingErrorAlert = true
         }
     }
 
-    // MARK: - VPN Check
     private func refreshVPNStatus(showAlert: Bool = false) {
         NetworkStatus.checkVPNStatus { active in
             self.vpnActive = active
-
             if showAlert && !active {
                 self.showVPNAlert = true
             }
-        }
-    }
-
-    // MARK: - Language
-    @ViewBuilder
-    private var languageSection: some View {
-        Section(header: Text(L("settings_language"))) {
-            NavigationLink(destination: LanguageSettingsView()) {
-                Label(L("settings_language"), systemImage: "globe")
-            }
-        }
-    }
-
-    // MARK: - Color
-    @ViewBuilder
-    private var colorSection: some View {
-        Section(header: Text(L("settings_accent_color"))) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(tintOptions, id: \.hex) { option in
-                        colorOptionView(option: option)
-                    }
-                }
-                .padding(.vertical, 8)
-            }
-            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         }
     }
 
@@ -449,33 +446,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - App Info
     private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-
-    @ViewBuilder
-    private var appInfoSection: some View {
-        Section(header: Text(L("settings_app_info"))) {
-            HStack {
-                Label("EnsWilde", systemImage: "sparkles")
-                Spacer()
-                Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary)
-            }
-            HStack {
-                Label("iOS", systemImage: "iphone")
-                Spacer()
-                Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary)
-            }
-            HStack {
-                Label("Device", systemImage: "apps.iphone")
-                Spacer()
-                Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary)
-            }
-            Text("iOS 27+: bad_query có thể chỉnh chữ trên màn hình khoá (swipe up text) và PosterBoard wallpaper. iOS 26: chỉ Airlift (Wallet/Passcode).")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-        }
-    }
 
     private func settingsDeviceModelName() -> String {
         var systemInfo = utsname()
