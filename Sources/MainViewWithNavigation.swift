@@ -1,7 +1,6 @@
 import SwiftUI
 import UserNotifications
 
-// MARK: - Main View with Navigation
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
@@ -17,15 +16,12 @@ struct MainViewWithNavigation: View {
     @State private var showApplySheet = false
     @State private var showStatusSheet = false
     
-    // Cờ quyết định ẩn/hiện Tab Apply (Mặc định ẩn)
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
-    
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
     var body: some View {
         TabView(selection: $selectedTab) {
-            // 1. HOME TAB
             NavigationStack {
                 ContentView(
                     themeStore: themeStore,
@@ -45,28 +41,24 @@ struct MainViewWithNavigation: View {
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
             
-            // 2. THEME STORE
             NavigationStack {
                 ThemeStoreView(themeStore: themeStore)
             }
             .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
             
-            // 3. SETTINGS
             NavigationStack {
                 SettingsView()
             }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
             
-            // 4. ABOUT
             NavigationStack {
                 AboutView()
             }
             .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            // 5. APPLY TAB (Chỉ hiện khi cờ ShowApplyTab == true)
             if showApplyTab {
                 ApplyTabView(
                     toolStore: toolStore,
@@ -100,7 +92,6 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - Apply Tab View (Đúng giao diện ảnh)
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -109,7 +100,6 @@ struct ApplyTabView: View {
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
     var isSystemReady: Bool
 
-    @State private var showUUIDAlert = false
     @State private var showErrorAlert = false
     @State private var lastError: String?
 
@@ -121,6 +111,7 @@ struct ApplyTabView: View {
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
+        if toolStore.configTweaksEnabled { list.append(("Config Tweaks", "slider.horizontal.3")) }
         if toolStore.disableSoundEnabled { list.append((L("tool_disable_sound"), "speaker.slash")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
@@ -135,15 +126,10 @@ struct ApplyTabView: View {
             Form {
                 Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     if enabledTweaks.isEmpty {
-                        Text("No tweaks enabled.")
-                            .foregroundStyle(.secondary)
+                        Text("No tweaks enabled.").foregroundStyle(.secondary)
                     } else {
                         ForEach(enabledTweaks, id: \.0) { tweak in
-                            Label {
-                                Text(tweak.0)
-                            } icon: {
-                                Image(systemName: tweak.1).foregroundStyle(.tint)
-                            }
+                            Label { Text(tweak.0) } icon: { Image(systemName: tweak.1).foregroundStyle(.tint) }
                         }
                     }
                 }
@@ -168,20 +154,12 @@ struct ApplyTabView: View {
                 if !toolRunner.logs.isEmpty {
                     Section(header: Text("Log").font(.headline)) {
                         ForEach(toolRunner.logs, id: \.text) { log in
-                            Text(log.text)
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                            Text(log.text).font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
                         }
                     }
                 }
             }
             .navigationTitle(L("nav_apply"))
-        }
-        .alert(L("alert_uuid_required"), isPresented: $showUUIDAlert) {
-            Button(L("alert_cancel"), role: .cancel) { }
-            Button(L("alert_ok")) { captureUUID() }
-        } message: {
-            Text(L("alert_uuid_instruction"))
         }
         .alert(L("alert_error"), isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
@@ -192,11 +170,7 @@ struct ApplyTabView: View {
 
     private func performApply() {
         Task {
-            if toolStore.bookassetdUUID == nil || toolStore.bookassetdUUID?.isEmpty == true {
-                showUUIDAlert = true
-                return
-            }
-
+            // Chạy trực tiếp, không check UUID
             await toolRunner.applyAll(
                 isSystemReady: isSystemReady,
                 store: toolStore,
@@ -206,7 +180,7 @@ struct ApplyTabView: View {
             )
 
             if case .success = toolRunner.state {
-                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                try? await Task.sleep(nanoseconds: 3_000_000_000) // Chờ 3s cho log chạy xong
                 if toolStore.soundRespringEnabled {
                     try? RespringHelper.respring()
                 } else {
@@ -218,22 +192,6 @@ struct ApplyTabView: View {
 
             if case .failed(let message) = toolRunner.state {
                 lastError = message
-                showErrorAlert = true
-            }
-        }
-    }
-
-    private func captureUUID() {
-        LSApplicationWorkspaceDefaultWorkspace().openApplication(withBundleID: "com.apple.iBooks")
-        Task {
-            do {
-                let uuid = try await BookassetdUUIDHelper.captureUUID(
-                    timeout: 120, openBooksFirst: false, returnToAppAfterCapture: true
-                )
-                toolStore.bookassetdUUID = uuid
-                performApply()
-            } catch {
-                lastError = L("msg_uuid_capture_failed").replacingOccurrences(of: "{error}", with: error.localizedDescription)
                 showErrorAlert = true
             }
         }
