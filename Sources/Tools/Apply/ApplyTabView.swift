@@ -36,7 +36,7 @@ struct ApplyTabView: View {
                 Section {
                     Button {
                         Task {
-                            await runApply()
+                            await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
                         }
                     } label: {
                         Text("Apply Enabled Tweaks")
@@ -65,11 +65,5 @@ struct ApplyTabView: View {
             .navigationTitle("Apply")
             .navigationBarTitleDisplayMode(.large)
         }
-    }
-
-    private func runApply() async {
-        await toolRunner.applyAll(store: toolStore, themeStore: themeStore)
-        
-        // TODO: Gọi hàm respring nếu RespringHelper có hỗ trợ
     }
 }
