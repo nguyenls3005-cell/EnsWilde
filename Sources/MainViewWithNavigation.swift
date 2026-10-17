@@ -16,13 +16,7 @@ struct MainViewWithNavigation: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
-                ContentView(
-                    themeStore: themeStore,
-                    toolStore: toolStore,
-                    toolRunner: toolRunner,
-                    walletStore: walletStore,
-                    featureFlagsStore: featureFlagsStore
-                )
+                ContentView(themeStore: themeStore, toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, featureFlagsStore: featureFlagsStore)
             }
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
@@ -36,17 +30,11 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.settings)
             
             NavigationStack { AboutView() }
-            .tabItem { Label("nav_about", systemImage: "info.circle.fill") }
+            .tabItem { Label("About", systemImage: "info.circle.fill") } // Đã sửa thành About
             .tag(NavigationTab.about)
             
             if showApplyTab {
-                ApplyTabView(
-                    toolStore: toolStore,
-                    toolRunner: toolRunner,
-                    walletStore: walletStore,
-                    themeStore: themeStore,
-                    featureFlagsStore: featureFlagsStore
-                )
+                ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
             }
@@ -63,9 +51,7 @@ struct MainViewWithNavigation: View {
         UINavigationBar.appearance().tintColor = uiColor
         for scene in UIApplication.shared.connectedScenes {
             guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows {
-                window.tintColor = uiColor
-            }
+            for window in windowScene.windows { window.tintColor = uiColor }
         }
         tintRefreshID = UUID()
     }
@@ -86,7 +72,6 @@ struct ApplyTabView: View {
         return false
     }
 
-    // Chỉ hiển thị những tweak đang được BẬT
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
@@ -106,7 +91,6 @@ struct ApplyTabView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // 1. Hiển thị Tweaks đang bật
                 Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     if enabledTweaks.isEmpty {
                         Text("No tweaks enabled.").foregroundStyle(.secondary)
@@ -118,20 +102,16 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // 2. Toggle Respring
                 Section {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Respring after apply")
-                            Text("Using Neospring to Respring device")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Respring after apply")
                     }
+                    Text("Using Neospring to Respring device") // Đưa ra dưới khung
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // 3. Khung Status (hiện Log)
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     HStack(spacing: 10) {
                         if isRunning {
@@ -149,12 +129,11 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // 4. Nút Apply
                 Section {
                     WalletStyleButton(
                         title: isRunning ? "Applying..." : L("apply_enabled_tweaks"),
                         isLoading: isRunning,
-                        disabled: isRunning || enabledTweaks.isEmpty,
+                        disabled: enabledTweaks.isEmpty, // Đã bỏ disable khi đang chạy (nút không bị xám)
                         action: performApply
                     )
                 }
