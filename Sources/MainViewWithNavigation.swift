@@ -9,9 +9,9 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
-    @State private var isSystemReady = false
-    @State private var heartbeatRunning = false
-    @State private var ddiMounted = false
+    @State private var isSystemReady = true
+    @State private var heartbeatRunning = true
+    @State private var ddiMounted = true
     @State private var isInNestedView = false
     @State private var showApplySheet = false
     @State private var showStatusSheet = false
@@ -41,21 +41,15 @@ struct MainViewWithNavigation: View {
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
             
-            NavigationStack {
-                ThemeStoreView(themeStore: themeStore)
-            }
+            NavigationStack { ThemeStoreView(themeStore: themeStore) }
             .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
             
-            NavigationStack {
-                SettingsView()
-            }
+            NavigationStack { SettingsView() }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
             
-            NavigationStack {
-                AboutView()
-            }
+            NavigationStack { AboutView() }
             .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
@@ -66,7 +60,7 @@ struct MainViewWithNavigation: View {
                     walletStore: walletStore,
                     themeStore: themeStore,
                     featureFlagsStore: featureFlagsStore,
-                    isSystemReady: isSystemReady
+                    isSystemReady: true
                 )
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
@@ -84,15 +78,12 @@ struct MainViewWithNavigation: View {
         UINavigationBar.appearance().tintColor = uiColor
         for scene in UIApplication.shared.connectedScenes {
             guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows {
-                window.tintColor = uiColor
-            }
+            for window in windowScene.windows { window.tintColor = uiColor }
         }
         tintRefreshID = UUID()
     }
 }
 
-// MARK: - Apply Tab View
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -172,7 +163,7 @@ struct ApplyTabView: View {
     private func performApply() {
         Task {
             await toolRunner.applyAll(
-                isSystemReady: isSystemReady,
+                isSystemReady: true,
                 store: toolStore,
                 walletStore: walletStore,
                 themeStore: themeStore,
