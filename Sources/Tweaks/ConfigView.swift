@@ -6,14 +6,9 @@ enum CNURL {
 }
 
 enum CNMsg {
-    static var supWarning = """
-    ⚠️ CẢNH BÁO SUPERVISION
-
-    • Nếu thiết bị đã được MDM quản lý → ĐỪNG bật toggle này!
-    • Sau khi respring có thể thấy màn hình setup ban đầu.
-    • Dùng với rủi ro của bạn. Hãy backup trước.
-    """
-    static var resetInfo = "Bấm Confirm → footnote bị xoá và thiết bị sẽ không còn supervised."
+    // Đã sửa thành Key để dịch bảng cảnh báo
+    static var supWarning = "supervision_warning_message"
+    static var resetInfo = "reset_tweaks_info"
 }
 
 struct ConfigView: View {
@@ -33,10 +28,9 @@ struct ConfigView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("Config Tweaks")) {
-                Toggle("Enable Tweak", isOn: $toolStore.configTweaksEnabled)
+            Section(header: Text(L("config_tweaks_title"))) {
+                Toggle(L("enable_tweak"), isOn: $toolStore.configTweaksEnabled)
                     .onChange(of: toolStore.configTweaksEnabled) { isEnabled in
-                        // TẮT toggle -> Tự động ẩn Tab Apply ngay lập tức
                         if !isEnabled {
                             UserDefaults.standard.set(false, forKey: "ShowApplyTab")
                         }
@@ -59,7 +53,7 @@ struct ConfigView: View {
                     .padding(.horizontal, 35)
 
                     VStack(spacing: 6) {
-                        Text(footnoteText.isEmpty ? "Swipe up to open" : footnoteText)
+                        Text(footnoteText.isEmpty ? L("swipe_up_to_open") : footnoteText)
                             .font(.system(size: 10))
                             .foregroundStyle(.white)
                         Capsule().frame(width: 145, height: 4).foregroundStyle(.white)
@@ -78,24 +72,24 @@ struct ConfigView: View {
                     }
                 )
 
-                TextField("Custom Footnote", text: $footnoteText)
+                TextField(L("custom_footnote"), text: $footnoteText)
                     .onChange(of: footnoteText) { newValue in
                         toolStore.configFootnoteText = newValue
                     }
             } header: {
-                HeaderLabel("Lock Screen Footnote", symbol: "textformat")
+                HeaderLabel(L("lock_screen_footnote"), symbol: "textformat")
             }
 
             Section {
-                Toggle("Enable Supervision", isOn: $supervised)
+                Toggle(L("enable_supervision"), isOn: $supervised)
                     .onChange(of: supervised) { newValue in
                         if newValue { showSupervisionWarning = true }
                     }
                 if supervised {
-                    TextField("Organization Name", text: $orgName)
+                    TextField(L("organization_name"), text: $orgName)
                 }
             } header: {
-                HeaderLabel("Supervision", symbol: "eye")
+                HeaderLabel(L("supervision_title"), symbol: "eye")
             }
 
             Section {
@@ -104,41 +98,41 @@ struct ConfigView: View {
                 } label: {
                     HStack {
                         Image(systemName: "square.and.arrow.down.fill")
-                        Text("Apply Save Changes").font(.headline)
+                        Text(L("apply_save_changes")).font(.headline)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 4)
                 }
 
                 Button(role: .destructive) {
                     Alertinator.shared.alert(
-                        title: "Reset your tweaks?",
-                        body: CNMsg.resetInfo,
-                        actionLabel: "Confirm",
+                        title: L("reset_tweaks_title"),
+                        body: L("reset_tweaks_info"),
+                        actionLabel: L("confirm"),
                         action: { reset() }
                     )
                 } label: {
                     HStack {
                         Image(systemName: "arrow.counterclockwise")
-                        Text("Restore Save Changes").font(.headline)
+                        Text(L("restore_save_changes")).font(.headline)
                     }
                     .frame(maxWidth: .infinity).padding(.vertical, 4)
                 }
             }
         }
         .headerProminence(.increased)
-        .navigationTitle("Config Tweaks")
+        .navigationTitle(L("config_tweaks_title"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             doSetup()
             footnoteText = toolStore.configFootnoteText
         }
-        .alert("Supervision Warning!", isPresented: $showSupervisionWarning) {
-            Button("Cancel", role: .cancel) { supervised = false }
-            Button("I Understand", role: .destructive) {}
+        .alert(L("supervision_warning_title"), isPresented: $showSupervisionWarning) {
+            Button(L("cancel"), role: .cancel) { supervised = false }
+            Button(L("i_understand"), role: .destructive) {}
         } message: {
-            Text(CNMsg.supWarning)
+            Text(L(CNMsg.supWarning))
         }
-        .alert("Saved", isPresented: $showSaveAlert) {
+        .alert(L("saved"), isPresented: $showSaveAlert) {
             Button("OK") {}
         } message: {
             Text(saveAlertMessage)
@@ -149,7 +143,7 @@ struct ConfigView: View {
         if !fm.isWritableFile(atPath: CNURL.sharedDevConfig.path) {
             let res = bq.grantAccess(atPath: FSURL.configProfiles.path)
             if !res.0 {
-                Alertinator.shared.alert(title: "Failed to get write access!", body: AppMsg.opFailed)
+                Alertinator.shared.alert(title: L("failed_write_access"), body: L("op_failed"))
                 return
             }
         }
@@ -183,10 +177,9 @@ struct ConfigView: View {
         UserDefaults.standard.set(supervised, forKey: "ConfigSupervised")
         UserDefaults.standard.set(orgName, forKey: "ConfigOrgName")
         
-        // HIỆN Tab Apply
         UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
-        saveAlertMessage = "Đã lưu. Chuyển sang tab Apply để áp dụng."
+        saveAlertMessage = L("saved_apply_hint")
         showSaveAlert = true
     }
 
@@ -206,14 +199,13 @@ struct ConfigView: View {
             UserDefaults.standard.set(false, forKey: "ConfigSupervised")
             UserDefaults.standard.removeObject(forKey: "ConfigOrgName")
             
-            // HIỆN Tab Apply
             UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
-            saveAlertMessage = "Đã reset. Chuyển sang tab Apply để áp dụng."
+            saveAlertMessage = L("reset_apply_hint")
             showSaveAlert = true
         } catch {
             print("(cn) failed to reset config files: \(error.localizedDescription)")
-            Alertinator.shared.alert(title: "Failed to reset tweaks!", body: AppMsg.opFailed)
+            Alertinator.shared.alert(title: L("failed_reset"), body: L("op_failed"))
         }
     }
 }
