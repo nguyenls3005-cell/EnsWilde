@@ -7,18 +7,18 @@ final class ToolRunner: ObservableObject {
     @Published var state: ToolRunState = .idle
     @Published var logs: [ToolRunLogLine] = []
 
-    func resetLogs() { logs.removeAll() }
+    func resetLogs() {
+        logs.removeAll()
+    }
+
+    // Hàm log có thêm delay để chạy từ từ
     func log(_ s: String) {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
+        Thread.sleep(forTimeInterval: 0.6) // Delay 0.6s mỗi dòng
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
-        guard isSystemReady else {
-            state = .failed(message: "System not ready.")
-            return
-        }
-
         let hasMobileGestalt = store.replaceMobileGestaltEnabled
         let hasConfigTweaks = store.configTweaksEnabled
 
@@ -31,7 +31,7 @@ final class ToolRunner: ObservableObject {
         var names: [String] = []
         if hasMobileGestalt { names.append("MobileGestalt") }
         if hasConfigTweaks { names.append("Config Tweaks") }
-        log("Apply started. Enabled: \(names.joined(separator: ", "))")
+        log("Apply started...")
 
         do {
             if hasMobileGestalt {
@@ -44,6 +44,7 @@ final class ToolRunner: ObservableObject {
                 }
                 let mgData = try Data(contentsOf: modMGURL)
                 let targetPath = MobileGestaltApplyTask.onDeviceMGPath
+                
                 log("Writing MobileGestalt via bad_query...")
                 try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
                 log("✓ MobileGestalt written.")
