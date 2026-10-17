@@ -44,7 +44,7 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.themeStore)
             
             NavigationStack {
-                SettingsView() // <-- Đã bỏ tham số
+                SettingsView()
             }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
@@ -182,7 +182,7 @@ struct ApplyTabView: View {
             Button(role: .destructive) {
                 toolStore.bookassetdUUID = nil
             } label: {
-                Label(L("clear_uuid"), systemImage: "xmark.c case .success =ircle tool")
+                Label(L("clear_uuid"), systemImage: "xmark.circle")
             }
             .disabled(toolStore.bookassetdUUID == nil || toolStore.bookassetdUUID?.isEmpty == true)
         }
@@ -256,7 +256,7 @@ struct ApplyTabView: View {
                 featureFlagsStore: featureFlagsStore
             )
 
-            ifRunner.state {
+            if case .success = toolRunner.state {
                 sendLocalNotification(title: "EnsWilde", body: L("apply_done"))
                 try? await Task.sleep(nanoseconds: 8_000_000_000)
                 if toolStore.soundRespringEnabled {
