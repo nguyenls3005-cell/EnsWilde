@@ -32,16 +32,6 @@ struct MainViewWithNavigation: View {
             .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
 
-            if showApplyTab {
-                ApplyTabView(
-                    toolStore: toolStore,
-                    toolRunner: toolRunner,
-                    themeStore: themeStore
-                )
-                .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
-                .tag(NavigationTab.apply)
-            }
-
             NavigationStack {
                 SettingsView()
             }
@@ -53,6 +43,16 @@ struct MainViewWithNavigation: View {
             }
             .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
+
+            if showApplyTab {
+                ApplyTabView(
+                    toolStore: toolStore,
+                    toolRunner: toolRunner,
+                    themeStore: themeStore
+                )
+                .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
+                .tag(NavigationTab.apply)
+            }
         }
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
