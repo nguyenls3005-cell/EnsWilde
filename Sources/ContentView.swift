@@ -60,18 +60,17 @@ struct ContentView: View {
         Section(header: Text(L("section_status"))) {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 24))
+                    .font(.system(size: 20))
                     .foregroundStyle(.green)
                 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(L("system_status"))
-                        .font(.headline)
+                        .font(.body)
                     Text("Ready - Bad_query")
-                        .font(.system(size: 15, weight: .medium)) // To hơn 1 xíu, nằm cùng hàng
-                        .foregroundStyle(.green)
+                        .font(.body) // Cỡ chữ y hệt như cũ, màu trắng tự động
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
         }
     }
 
@@ -87,14 +86,6 @@ struct ContentView: View {
             )
 
             toolNavigationLink(
-                value: "ThemesUI",
-                title: L("tool_themes_ui"),
-                subtitle: L("tool_themes_ui_desc"),
-                icon: "paintbrush",
-                isEnabled: toolStore.themesUIEnabled
-            )
-
-            toolNavigationLink(
                 value: "PasscodeTheme",
                 title: L("tool_passcode_theme"),
                 subtitle: L("tool_passcode_theme_desc"),
@@ -103,27 +94,11 @@ struct ContentView: View {
             )
 
             toolNavigationLink(
-                value: "DisableSound",
-                title: L("tool_disable_sound"),
-                subtitle: L("tool_disable_sound_desc"),
-                icon: "speaker.slash",
-                isEnabled: toolStore.disableSoundEnabled
-            )
-
-            toolNavigationLink(
                 value: "AppleWallet",
                 title: L("tool_apple_wallet"),
                 subtitle: L("tool_apple_wallet_desc"),
                 icon: "wallet.pass",
                 isEnabled: walletStore.appleWalletEnabled
-            )
-
-            toolNavigationLink(
-                value: "FeatureFlags",
-                title: L("tool_feature_flags"),
-                subtitle: L("tool_feature_flags_desc"),
-                icon: "flag",
-                isEnabled: featureFlagsStore.featureFlagsEnabled
             )
 
             toolNavigationLink(
@@ -140,20 +115,14 @@ struct ContentView: View {
 
     @ViewBuilder
     private func destinationView(for route: String) -> some View {
-        if route == "DisableSound" {
-            DisableSoundView()
-        } else if route == "MobileGestalt" {
+        if route == "MobileGestalt" {
             MobileGestaltView(toolStore: toolStore)
         } else if route == "AppleWallet" {
             AppleWalletView(walletStore: walletStore)
         } else if route == "PasscodeTheme" {
             PasscodeThemeView(themeStore: themeStore)
-        } else if route == "ThemesUI" {
-            ThemesUIView(toolStore: toolStore)
         } else if route == "zPatchCustom" {
             zPatchCustomView()
-        } else if route == "FeatureFlags" {
-            FeatureFlagsView(store: featureFlagsStore)
         }
     }
 
