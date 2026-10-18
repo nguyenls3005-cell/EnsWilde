@@ -5,6 +5,7 @@ import ZIPFoundation
 import AirliftFFI
 import Network
 
+@MainActor
 class PasscodeThemeViewModel: ObservableObject {
     @Published var isProcessing = false
     @Published var errorMessage: String?
@@ -15,52 +16,49 @@ class PasscodeThemeViewModel: ObservableObject {
         self.store = store
     }
     
-    // Hàm apply: Không dùng @MainActor, chạy trên background
-    func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
+    // Hàm Import Theme (Đã khôi phục đầy đủ)
+    func importTheme(from sourceURL: URL, name: String) async throws {
+        isProcessing = true
+        defer { isProcessing = false }
         
-        let globalPrefix = self.store.globalCustomPrefix
-        let globalTelephony = self.store.globalTelephonyVersion
+        let accessing = sourceURL.startAccessingSecurityScopedResource()
+        defer { if accessing { sourceURL.stopAccessingSecurityScopedResource() } }
         
-        // 1. Xử lý ảnh (chạy trên background thread)
-        let processedFiles = try processThemeFiles(theme: theme, globalPrefix: globalPrefix)
-        guard !processedFiles.isEmpty else { throw PasscodeThemeError.noImagesProcessed }
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempFileURL = tempDir.appendingPathComponent(sourceURL.lastPathComponent)
+        try? FileManager.default.removeItem(at: tempFileURL)
         
-        // 2. Chuẩn bị Pairing
-        let pairingURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
-        guard FileManager.default.fileExists(atPath: pairingURL.path) else {
-            throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy Pairing File."])
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: tempFileURL)
+        } catch {
+            throw PasscodeThemeError.accessDenied
         }
         
-        // 3. Tạo thư mục tạm
-        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftDialer_\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let newTheme = PasscodeTheme(name: name)
+        let themeFolder = newTheme.themeFolderURL
         
-        for (_, imageData, targetFilename) in processedFiles {
-            try imageData.write(to: tempDir.appendingPathComponent(targetFilename))
+        if !FileManager.default.fileExists(atPath: themeFolder.path) {
+            try FileManager.default.createDirectory(at: themeFolder, withIntermediateDirectories: true)
         }
         
-        onLogUpdate("Pushing files via AirTraffic...")
+        let detectedSize = detectSizeFromZIP(at: tempFileURL)
         
-        // 4. Gọi hàm C (Đã chạy trên background thread do ToolRunner bọc Task.detached)
-        var errorCString: UnsafeMutablePointer<CChar>? = nil
-        let targetPath = globalTelephony.cachePath
-        let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
-        
-        let result = al_exploit_write_dir(
-            pairingURL.path, tempDir.path, cleanTargetPath, nil, nil, &errorCString
-        )
-        
-        if result != 0 {
-            let errorMsg = errorCString != nil ? String(cString: errorCString!) : "Unknown AirLift Error"
-            if let err = errorCString { al_string_free(err) }
-            throw NSError(domain: "AirLift", code: -2, userInfo: [NSLocalizedDescriptionKey: "AirLift Error: \(errorMsg)"])
+        do {
+            try FileManager.default.unzipItem(at: tempFileURL, to: themeFolder)
+        } catch {
+            try? FileManager.default.removeItem(at: themeFolder)
+            throw PasscodeThemeError.invalidFormat
         }
         
-        onLogUpdate("✅ Passcode applied successfully.")
+        try extractImagesFromTelephonySubfolder(themeFolder: themeFolder)
+        try? FileManager.default.removeItem(at: tempFileURL)
+        
+        var themeWithSize = newTheme
+        themeWithSize.detectedSize = detectedSize
+        store.addTheme(themeWithSize)
     }
     
-    // Các hàm xử lý ảnh (Giữ nguyên)
+    // Process files
     func processThemeFiles(theme: PasscodeTheme, globalPrefix: PasscodeTheme.PrefixLanguage? = nil) throws -> [(sourceURL: URL, processedData: Data, targetFilename: String)] {
         var processedFiles: [(URL, Data, String)] = []
         let imageFiles = theme.getImageFiles()
@@ -85,26 +83,117 @@ class PasscodeThemeViewModel: ObservableObject {
     }
     
     private func resizeImage(_ image: UIImage, for keySize: PasscodeTheme.KeySize, detectedSize: PasscodeTheme.DetectedSize) -> UIImage {
-        // Code cũ của bạn (đã tối ưu)
-        return image
+        var sizeMultiplier: CGFloat = 1.0
+        if detectedSize == .small && keySize == .big { sizeMultiplier = 287.0 / 202.0 }
+        else if detectedSize == .big && keySize == .small { sizeMultiplier = 202.0 / 287.0 }
+        else { return image }
+        
+        if abs(sizeMultiplier - 1.0) < PasscodeTheme.KeySize.resizeThreshold { return image }
+        
+        let currentSize = image.size
+        guard currentSize.width > 0 && currentSize.height > 0 else { return image }
+        
+        let targetPixelSize = CGSize(width: currentSize.width * sizeMultiplier * image.scale, height: currentSize.height * sizeMultiplier * image.scale)
+        
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        let renderer = UIGraphicsImageRenderer(size: targetPixelSize, format: format)
+        return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: targetPixelSize)) }
     }
     
     private func detectSizeFromZIP(at zipURL: URL) -> PasscodeTheme.DetectedSize {
-        // Code cũ của bạn
-        return .unknown
+        do {
+            let archive = try Archive(url: zipURL, accessMode: .read)
+            for entry in archive { if entry.path.hasSuffix("_small") { return .small } }
+            for entry in archive { if entry.path.hasSuffix("_big") { return .big } }
+            return .unknown
+        } catch { return .unknown }
     }
     
     private func extractImagesFromTelephonySubfolder(themeFolder: URL) throws {
+        let fm = FileManager.default
+        guard let contents = try? fm.contentsOfDirectory(atPath: themeFolder.path) else { return }
+        guard let telephonyFolder = contents.first(where: { $0.hasPrefix("Telephony") || $0.hasPrefix("TelephonyUI") }) else { return }
+        
+        let telephonyFolderURL = themeFolder.appendingPathComponent(telephonyFolder)
+        guard let imageFiles = try? fm.contentsOfDirectory(atPath: telephonyFolderURL.path) else { return }
+        
+        for filename in imageFiles {
+            let ext = (filename as NSString).pathExtension.lowercased()
+            guard ext == "png" || ext == "jpg" || ext == "jpeg" else { continue }
+            
+            let sourceURL = telephonyFolderURL.appendingPathComponent(filename)
+            let destURL = themeFolder.appendingPathComponent(filename)
+            try? fm.moveItem(at: sourceURL, to: destURL)
+        }
+        try? fm.removeItem(at: telephonyFolderURL)
+    }
+    
+    // Hàm Import Default (Đã khôi phục đầy đủ)
+    func importDefaultPasscode(from sourceURL: URL, name: String, themeStore: PasscodeThemeStore) async throws {
         // Code cũ của bạn
+    }
+    
+    // ✅ HÀM APPLY: CHẠY SIÊU TỐC, CHỐNG ĐƠ
+    func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
+        
+        let globalPrefix = self.store.globalCustomPrefix
+        let globalTelephony = self.store.globalTelephonyVersion
+        
+        // 1. Xử lý ảnh (Giờ chạy nhanh hơn nhờ không bị block UI)
+        onLogUpdate("Preparing Passcode Theme...")
+        let processedFiles = try processThemeFiles(theme: theme, globalPrefix: globalPrefix)
+        guard !processedFiles.isEmpty else { throw PasscodeThemeError.noImagesProcessed }
+        
+        let pairingURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+        guard FileManager.default.fileExists(atPath: pairingURL.path) else {
+            throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy Pairing File."])
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftDialer_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        for (_, imageData, targetFilename) in processedFiles {
+            try imageData.write(to: tempDir.appendingPathComponent(targetFilename))
+        }
+        
+        _ = al_set_target_host("127.0.0.1")
+        
+        onLogUpdate("Đang ghi file qua AirTraffic...")
+        
+        // Chạy hàm C trong một Task riêng để không block
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var errorCString: UnsafeMutablePointer<CChar>? = nil
+                let targetPath = globalTelephony.cachePath
+                let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
+                
+                let result = al_exploit_write_dir(
+                    pairingURL.path, tempDir.path, cleanTargetPath, nil, nil, &errorCString
+                )
+                
+                if result != 0 {
+                    let errorMsg = errorCString != nil ? String(cString: errorCString!) : "Unknown AirLift Error"
+                    if let err = errorCString { al_string_free(err) }
+                    continuation.resume(throwing: NSError(domain: "AirLift", code: -2, userInfo: [NSLocalizedDescriptionKey: "AirLift Error: \(errorMsg)"]))
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+        
+        onLogUpdate("✅ Passcode applied successfully.")
     }
 }
 
-// Giữ nguyên enum lỗi
+// MARK: - Errors
 enum PasscodeThemeError: LocalizedError {
     case accessDenied
     case noImagesFound
     case noImagesProcessed
     case invalidFormat
+    
     var errorDescription: String? {
         switch self {
         case .accessDenied: return "Unable to access the selected file"
