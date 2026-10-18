@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import Network
 
 struct SettingsView: View {
+    @ObservedObject var toolStore: ToolStore
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @AppStorage("PairingFile") private var pairingFile: String?
     @State private var showPairingFileImporter = false
@@ -13,7 +14,7 @@ struct SettingsView: View {
     @State private var showBackupImporter = false
     @State private var hasBackup: Bool = false
     @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
-    
+
     @State private var isCleaning = false
     @State private var showCleanAlert = false
     @State private var cleanAlertMessage = ""
@@ -47,49 +48,37 @@ struct SettingsView: View {
                     Button(role: .destructive) {
                         pairingFile = nil
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label: {
-                        Label(L("button_reset_pairing"), systemImage: "trash")
-                    }
+                    } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
                 } else {
-                    Button {
-                        showPairingFileImporter = true
-                    } label: {
-                        Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
-                    }
+                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
                 }
             }
 
-            // MARK: - DỌN DẸP MÔI TRƯỜNG
+            // MARK: - ENVIRONMENT CLEANUP
             Section(header: Text("Environment Cleanup"), footer: Text("Clean MobileGestalt cache to ensure tweaks apply correctly.")) {
                 if isCleaning {
-                    HStack {
-                        ProgressView()
-                        Text("Cleaning...").padding(.leading, 8)
-                    }
+                    HStack { ProgressView(); Text("Cleaning...").padding(.leading, 8) }
                 } else {
                     Button {
                         clearMobileGestaltCache()
                     } label: {
-                        Label("Clear MobileGestalt cache", systemImage: "trash.slash")
-                            .foregroundColor(.orange)
+                        Label("Clear MobileGestalt cache", systemImage: "trash.slash").foregroundColor(.orange)
                     }
                     
                     Button {
                         killApps()
                     } label: {
-                        Label("Kill App (Rerun)", systemImage: "xmark.app")
-                            .foregroundColor(.red)
+                        Label("Kill App (Rerun)", systemImage: "xmark.app").foregroundColor(.red)
                     }
                     
                     Button {
                         respringClean()
                     } label: {
-                        Label("Respring (Clean Environment)", systemImage: "arrow.triangle.2.circlepath")
-                            .foregroundColor(.blue)
+                        Label("Respring (Clean Environment)", systemImage: "arrow.triangle.2.circlepath").foregroundColor(.blue)
                     }
                 }
             }
-            
+
             Section(header: Text(L("backup_title"))) {
                 if hasBackup, let info = backupInfo {
                     VStack(alignment: .leading, spacing: 6) {
@@ -111,16 +100,10 @@ struct SettingsView: View {
                     }.padding(.vertical, 4)
                 }
                 
-                Button { createBackupNow() } label: {
-                    Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square")
-                }
-                Button { showBackupImporter = true } label: {
-                    Label(L("backup_import"), systemImage: "square.and.arrow.down")
-                }
+                Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
+                Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
                 if hasBackup {
-                    Button(role: .destructive) { deleteBackup() } label: {
-                        Label(L("backup_delete"), systemImage: "trash")
-                    }
+                    Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
                 }
             }
 
@@ -165,15 +148,14 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - LOGIC DỌN DẸP
+    // MARK: - LOGIC DỌN DẸP (Erosion)
     private func clearMobileGestaltCache() {
         isCleaning = true
         DispatchQueue.global(qos: .userInitiated).async {
-            let mgPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
+            let mgPath = MGURL.fsGestaltURL.path
             let mgURL = URL(fileURLWithPath: mgPath)
             
-            let bq = BadQuery()
-            let res = bq.grantAccess(atPath: mgURL.deletingLastPathComponent().path, toFileName: mgURL.lastPathComponent)
+            let res = BadQuery().grantAccess(atPath: mgURL.deletingLastPathComponent().path, toFileName: mgURL.lastPathComponent)
             
             var success = false
             if res.0 {
@@ -181,9 +163,8 @@ struct SettingsView: View {
                     if FileManager.default.fileExists(atPath: mgPath) {
                         try FileManager.default.removeItem(at: mgURL)
                     }
-                    let backupURL = MGURL.savedGestaltURL
-                    if FileManager.default.fileExists(atPath: backupURL.path) {
-                        try FileManager.default.removeItem(at: backupURL)
+                    if FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) {
+                        try FileManager.default.removeItem(at: MGURL.savedGestaltURL)
                     }
                     success = true
                 } catch {
@@ -193,7 +174,7 @@ struct SettingsView: View {
             
             DispatchQueue.main.async {
                 self.isCleaning = false
-                self.cleanAlertMessage = success ? "MobileGestalt cache cleared successfully!" : "Failed to clear cache."
+                self.cleanAlertMessage = success ? "Đã xóa cache MobileGestalt thành công!" : "Không thể xóa cache."
                 self.showCleanAlert = true
             }
         }
@@ -202,9 +183,7 @@ struct SettingsView: View {
     private func killApps() {
         isCleaning = true
         DispatchQueue.global(qos: .userInitiated).async {
-            let command = "killall -9 MobileGestaltHelper SpringBoard backboardd"
-            print("Executing command: \(command)")
-            
+            print("Killing apps...")
             DispatchQueue.main.async {
                 self.isCleaning = false
                 self.cleanAlertMessage = "Apps killed. MobileGestalt will rerun."
@@ -261,7 +240,7 @@ struct SettingsView: View {
 
     private func createBackupNow() {
         do {
-            let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
+            let onDevicePath = MGURL.fsGestaltURL.path
             let data = try Data(contentsOf: URL(fileURLWithPath: onDevicePath))
             let _ = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
             refreshBackupInfo()
@@ -305,5 +284,82 @@ struct SettingsView: View {
             return id + String(UnicodeScalar(UInt8(value)))
         }
         return "\(UIDevice.current.model) (\(identifier))"
+    }
+}
+
+// MARK: - ABOUT VIEW (ĐÃ KHÔI PHỤC)
+struct AboutView: View {
+    @ObservedObject private var languageManager = LanguageManager.shared
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
+                    Text(L("about_desc"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                       (L .multilineTextAlignment(.center)
+                    
+                    Button {
+                        if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
+                    } label: {
+                        Text(L("button_donate"))
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(AppTheme.accent)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }.buttonStyle(.plain)
+                }
+            }
+            
+            Section {
+                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_group_yang"), systemImage: "safari")
+                }
+                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_group_ls"), systemImage: "safari")
+                }
+                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_contact"), systemImage: "paperplane.fill")
+                }
+            }
+            
+            Section(header: Text("settings_thanks_to"))) {
+                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
+                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
+                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
+                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
+                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
+            }
+            
+            Section(header: Text(L("settings_translators"))) {
+                ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
+                    creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
+                }
+            }
+        }
+        .navigationTitle(L("nav_about"))
+        .onAppear {
+            if languageManager.availableLanguages.isEmpty {
+                Task { await languageManager.fetchAvailableLanguages() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.subheadline).fontWeight(.semibold)
+                Text(desc).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
