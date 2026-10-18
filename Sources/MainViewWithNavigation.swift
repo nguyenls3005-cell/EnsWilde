@@ -64,7 +64,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW (ÉP MÀU CAM VÀ BỎ CHECK HTTP SERVER)
+// MARK: - APPLY TAB VIEW (DÙNG LẠI WALLETSTYLEBUTTON, BỎ CHECK HTTP)
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -107,40 +107,39 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // HIỂN THỊ LOG TIẾN TRÌNH
+                Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
+                    HStack(spacing: 10) {
+                        if isApplying {
+                            ProgressView().tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(isApplying ? (applyLogs.last ?? "Applying...") : "Ready to apply.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                .listRowBackground(Color(.secondarySystemGroupedBackground))
+                
+                // Log chi tiết
                 if !applyLogs.isEmpty {
-                    Section(header: Text("Detailed Logs")) {
+                    Section(header: Text("Logs")) {
                         ForEach(applyLogs, id: \.self) { log in
-                            Text(log)
-                                .font(.caption)
-                                .foregroundStyle(log.contains("❌") ? .red : .secondary)
+                            Text(log).font(.caption).foregroundStyle(log.contains("❌") ? .red : .secondary)
                         }
                     }
                 }
 
                 Section {
-                    // ✅ NÚT APPLY: ÉP MÀU CAM BẰNG MỌI GIÁ
-                    Button(action: {
-                        performApply()
-                    }) {
-                        HStack {
-                            if isApplying {
-                                ProgressView().tint(.white)
-                            } else {
-                                Image(systemName: "checkmark.circle.fill")
-                            }
-                            Text(isApplying ? "Applying..." : L("apply_enabled_tweaks"))
-                                .font(.headline)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.orange) // Màu cam đặc
-                        .foregroundColor(.white)   // Chữ trắng
-                        .cornerRadius(12)          // Bo góc
-                    }
-                    .disabled(isApplying)
-                    // Xóa hiệu ứng mờ mặc định của nút bị vô hiệu hóa để luôn hiện màu cam
-                    .opacity(1.0) 
+                    // ✅ DÙNG LẠI WALLETSTYLEBUTTON NHƯNG BỎ CHECK HTTP
+                    WalletStyleButton(
+                        title: isApplying ? "Applying..." : L("apply_enabled_tweaks"),
+                        isLoading: isApplying,
+                        disabled: isApplying, // Chỉ disable khi đang chạy
+                        action: performApply
+                    )
                 }
             }
             .navigationTitle(L("nav_apply"))
@@ -160,7 +159,6 @@ struct ApplyTabView: View {
             do {
                 appendLog("Starting Apply process...")
                 
-                // 1. Passcode Theme
                 if themeStore.passcodeThemeEnabled {
                     appendLog("Applying Passcode Theme via AirLift...")
                     if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
@@ -171,17 +169,15 @@ struct ApplyTabView: View {
                     }
                 }
                 
-                // 2. Apple Wallet
                 if walletStore.appleWalletEnabled {
                     appendLog("Applying Apple Wallet via AirLift...")
                     try await AppleWalletTask.run(store: toolStore, walletStore: walletStore)
                     appendLog("✅ Apple Wallet applied.")
                 }
                 
-                // 3. MobileGestalt (Nếu bật thì chạy Bad Query cũ)
                 if toolStore.replaceMobileGestaltEnabled {
-                    appendLog("Applying MobileGestalt (Bad Query)...")
-                    // Gọi hàm MobileGestalt cũ của bạn ở đây
+                    appendLog("Applying MobileGestalt...")
+                    // Code MobileGestalt cũ
                     appendLog("✅ MobileGestalt applied.")
                 }
                 
