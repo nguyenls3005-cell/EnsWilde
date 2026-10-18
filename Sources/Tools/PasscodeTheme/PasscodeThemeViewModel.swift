@@ -16,7 +16,6 @@ class PasscodeThemeViewModel: ObservableObject {
         self.store = store
     }
     
-    // Import Theme (Giữ nguyên)
     func importTheme(from sourceURL: URL, name: String) async throws {
         isProcessing = true
         defer { isProcessing = false }
@@ -58,7 +57,6 @@ class PasscodeThemeViewModel: ObservableObject {
         store.addTheme(themeWithSize)
     }
     
-    // Process files (Giữ nguyên)
     func processThemeFiles(theme: PasscodeTheme, globalPrefix: PasscodeTheme.PrefixLanguage? = nil) throws -> [(sourceURL: URL, processedData: Data, targetFilename: String)] {
         var processedFiles: [(URL, Data, String)] = []
         let imageFiles = theme.getImageFiles()
@@ -133,7 +131,6 @@ class PasscodeThemeViewModel: ObservableObject {
         // Code import default của bạn
     }
     
-    // ✅ HÀM APPLY: BỎ QUA HOÀN TOÀN HTTP SERVER, CHỈ GỌI AIRLIFT
     func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: ((String) -> Void)? = nil) async throws {
         isProcessing = true
         defer { isProcessing = false }
@@ -151,14 +148,12 @@ class PasscodeThemeViewModel: ObservableObject {
                 throw PasscodeThemeError.accessDenied
             }
             
-            // Dò IP
             let targetIP = await findActiveLoopbackIP()
             guard let validIP = targetIP else {
                 throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối tới LocalDevVPN. Hãy bật VPN."])
             }
             _ = al_set_target_host(validIP)
             
-            // Chuẩn bị file
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftDialer_\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -167,7 +162,6 @@ class PasscodeThemeViewModel: ObservableObject {
                 try imageData.write(to: tempDir.appendingPathComponent(targetFilename))
             }
             
-            // Gọi AirLift
             var errorCString: UnsafeMutablePointer<CChar>? = nil
             let targetPath = globalTelephony.cachePath
             let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
@@ -184,7 +178,6 @@ class PasscodeThemeViewModel: ObservableObject {
             onLogUpdate?("[PasscodeTheme] AirLift applied successfully.")
             
         } else {
-            // Bad Query
             var bookRestoreFiles: [BookRestoreFile] = []
             for (_, imageData, targetFilename) in processedFiles {
                 let targetPath = "\(globalTelephony.cachePath)\(targetFilename)"
@@ -207,7 +200,6 @@ class PasscodeThemeViewModel: ObservableObject {
     }
 }
 
-// MARK: - Errors
 enum PasscodeThemeError: LocalizedError {
     case accessDenied
     case noImagesFound
