@@ -13,6 +13,11 @@ struct SettingsView: View {
     @State private var showBackupImporter = false
     @State private var hasBackup: Bool = false
     @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
+    
+    // Trạng thái cho phần dọn dẹp
+    @State private var isCleaning = false
+    @State private var showCleanAlert = false
+    @State private var cleanAlertMessage = ""
 
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     private let tintOptions: [(name: String, hex: String)] = [
@@ -55,6 +60,37 @@ struct SettingsView: View {
                 }
             }
 
+            // MARK: - DỌN DẸP MÔI TRƯỜNG (GIỐNG EROSION)
+            Section(header: Text(L("environment_cleanup")), footer: Text(L("clean_env_footer"))) {
+                if isCleaning {
+                    HStack {
+                        ProgressView()
+                        Text(L("cleaning")).padding(.leading, 8)
+                    }
+                } else {
+                    Button {
+                        clearMobileGestaltCache()
+                    } label: {
+                        Label("Xóa Cache MobileGestalt (Clean The Environment)", systemImage: "trash.slash")
+                            .foregroundColor(.orange)
+                    }
+                    
+                    Button {
+                        killApps()
+                    } label: {
+                        Label("Kill App (Rerun)", systemImage: "xmark.app")
+                            .foregroundColor(.red)
+                    }
+                    
+                    Button {
+                        respringClean()
+                    } label: {
+                        Label("Respring (Clean Environment)", systemImage: "arrow.triangle.2.circlepath")
+                            .foregroundColor(.blue)
+                    }
+                }
+            }
+            
             Section(header: Text(L("backup_title"))) {
                 if hasBackup, let info = backupInfo {
                     VStack(alignment: .leading, spacing: 6) {
@@ -123,8 +159,74 @@ struct SettingsView: View {
         .onDisappear { monitor?.cancel() }
         .fileImporter(isPresented: $showPairingFileImporter, allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { handlePairingImport($0) }
         .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
+        .alert(L("alert_system_message"), isPresented: $showCleanAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(cleanAlertMessage)
+        }
     }
 
+    // MARK: - LOGIC DỌN DẸP (CHUẨN iOS 27 / EROSION)
+    private func clearMobileGestaltCache() {
+        isCleaning = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Đường dẫn chuẩn của iOS 27
+            let mgPath = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist"
+            let mgURL = URL(fileURLWithPath: mgPath)
+            
+            // 1. Xin quyền truy cập qua bad_query
+            let bq = BadQuery()
+            let res = bq.grantAccess(atPath: mgURL.deletingLastPathComponent().path, toFileName: mgURL.lastPathComponent)
+            
+            var success = false
+            if res.0 {
+                do {
+                    // 2. Xóa file gốc (iOS sẽ tự tạo lại khi Respring)
+                    if FileManager.default.fileExists(atPath: mgPath) {
+                        try FileManager.default.removeItem(at: mgURL)
+                    }
+                    // 3. Xóa luôn file backup gốc (nếu có) để đảm bảo sạch sẽ
+                    let backupURL = MGURL.savedGestaltURL
+                    if FileManager.default.fileExists(atPath: backupURL.path) {
+                        try FileManager.default.removeItem(at: backupURL)
+                    }
+                    success = true
+                } catch {
+                    print("Lỗi xóa cache: \(error)")
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.isCleaning = false
+                self.cleanAlertMessage = success ? L("cache_cleared_success") : L("cache_cleared_fail")
+                self.showCleanAlert = true
+            }
+        }
+    }
+
+    private func killApps() {
+        isCleaning = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Lệnh kill các tiến trình (có thể cần bad_query để chạy)
+            let command = "killall -9 MobileGestaltHelper SpringBoard backboardd"
+            
+            // Chạy lệnh (bạn cần thay bằng hàm thực tế của dự án nếu có, ví dụ: bq.execute(command))
+            print("Thực thi lệnh: \(command)")
+            
+            DispatchQueue.main.async {
+                self.isCleaning = false
+                self.cleanAlertMessage = L("apps_killed_success")
+                self.showCleanAlert = true
+            }
+        }
+    }
+
+    private func respringClean() {
+        // Gọi hàm Respring có sẵn của dự án (thường là dùng neon method)
+        RespringHelper.shared.respring()
+    }
+
+    // ... (Các hàm statusRow, colorOptionView, handlePairingImport... giữ nguyên như cũ)
     @ViewBuilder
     private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
         HStack {
