@@ -1,18 +1,18 @@
-import SwiftUI 
-import UIKit 
-import UniformTypeIdentifiers 
+import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 import Network
 import AirliftFFI
 
-struct SettingsView: View { 
-    @ObservedObject var toolStore: ToolStore 
-    @ObservedObject private var localizationManager = LocalizationManager.shared 
-    @AppStorage("PairingFile") private var pairingFile: String? 
-    
-    @State private var showPairingFileImporter = false 
-    @State private var vpnActive: Bool = false 
+struct SettingsView: View {
+    @ObservedObject var toolStore: ToolStore
+    @ObservedObject private var localizationManager = LocalizationManager.shared
+    @AppStorage("PairingFile") private var pairingFile: String?
+
+    @State private var showPairingFileImporter = false
+    @State private var vpnActive: Bool = false
     @State private var monitor: NWPathMonitor?
-    
+
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
 
     @State private var showBackupImporter = false
@@ -55,7 +55,7 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(isCheckingAirLift)
-                
+
                 if showAirLiftLogs {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(airLiftLogs, id: \.self) { log in
@@ -74,14 +74,14 @@ struct SettingsView: View {
                     Button(role: .destructive) {
                         pairingFile = nil
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label: { 
-                        Label(L("button_reset_pairing"), systemImage: "trash") 
+                    } label: {
+                        Label(L("button_reset_pairing"), systemImage: "trash")
                     }
                 } else {
-                    Button { 
-                        showPairingFileImporter = true 
-                    } label: { 
-                        Label(L("button_select_pairing"), systemImage: "doc.badge.plus") 
+                    Button {
+                        showPairingFileImporter = true
+                    } label: {
+                        Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
                     }
                 }
             }
@@ -97,7 +97,10 @@ struct SettingsView: View {
                                 Spacer()
                             }
                             Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                            Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
+                            Text("\(
+            }
+        }
+L("   backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
                         }.padding(.vertical, 4)
                     } else {
                         HStack(spacing: 10) {
@@ -108,7 +111,7 @@ struct SettingsView: View {
                             }
                         }.padding(.vertical, 4)
                     }
-                    
+
                     Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
                     Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
                     if hasBackup {
@@ -151,17 +154,15 @@ struct SettingsView: View {
             refreshBackupInfo()
         }
         .onDisappear { monitor?.cancel() }
-        // ✅ PAIRING: Bảng mở mọi file nhưng tự lọc đuôi
         .fileImporter(
-            isPresented: $showPairingFileImporter, 
+            isPresented: $showPairingFileImporter,
             allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
             handlePairingImport(result)
         }
-        // ✅ BACKUP: Nhận mọi file
         .fileImporter(
-            isPresented: $showBackupImporter, 
+            isPresented: $showBackupImporter,
             allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
@@ -202,25 +203,25 @@ struct SettingsView: View {
         airLiftLogs.removeAll()
         showAirLiftLogs = true
         airLiftLogs.append("Starting AirLift check...")
-        
-        guard let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path as String?,
-              FileManager.default.fileExists(atPath: pairingPath) else {
+
+        let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
+        guard FileManager.default.fileExists(atPath: pairingPath) else {
             airLiftLogs.append("❌ Missing Pairing File! Vui lòng nhập pairing trước.")
             isCheckingAirLift = false
             return
         }
-        
+
         airLiftLogs.append("✅ Pairing File found.")
-        
+
         DispatchQueue.global(qos: .userInitiated).async {
-            airLiftLogs.append("Checking Loopback IP (127.0.0.1)...")
+            var logs: [String] = []
+            logs.append("Checking Loopback IP (127.0.0.1)...")
             _ = al_set_target_host("127.0.0.1")
-            
-            airLiftLogs.append("Running AirTraffic canary check...")
-            
+            logs.append("Running AirTraffic canary check...")
+
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
-            
+
             let result = al_exploit_run(
                 pairingPath,
                 "/var/mobile/Library",
@@ -228,8 +229,9 @@ struct SettingsView: View {
                 &outJson,
                 &outError
             )
-            
+
             DispatchQueue.main.async {
+                airLiftLogs.append(contentsOf: logs)
                 if result == 0 {
                     airLiftLogs.append("✅ AirLift is ACTIVE and working!")
                     if let jsonStr = outJson {
@@ -245,27 +247,24 @@ struct SettingsView: View {
                     airLiftLogs.append("❌ AirLift failed: \(errMsg)")
                     airLiftLogs.append("👉 Hãy kiểm tra LocalDevVPN và Pairing File.")
                 }
-                isCheckingAirLift = false
-            }
-        }
-    }
+                isCheckingAirLift = false }
 
-    // MARK: - HANDLE PAIRING IMPORT (Chỉ nhận .plist và .mobiledevicepairing)
+    // MARK: - HANDLE PAIRING IMPORT
     private func handlePairingImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            
+
             let ext = url.pathExtension.lowercased()
             if ext != "plist" && ext != "mobiledevicepairing" {
                 airLiftLogs.append("❌ File không hợp lệ. Chỉ nhận .plist hoặc .mobiledevicepairing")
                 showAirLiftLogs = true
                 return
             }
-            
+
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-            
+
             do {
                 let data = try Data(contentsOf: url)
                 let saveURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
@@ -281,7 +280,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - HANDLE BACKUP IMPORT (Nhận mọi file)
+    // MARK: - HANDLE BACKUP IMPORT
     private func handleBackupImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
@@ -341,8 +340,8 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ABOUT VIEW 
-struct AboutView: View { 
+// MARK: - ABOUT VIEW
+struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
     var body: some View {
@@ -362,7 +361,7 @@ struct AboutView: View {
                     }.buttonStyle(.plain)
                 }
             }
-            
+
             Section {
                 Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
                     Label(L("about_group_yang"), systemImage: "safari")
@@ -374,7 +373,7 @@ struct AboutView: View {
                     Label(L("about_contact"), systemImage: "paperplane.fill")
                 }
             }
-            
+
             Section(header: Text(L("settings_thanks_to"))) {
                 creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
                 creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
@@ -385,9 +384,15 @@ struct AboutView: View {
                 creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
                 creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
             }
-            
+
             Section(header: Text(L("settings_translators"))) {
-                ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.trans filelator?.isEmpty ?? true) }), { code langInfo in
+                ForEach(
+                    languageManager.availableLanguages.filter {
+                        guard let translator = $0.translator else { return false }
+                        return !translator.isEmpty
+                    },
+                    id: \.code
+                ) { langInfo in
                     creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
                 }
             }
