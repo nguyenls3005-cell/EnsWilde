@@ -16,7 +16,7 @@ class PasscodeThemeViewModel: ObservableObject {
         self.store = store
     }
     
-    // Import Theme
+    // Import Theme (Giữ nguyên)
     func importTheme(from sourceURL: URL, name: String) async throws {
         isProcessing = true
         defer { isProcessing = false }
@@ -58,7 +58,7 @@ class PasscodeThemeViewModel: ObservableObject {
         store.addTheme(themeWithSize)
     }
     
-    // Process files
+    // Process files (Giữ nguyên)
     func processThemeFiles(theme: PasscodeTheme, globalPrefix: PasscodeTheme.PrefixLanguage? = nil) throws -> [(sourceURL: URL, processedData: Data, targetFilename: String)] {
         var processedFiles: [(URL, Data, String)] = []
         let imageFiles = theme.getImageFiles()
@@ -130,11 +130,11 @@ class PasscodeThemeViewModel: ObservableObject {
     }
     
     func importDefaultPasscode(from sourceURL: URL, name: String, themeStore: PasscodeThemeStore) async throws {
-        // Code cũ của bạn
+        // Code cũ
     }
     
-    // ✅ HÀM APPLY CHUẨN - KHÔNG CHECK HTTP
-    func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: ((String) -> Void)? = nil) async throws {
+    // ✅ HÀM APPLY: In log, xử lý lỗi rõ ràng
+    func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
         isProcessing = true
         defer { isProcessing = false }
         
@@ -146,22 +146,20 @@ class PasscodeThemeViewModel: ObservableObject {
         guard !processedFiles.isEmpty else { throw PasscodeThemeError.noImagesProcessed }
         
         if isAirLiftMode {
-            onLogUpdate?("[Passcode] Preparing AirLift...")
+            onLogUpdate("Preparing AirLift for Passcode...")
             
             let pairingURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
             guard FileManager.default.fileExists(atPath: pairingURL.path) else {
-                throw PasscodeThemeError.accessDenied
+                throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy Pairing File. Hãy nhập lại."])
             }
             
-            // Dò IP
             let targetIP = await findActiveLoopbackIP()
             guard let validIP = targetIP else {
                 throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối tới LocalDevVPN. Hãy bật VPN."])
             }
-            onLogUpdate?("[Passcode] Using IP: \(validIP)")
+            onLogUpdate("Using Loopback IP: \(validIP)")
             _ = al_set_target_host(validIP)
             
-            // Chuẩn bị file
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftDialer_\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -170,8 +168,7 @@ class PasscodeThemeViewModel: ObservableObject {
                 try imageData.write(to: tempDir.appendingPathComponent(targetFilename))
             }
             
-            // Gọi AirLift
-            onLogUpdate?("[Passcode] Writing files...")
+            onLogUpdate("Pushing files via AirTraffic...")
             var errorCString: UnsafeMutablePointer<CChar>? = nil
             let targetPath = globalTelephony.cachePath
             let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
@@ -185,16 +182,18 @@ class PasscodeThemeViewModel: ObservableObject {
                 if let err = errorCString { al_string_free(err) }
                 throw NSError(domain: "AirLift", code: -2, userInfo: [NSLocalizedDescriptionKey: "AirLift Error: \(errorMsg)"])
             }
-            onLogUpdate?("✅ Passcode applied via AirLift.")
+            onLogUpdate("✅ Passcode applied via AirLift.")
             
         } else {
-            // Bad Query cũ
+            onLogUpdate("Preparing Bad Query for Passcode...")
             var bookRestoreFiles: [BookRestoreFile] = []
             for (_, imageData, targetFilename) in processedFiles {
                 let targetPath = "\(globalTelephony.cachePath)\(targetFilename)"
                 bookRestoreFiles.append(.custom(targetPath: targetPath, contents: imageData))
             }
-            try await BookRestoreApplyTask.applyFiles(bookRestoreFiles, store: store, onLogUpdate: onLogUpdate)
+            try await BookRestoreApplyTask.applyFiles(bookRestoreFiles, store: store) { msg in
+                onLogUpdate(msg)
+            }
         }
     }
     
@@ -208,22 +207,5 @@ class PasscodeThemeViewModel: ObservableObject {
             }
         }
         return nil
-    }
-}
-
-// MARK: - Errors
-enum PasscodeThemeError: LocalizedError {
-    case accessDenied
-    case noImagesFound
-    case noImagesProcessed
-    case invalidFormat
-    
-    var errorDescription: String? {
-        switch self {
-        case .accessDenied: return "Unable to access the selected file"
-        case .noImagesFound: return "No image files found in theme package"
-        case .noImagesProcessed: return "No images could be processed from theme"
-        case .invalidFormat: return "Invalid theme format"
-        }
     }
 }
