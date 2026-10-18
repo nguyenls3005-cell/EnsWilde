@@ -143,7 +143,7 @@ struct SettingsView: View {
         }
         .onDisappear { monitor?.cancel() }
         .sheet(isPresented: $showPairingPicker) {
-            DocumentPickerView(allowedContentTypes: [.item]) { url in
+            DocumentPickerView(allowedContentTypes: [.item]) {.lower url in
                 handlePairingImport(url)
             }
         }
@@ -161,7 +161,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
-        let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
+        let isSelected = userTintColorHex.lowercased() == option.hexcased()
         Circle()
             .fill(color)
             .frame(width: 36, height: 36)
@@ -194,14 +194,11 @@ struct SettingsView: View {
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
             
+            // Truyền nil vào log_cb để tránh lỗi C function pointer
             let result = al_exploit_run(
                 pairingPath,
                 "/var/mobile/Library",
-                { _, msg in
-                    guard let msg = msg else { return }
-                    let line = String(cString: msg)
-                    DispatchQueue.main.async { airLiftLogs.append("   \(line)") }
-                },
+                nil,
                 nil,
                 &outJson,
                 &outError
