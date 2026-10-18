@@ -38,6 +38,52 @@ echo "    output  : $IPA_PATH"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
+# =============================================================================
+# BẮT ĐẦU PHẦN TÍCH HỢP AIRLIFT
+# =============================================================================
+echo "==> Downloading AirliftFFI from Mak5er's repo..."
+curl -L -o AirliftFFI.xcframework.zip https://github.com/Mak5er/AirCard-iOS/archive/refs/heads/main.zip
+unzip -q AirliftFFI.xcframework.zip
+mv AirCard-iOS-main/AirliftFFI.xcframework ./AirliftFFI.xcframework
+rm -rf AirCard-iOS-main AirliftFFI.xcframework.zip
+
+echo "==> Injecting AirliftFFI into Xcode project..."
+gem install xcodeproj --no-document
+ruby -e '
+  require "xcodeproj"
+  project_path = "EnsWilde.xcodeproj"
+  framework_path = "AirliftFFI.xcframework"
+  
+  project = Xcodeproj::Project.open(project_path)
+  target = project.targets.find { |t| t.name == "EnsWilde" }
+  
+  unless target.nil?
+    # Thêm file vào project
+    file_ref = project.new_file(framework_path)
+    
+    # Thêm vào Frameworks Build Phase
+    target.frameworks_build_phase.add_file_reference(file_ref)
+    
+    # Thêm vào Embed Frameworks
+    embed_phase = target.copy_files_build_phases.find { |p| p.name == "Embed Frameworks" } 
+    if embed_phase.nil?
+      embed_phase = target.new_copy_files_build_phase("Embed Frameworks")
+      embed_phase.dst_subfolder_spec = "10" # Frameworks
+    end
+    build_file = embed_phase.add_file_reference(file_ref)
+    build_file.settings = { "ATTRIBUTES" => ["CodeSignOnCopy", "RemoveHeadersOnCopy"] }
+    
+    project.save
+    puts "✅ Thành công: Đã nhúng AirliftFFI vào project!"
+  else
+    puts "❌ Lỗi: Không tìm thấy target EnsWilde"
+    exit 1
+  end
+'
+# =============================================================================
+# KẾT THÚC PHẦN TÍCH HỢP AIRLIFT
+# =============================================================================
+
 # -----------------------------------------------------------------------------
 # Archive without any code signing.  Every CODE_SIGN_* override is required:
 # xcodebuild will otherwise refuse to build a device target with no team set.
