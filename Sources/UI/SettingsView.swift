@@ -10,8 +10,6 @@ struct SettingsView: View {
     @State private var showPairingFileImporter = false 
     @State private var vpnActive: Bool = false 
     @State private var monitor: NWPathMonitor?
-    
-    @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
 
     @State private var showBackupImporter = false
     @State private var hasBackup: Bool = false
@@ -24,12 +22,21 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section(header: Text(L("system_status"))) {
+                HStack(spacing: 12) {
+                    if pairingFile != nil && vpnActive {
+                        Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
+                        Text(L("status_ready")).font(.body)
+                    } else {
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
+                        Text(L("status_not_ready")).font(.body)
+                    }
+                }.padding(.vertical, 4)
+            }
+
             Section(header: Text(L("connection_status"))) {
                 statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
                 statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
-                if isAirLiftMode {
-                    statusRow(title: "AirLift Mode", subtitle: "Enabled", ok: true)
-                }
             }
 
             Section(header: Text(L("pairing_file"))) {
@@ -43,34 +50,31 @@ struct SettingsView: View {
                 }
             }
 
-            if !isAirLiftMode {
-                Section(header: Text(L("backup_title"))) {
-                    if hasBackup, let info = backupInfo {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Image(systemName: "checkmark.shield.fill")
-                                    .foregroundStyle(.green)
-                                Text(L("backup_available")).font(.subheadline.bold())
-                                Spacer()
-                            }
-                            Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                            Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
-                        }.padding(.vertical, 4)
-                    } else {
-                        HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L("backup_none")).font(.subheadline.bold())
-                                Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }.padding(.vertical, 4)
-                    }
-                    
-                    Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
-                    Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
-                    if hasBackup {
-                        Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
-                    }
+            Section(header: Text(L("backup_title"))) {
+                if hasBackup, let info = backupInfo {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
+                            Text(L("backup_available")).font(.subheadline.bold())
+                            Spacer()
+                        }
+                        Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+                        Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
+                    }.padding(.vertical, 4)
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("backup_none")).font(.subheadline.bold())
+                            Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }.padding(.vertical, 4)
+                }
+                
+                Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
+                Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
+                if hasBackup {
+                    Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
                 }
             }
 
@@ -106,14 +110,7 @@ struct SettingsView: View {
             refreshBackupInfo()
         }
         .onDisappear { monitor?.cancel() }
-        .fileImporter(
-            isPresented: $showPairingFileImporter, 
-            allowedContentTypes: [
-                .propertyList, 
-                UTType(filenameExtension: "mobiledevicepairing") ?? .data,
-                UTType(filenameExtension: "rppairing") ?? .data
-            ]
-        ) { handlePairingImport($0) }
+        .fileImporter(isPresented: $showPairingFileImporter, allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { handlePairingImport($0) }
         .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
     }
 
@@ -147,14 +144,9 @@ struct SettingsView: View {
         if case .success(let url) = result {
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-            
-            do {
-                let data = try Data(contentsOf: url)
-                let saveURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
-                try data.write(to: saveURL)
+            if let data = try? Data(contentsOf: url) {
+                try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
                 pairingFile = url.lastPathComponent
-            } catch {
-                print("Lỗi khi import Pairing File: \(error.localizedDescription)")
             }
         }
     }
@@ -288,4 +280,3 @@ struct AboutView: View {
             }
         }
     }
-}
