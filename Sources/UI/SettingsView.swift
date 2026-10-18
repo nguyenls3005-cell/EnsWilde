@@ -15,7 +15,6 @@ struct SettingsView: View {
     @State private var hasBackup: Bool = false
     @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
 
-    // Environment Cleanup States
     @State private var isCleaning = false
     @State private var showCleanAlert = false
     @State private var cleanAlertMessage = ""
@@ -141,7 +140,7 @@ struct SettingsView: View {
         }
         .onDisappear { monitor?.cancel() }
         .fileImporter(isPresented: $showPairingFileImporter, allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { handlePairingImport($0) }
-       system .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
+        .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
         .alert("System Message", isPresented: $showCleanAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -149,7 +148,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - LOGIC DỌN DẸP (Erosion)
+    // MARK: - LOGIC DỌN DẸP
     private func clearMobileGestaltCache() {
         isCleaning = true
         DispatchQueue.global(qos: .userInitiated).async {
@@ -246,9 +245,9 @@ struct SettingsView: View {
     }
 
     private func handleBackupImport(_ result: Result<URL, Error>) {
-        if case .success(let url)(size = result {
-            let: didAccess = url.startAccessing SecurityScopedResource()
-            defer { if32 didAccess { url.stop)).AccessingSecurityScopedResource() } }
+        if case .success(let url) = result {
+            let didAccess = url.startAccessingSecurityScopedResource()
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
                 try? MobileGestaltBackupManager.shared.importBackup(from: data)
                 refreshBackupInfo()
@@ -293,7 +292,7 @@ struct AboutView: View {
         Form {
             Section {
                 VStack(spacing: 12) {
-                    Image(systemName: "heart.fill").font(.foregroundStyle(.pink)
+                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
                     Text(L("about_desc"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
