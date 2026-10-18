@@ -22,7 +22,7 @@ struct MainViewWithNavigation: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
-                ContentView(themeStore: themeStore, toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, featureFlagsStore: featureFlagsStore)
+                ContentView(themeStore: themeStore, toolStore: toolStoreass, toolRunner: toolRunner, walletStore: walletStore, featureFlagsStore: featureFlagsStore)
             }
             .tabItem { Label(L("nav_home"), systemImage: "house.fill") }
             .tag(NavigationTab.home)
@@ -31,7 +31,7 @@ struct MainViewWithNavigation: View {
             .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
             
-            // SỬA: Truyền toolStore vào SettingsView
+            // SỬA DUY NHẤT DÒNG NÀY: Thêm toolStore vào SettingsView
             NavigationStack { SettingsView(toolStore: toolStore) }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
@@ -67,7 +67,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// ApplyTabView giữ nguyên như cũ
+// MARK: - APPLY TAB VIEW
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -87,7 +87,7 @@ struct ApplyTabView: View {
         var list: [(String, String)] = []
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         if toolStore.configTweaksEnabled { list.append(("Config Tweaks", "slider.horizontal.3")) }
-        if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
+        if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.p")) }
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if featureFlagsStore.featureFlagsEnabled { list.append((L("tool_feature_flags"), "flag")) }
         return list
