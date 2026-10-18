@@ -50,11 +50,10 @@ struct AppleWalletView: View {
         .sheet(isPresented: $showScanSheet) { ScanCardIDSheet(walletStore: walletStore, isPresented: $showScanSheet) }
         .sheet(isPresented: $showImportZIPSheet) { ImportDefaultCardSheet(walletStore: walletStore) }
         .alert(L("alert_error"), isPresented: $showErrorAlert) { Button(L("alert_ok")) {} } message: { Text(errorMessage) }
-        .alert("Saved", isPresented: $showSavedAlert) { Button("OK") {} } message: { Text("Tab Apply đã được mở.") }
+        .alert("Saved", isPresented: $showSavedAlert) { Button("OK") {} } message: { Text("Tab Apply đã được mở. Chuyển sang tab Apply để áp dụng.") }
     }
 }
 
-// MARK: - Wallet Card Preview
 struct WalletCardPreview: View {
     let card: AppleWalletCard
     let index: Int
@@ -95,7 +94,6 @@ struct WalletCardPreview: View {
     }
 }
 
-// MARK: - Manual Add Card Sheet
 struct ManualAddCardSheet: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var walletStore: AppleWalletStore
@@ -125,7 +123,6 @@ struct ManualAddCardSheet: View {
     }
 }
 
-// MARK: - Scan Card ID Sheet
 struct ScanCardIDSheet: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var walletStore: AppleWalletStore
@@ -179,10 +176,9 @@ struct ScanCardIDSheet: View {
             }
         }
     }
-    private func stopScanning() { isScanning = false; timer?.invalidate Text(); timer = nil; JITEnableContext.shared.stopSyslogRelay() }
+    private func stopScanning() { isScanning = false; timer?.invalidate(); timer = nil; JITEnableContext.shared.stopSyslogRelay() }
 }
 
-// MARK: - Edit Card Sheet
 struct EditCardSheet: View {
     @Environment(\.dismiss) var dismiss
     @State var card: AppleWalletCard
@@ -194,7 +190,7 @@ struct EditCardSheet: View {
             Form {
                 Section(header: Text(L("section_card_information"))) {
                     VStack(alignment: .leading, spacing: 4) { Text(L("wallet_card_id_readonly")).font(.caption).foregroundStyle(.secondary); Text(card.id).font(.system(.body, design: .monospaced)) }
-                   Field(L("wallet_card_name"), text: $cardName)
+                    TextField(L("wallet_card_name"), text: $cardName)
                 }
             }
             .navigationTitle(L("edit_card"))
@@ -209,7 +205,6 @@ struct EditCardSheet: View {
     }
 }
 
-// MARK: - Card Detail View
 struct AppleWalletCardDetailView: View {
     @State var card: AppleWalletCard
     @ObservedObject var walletStore: AppleWalletStore
@@ -306,7 +301,6 @@ struct AppleWalletCardDetailView: View {
     }
 }
 
-// MARK: - Image Picker Button
 struct ImagePickerButton: View {
     let title: String; let subtitle: String; let hasImage: Bool; let action: () -> Void
     var body: some View {
@@ -321,7 +315,6 @@ struct ImagePickerButton: View {
     }
 }
 
-// MARK: - Image Picker
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var imageData: Data?
     @Environment(\.dismiss) var dismiss
@@ -353,7 +346,6 @@ struct ImagePicker: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Wallet Card ID Scanner
 private enum WalletIDScanError: Error, LocalizedError {
     case timedOut, unknownError
     var errorDescription: String? {
@@ -385,7 +377,6 @@ func scanOneWalletCardID(timeout: TimeInterval = 300) async throws -> String {
     }
 }
 
-// MARK: - Import Default Card Sheet (ZIP)
 struct ImportDefaultCardSheet: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var walletStore: AppleWalletStore
