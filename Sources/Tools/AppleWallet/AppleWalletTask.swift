@@ -4,7 +4,7 @@ import Network
 
 enum AppleWalletTask {
     
-    static func run(store: ToolStore, walletStore: AppleWalletStore) async throws {
+    static func run(store: ToolStore, walletStore: AppleWalletStore, onLogUpdate: ((String) -> Void)? = nil) async throws {
         let isAirLiftMode = UserDefaults.standard.bool(forKey: "isAirLiftMode")
         let enabledCards = walletStore.enabledCards()
         
@@ -13,16 +13,21 @@ enum AppleWalletTask {
         }
         
         if isAirLiftMode {
+            onLogUpdate?("[Wallet] Preparing AirLift...")
+            
             guard let pairingPath = getPairingPath() else {
                 throw ToolTaskError.generic("Không tìm thấy Pairing File.")
             }
             
+            // Dò IP
             let targetIP = await findActiveLoopbackIP()
             guard let validIP = targetIP else {
                 throw ToolTaskError.generic("Không thể kết nối tới LocalDevVPN. Hãy bật VPN và thử lại.")
             }
+            onLogUpdate?("[Wallet] Using IP: \(validIP)")
             _ = al_set_target_host(validIP)
             
+            // Chuẩn bị file
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftWallet_\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -49,6 +54,8 @@ enum AppleWalletTask {
                 }
             }
             
+            // Gọi AirLift
+            onLogUpdate?("[Wallet] Writing files...")
             var errorCString: UnsafeMutablePointer<CChar>? = nil
             let targetSystemPath = "/var/mobile/Library/Passes/Cards"
             
@@ -62,8 +69,10 @@ enum AppleWalletTask {
                 throw ToolTaskError.generic("AirLift Error: \(errorMsg)")
             }
             
+            onLogUpdate?("✅ Wallet applied via AirLift.")
+            
         } else {
-            // Bad Query
+            // Bad Query cũ
             var allFiles: [BookRestoreFile] = []
             for card in enabledCards {
                 let cardBasePath = "/private/var/mobile/Library/Passes/Cards/\(card.id)"
