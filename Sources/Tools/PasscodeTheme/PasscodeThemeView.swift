@@ -23,7 +23,6 @@ struct PasscodeThemeView: View {
             Section(header: Text(L("passcode_theme_manager"))) {
                 Toggle(L("passcode_enable_theme"), isOn: $themeStore.passcodeThemeEnabled)
             }
-
             Section(header: Text(L("global_settings"))) {
                 Picker(L("passcode_language_method"), selection: $themeStore.globalCustomPrefixRaw) {
                     ForEach(PasscodeTheme.PrefixLanguage.allCases, id: \.self) { prefix in Text(prefix.displayName).tag(prefix.rawValue) }
@@ -32,7 +31,6 @@ struct PasscodeThemeView: View {
                     ForEach(PasscodeTheme.TelephonyVersion.allCases, id: \.self) { version in Text(version.displayName).tag(version.rawValue) }
                 }
             }
-
             Section(header: Text(L("section_theme_library"))) {
                 if themeStore.themes.isEmpty {
                     VStack(spacing: 12) {
@@ -47,19 +45,13 @@ struct PasscodeThemeView: View {
                     }
                 }
             }
-
             Section(header: Text(L("section_import_theme"))) {
                 Button(L("passcode_import_file")) { showImportSheet = true }
                 Button(L("passcode_import_default_zip")) { showDefaultImportSheet = true }
             }
-
             Section {
-                Button {
-                    showApplyTab = true
-                    showSavedAlert = true
-                } label: {
-                    HStack { Image(systemName: "square.and.arrow.down"); Text("Save Changes").font(.headline) }
-                    .frame(maxWidth: .infinity).padding(.vertical, 4)
+                Button { showApplyTab = true; showSavedAlert = true } label: {
+                    HStack { Image(systemName: "square.and.arrow.down"); Text("Save Changes").font(.headline) }.frame(maxWidth: .infinity).padding(.vertical, 4)
                 }.disabled(!themeStore.passcodeThemeEnabled)
             }
         }
@@ -73,7 +65,6 @@ struct PasscodeThemeView: View {
     }
 }
 
-// MARK: - Theme Row View
 struct ThemeRowView: View {
     let theme: PasscodeTheme
     @ObservedObject var themeStore: PasscodeThemeStore
@@ -95,7 +86,6 @@ struct ThemeRowView: View {
     }
 }
 
-// MARK: - Theme Detail View
 struct ThemeDetailView: View {
     @State var theme: PasscodeTheme
     @ObservedObject var themeStore: PasscodeThemeStore
@@ -163,11 +153,7 @@ struct ThemeDetailView: View {
     }
 
     private func sizeDescription(for detectedSize: PasscodeTheme.DetectedSize) -> String {
-        switch detectedSize {
-        case .small: return "Small Keys (202px)"
-        case .big: return "Big Keys (287px)"
-        case .unknown: return "Unknown (will use target size)"
-        }
+        switch detectedSize { case .small: return "Small Keys (202px)"; case .big: return "Big Keys (287px)"; case .unknown: return "Unknown (will use target size)" }
     }
     private func scalingDescription(from detectedSize: PasscodeTheme.DetectedSize, to targetSize: PasscodeTheme.KeySize) -> String {
         if detectedSize == .unknown { return "No scaling info available - images will be used as-is" }
@@ -177,7 +163,6 @@ struct ThemeDetailView: View {
     }
 }
 
-// MARK: - Import Theme Sheet
 struct ImportThemeSheet: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: PasscodeThemeViewModel
@@ -218,17 +203,12 @@ struct ImportThemeSheet: View {
         guard let url = selectedFileURL else { return }
         isImporting = true
         Task {
-            do {
-                try await viewModel.importTheme(from: url, name: themeName)
-                await MainActor.run { dismiss() }
-            } catch {
-                await MainActor.run { errorMessage = error.localizedDescription; isImporting = false }
-            }
+            do { try await viewModel.importTheme(from: url, name: themeName); await MainActor.run { dismiss() } }
+            catch { await MainActor.run { errorMessage = error.localizedDescription; isImporting = false } }
         }
     }
 }
 
-// MARK: - Import Default Passcode Sheet
 struct ImportDefaultPasscodeSheet: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: PasscodeThemeViewModel
@@ -304,17 +284,12 @@ struct ImportDefaultPasscodeSheet: View {
         guard let url = selectedFileURL else { return }
         isImporting = true
         Task {
-            do {
-                try await viewModel.importDefaultPasscode(from: url, name: themeName, themeStore: themeStore)
-                await MainActor.run { dismiss() }
-            } catch {
-                await MainActor.run { errorMessage = error.localizedDescription; isImporting = false }
-            }
+            do { try await viewModel.importDefaultPasscode(from: url, name: themeName, themeStore: themeStore); await MainActor.run { dismiss() } }
+            catch { await MainActor.run { errorMessage = error.localizedDescription; isImporting = false } }
         }
     }
 }
 
-// MARK: - Full Passcode Preview Sheet
 struct FullPasscodePreviewSheet: View {
     let theme: PasscodeTheme
     @Environment(\.dismiss) var dismiss
