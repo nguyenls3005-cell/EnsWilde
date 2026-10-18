@@ -125,7 +125,6 @@ struct MobileGestaltView: View {
             }
             .pickerStyle(.menu)
             .onChange(of: dynamicIslandType) { newValue in
-                // GỌI HÀM KÌ DỊ CỦA STORE
                 _ = store.applyDynamicIsland(type: newValue)
             }
 
@@ -214,7 +213,6 @@ struct MobileGestaltView: View {
 
                     saveProductType()
                     
-                    // ĐỒNG BỘ TẤT CẢ
                     if let storeCacheExtra = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary,
                        let localCacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
                         for (key, value) in storeCacheExtra {
@@ -319,14 +317,14 @@ struct MobileGestaltView: View {
         )
     }
 
+    // ✅ ĐÃ SỬA: Unwrap Optional Int trước khi dùng
     func bindingForInternalStuff() -> Binding<Bool> {
         guard let cacheData = mobileGestalt["CacheData"] as? NSMutableData else {
             return State(initialValue: false).projectedValue
         }
-        let off_appleInternalInstall = store.FindCacheDataOffset(MGKey.intInstall)
-        let off_InternalBuild = store.FindCacheDataOffset(MGKey.intBuild)
-
-        guard off_appleInternalInstall != -1, off_InternalBuild != -1 else {
+        
+        guard let off_appleInternalInstall = store.FindCacheDataOffset(MGKey.intInstall),
+              let off_InternalBuild = store.FindCacheDataOffset(MGKey.intBuild) else {
             return State(initialValue: false).projectedValue
         }
 
