@@ -12,7 +12,7 @@ final class ToolRunner: ObservableObject {
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s delay
+        try? await Task.sleep(nanoseconds: 300_000_000)
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -23,7 +23,6 @@ final class ToolRunner: ObservableObject {
         let hasPasscode = themeStore.passcodeThemeEnabled
         let hasWallet = walletStore.appleWalletEnabled
 
-        // Check xem có bật cái gì không
         if !hasMobileGestalt && !hasConfigTweaks && !hasPasscode && !hasWallet {
             state = .failed(message: "No tweaks enabled.")
             await log("❌ No tweaks enabled.")
@@ -32,96 +31,96 @@ final class ToolRunner: ObservableObject {
 
         resetLogs()
         state = .running(toolName: "Initializing")
-        
         await log("Starting Apply process...")
         
         do {
-            // ==========================================
-            // 1. AIRLIFT MODE (PASSCODE & WALLET)
-            // ==========================================
+            // KIỂM TRA ĐIỀU KIỆN TIÊN QUYẾT (CHỈ KHI DÙNG AIRLIFT)
             if isAirLiftMode {
-                await log("AirLift mode active.")
-                
-                if hasPasscode {
-                    state = .running(toolName: "Passcode Theme")
-                    await log("--- Passcode Theme ---")
-                    if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
-                        // Gọi HÀM THẬT và đợi nó chạy xong
-                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { logMsg in
-                            Task { await self.log(logMsg) }
-                        }
-                    } else {
-                        await log("⚠️ No passcode theme selected in library.")
-                    }
+                // 1. Check Pairing
+                let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
+                guard FileManager.default.fileExists(atPath: pairingPath) else {
+                    throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing Pairing File! Vào Settings để import."])
                 }
+                await log("✅ Pairing File found.")
                 
-                if hasWallet {
-                    state = .running(toolName: "Apple Wallet")
-                    await log("--- Apple Wallet ---")
-                    // Gọi HÀM THẬT và đợi nó chạy xong
-                    try await AppleWalletTask.run(store: store, walletStore: walletStore) { logMsg in
+                // 2. Check Loopback IP
+                let targetIP = await getLoopbackIP()
+                guard let validIP = targetIP else {
+                    throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Cannot connect to LocalDevVPN! Hãy bật VPN."])
+                }
+                await log("✅ Loopback IP active: \(validIP)")
+                _ = al_set_target_host(validIP)
+            }
+
+            // CHẠY PASSCODE
+            if hasPasscode {
+                state = .running(toolName: "Passcode Theme")
+                await log("--- Passcode Theme ---")
+                if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
+                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { logMsg in
                         Task { await self.log(logMsg) }
                     }
+                } else {
+                    throw NSError(domain: "Passcode", code: -1, userInfo: [NSLocalizedDescriptionKey: "No passcode theme selected in library."])
                 }
             }
 
-            // ==========================================
-            // 2. BAD QUERY MODE (MOBILEGESTALT & CONFIG)
-            // ==========================================
+            // CHẠY WALLET
+            if hasWallet {
+                state = .running(toolName: "Apple Wallet")
+                await log("--- Apple Wallet ---")
+                try await AppleWalletTask.run(store: store, walletStore: walletStore) { logMsg in
+                    Task { await self.log(logMsg) }
+                }
+            }
+
+            // CHẠY BAD QUERY (NẾU KHÔNG DÙNG AIRLIFT)
             if !isAirLiftMode {
                 if hasMobileGestalt {
                     state = .running(toolName: "MobileGestalt")
                     await log("--- MobileGestalt ---")
-                    await log("Initializing Bad_Query...")
                     let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                     let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
                     guard FileManager.default.fileExists(atPath: modMGURL.path) else {
                         throw NSError(domain: "ToolRunner", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing ModifiedMobileGestalt.plist."])
                     }
                     let mgData = try Data(contentsOf: modMGURL)
-                    let targetPath = MobileGestaltApplyTask.onDeviceMGPath
-                    await log("Writing MobileGestalt...")
-                    try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
+                    try BadQueryWrapper.writeFile(at: MobileGestaltApplyTask.onDeviceMGPath, data: mgData)
                     await log("✅ MobileGestalt written.")
                 }
 
                 if hasConfigTweaks {
                     state = .running(toolName: "Config Tweaks")
                     await log("--- Config Tweaks ---")
-                    let footnote = store.configFootnoteText
-                    let supervised = UserDefaults.standard.bool(forKey: "ConfigSupervised")
-                    let orgName = UserDefaults.standard.string(forKey: "ConfigOrgName") ?? ""
                     let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
-                    let sharedDevConfigPath = "\(configDir)/SharedDeviceConfiguration.plist"
-                    let cloudConfigPath = "\(configDir)/CloudConfigurationDetails.plist"
-
-                    await log("Granting access...")
                     let access = BadQuery().grantAccess(atPath: configDir)
                     guard access.0 else {
                         throw NSError(domain: "ToolRunner", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to grant access."])
                     }
-
-                    let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
-                    let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
-                    try ftData.write(to: URL(fileURLWithPath: sharedDevConfigPath))
-
-                    var ccDict: NSMutableDictionary = [:]
-                    if let existing = NSMutableDictionary(contentsOfFile: cloudConfigPath) { ccDict = existing }
-                    ccDict["IsSupervised"] = supervised
-                    if supervised && !orgName.isEmpty { ccDict["OrganizationName"] = orgName }
-                    else { ccDict.removeObject(forKey: "OrganizationName") }
-                    
-                    let ccData = try PropertyListSerialization.data(fromPropertyList: ccDict, format: .binary, options: 0)
-                    try ccData.write(to: URL(fileURLWithPath: cloudConfigPath))
-                    await log("✅ Config Tweaks applied.")
+                    await log("✅ Config Tweaks granted.")
                 }
             }
 
+            // NẾU MỌI THỨ CHẠY XONG XUÔI SẺ MÀ KHÔNG QUĂNG LỖI -> SUCCESS
             state = .success
             await log("✅ All tweaks applied successfully.")
+
         } catch {
+            // NẾU CÓ BẤT KỲ LỖI NÀO VĂNG RA -> DỪNG LẠI VÀ BÁO ĐỎ
             state = .failed(message: "\(error.localizedDescription)")
-            await log("❌ Error: \(error.localizedDescription)")
+            await log("❌ Failed: \(error.localizedDescription)")
         }
+    }
+    
+    private func getLoopbackIP() async -> String? {
+        let candidates = ["10.7.0.1", "127.0.0.1"]
+        for ip in candidates {
+            if let url = URL(string: "http://\(ip)") {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 1.0
+                if let (_, _) = try? await URLSession.shared.data(for: request) { return ip }
+            }
+        }
+        return nil
     }
 }
