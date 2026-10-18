@@ -4,8 +4,9 @@ import UniformTypeIdentifiers
 import Network
 import AirliftFFI
 
+// MARK: - Document Picker (Mở khóa mọi loại file)
 struct DocumentPickerView: UIViewControllerRepresentable {
-    let allowedContentTypes: [UTType]
+    var allowedContentTypes: [UTType] = [.data, .item]
     let onPick: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -143,7 +144,7 @@ struct SettingsView: View {
         }
         .onDisappear { monitor?.cancel() }
         .sheet(isPresented: $showPairingPicker) {
-            DocumentPickerView(allowedContentTypes: [.item]) { url in
+            DocumentPickerView(allowedContentTypes: [.data, .item]) { url in
                 handlePairingImport(url)
             }
         }
@@ -194,6 +195,7 @@ struct SettingsView: View {
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
             
+            // Đã fix lỗi C function pointer: truyền nil thay vì closure
             let result = al_exploit_run(
                 pairingPath,
                 "/var/mobile/Library",
@@ -224,14 +226,19 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Handle Import (Mở khóa 100%, không check ext)
     private func handlePairingImport(_ url: URL) {
-        let ext = url.pathExtension.lowercased()
-        if !ext.isEmpty && ext != "plist" && ext != "mobiledevicepairing" { return }
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        
         if let data = try? Data(contentsOf: url) {
             try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
             pairingFile = url.lastPathComponent
+            airLiftLogs.append("✅ Imported: \(url.lastPathComponent) (\(data.count) bytes)")
+            showAirLiftLogs = true
+        } else {
+            airLiftLogs.append("❌ Failed to read file: \(url.lastPathComponent)")
+            showAirLiftLogs = true
         }
     }
 
@@ -276,6 +283,7 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - About View
 struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
