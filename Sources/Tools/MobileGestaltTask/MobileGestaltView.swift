@@ -54,9 +54,9 @@ struct MobileGestaltView: View {
             }
 
             if let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
-                productType = cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] as? String ?? productType
+                productType = cacheExtra[MGKey.prodType] as? String ?? productType
 
-                if let diValue = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSDictionary,
+                if let diValue = cacheExtra[MGKey.artwork] as? NSDictionary,
                    let subtype = diValue["ArtworkDeviceSubType"] as? Int {
                     switch subtype {
                     case 2436: dynamicIslandType = 1
@@ -70,7 +70,7 @@ struct MobileGestaltView: View {
                     }
                 }
 
-                if let diValue = cacheExtra["oPeik/9e8lQWMszEjbPzng"] as? NSDictionary,
+                if let diValue = cacheExtra[MGKey.artwork] as? NSDictionary,
                    let modelNameValue = diValue["ArtworkDeviceProductDescription"] as? String,
                    !modelNameValue.isEmpty {
                     enableModelName = true
@@ -139,13 +139,13 @@ struct MobileGestaltView: View {
     @ViewBuilder
     private var hardwareFeaturesSection: some View {
         Section(header: Text(L("section_hardware_features"))) {
-            Toggle(L("mg_boot_chime"), isOn: store.mgByteBinding(key: MGKey.bootChime))
-            Toggle(L("mg_charge_limit"), isOn: store.mgByteBinding(key: MGKey.chargeLim))
+            Toggle(L("mg_boot_chime"), isOn: store.mgKeyBinding([MGKey.bootChime]))
+            Toggle(L("mg_charge_limit"), isOn: store.mgKeyBinding([MGKey.chargeLim]))
                 .disabled(Utils.requiresVersion(17))
             if UIDevice._hasHomeButton() {
-                Toggle(L("mg_tap_to_wake"), isOn: store.mgByteBinding(key: MGKey.tapToWake))
+                Toggle(L("mg_tap_to_wake"), isOn: store.mgKeyBinding([MGKey.tapToWake]))
             }
-            Toggle(L("mg_camera_button"), isOn: store.mgByteBinding(key: MGKey.camButton))
+            Toggle(L("mg_camera_button"), isOn: store.mgKeyBinding([MGKey.camButton, MGKey.grapPefr]))
                 .disabled(Utils.requiresVersion(18))
         }
     }
@@ -154,13 +154,12 @@ struct MobileGestaltView: View {
     private var displayAndUISection: some View {
         Section(header: Text(L("section_display_and_ui"))) {
             Toggle(L("mg_disable_parallax"), isOn: bindingForMGKeys(["UIParallaxCapability"], type: Int.self, defaultValue: 1, enableValue: 0))
-            Toggle(L("mg_stage_manager"), isOn: store.mgByteBinding(key: MGKey.stageMgr))
-            Toggle(L("mg_aod"), isOn: store.mgByteBinding(key: MGKey.AOD))
+            Toggle(L("mg_stage_manager"), isOn: store.mgKeyBinding([MGKey.stageMgr]))
+            Toggle(L("mg_aod"), isOn: store.mgKeyBinding([MGKey.AOD, MGKey.AOTime]))
                 .disabled(Utils.requiresVersion(18))
-            Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
+            Toggle(L("mg_aod_vibrancy"), isOn: store.mgKeyBinding([MGKey.AODVibrancy]))
                 .disabled(Utils.requiresVersion(18))
             
-            // Become iPadOS
             Toggle(isOn: store.mgTrollPadBinding()) {
                 Text("Become iPadOS")
             }
@@ -171,21 +170,21 @@ struct MobileGestaltView: View {
     private var systemFeaturesSection: some View {
         Section(header: Text(L("section_system_features"))) {
             Toggle(L("mg_install_ipad_apps"), isOn: bindingForMGKeys(["9MZ5AdH43csAUajl/dU+IQ"], type: [Int].self, defaultValue: [1], enableValue: [1, 2]))
-            Toggle(L("mg_disable_region"), isOn: bindingForRegionRestriction())
-            Toggle(L("mg_apple_pencil"), isOn: store.mgByteBinding(key: MGKey.appPencil))
-            Toggle(L("mg_action_button"), isOn: store.mgByteBinding(key: MGKey.actButton))
+            Toggle(L("mg_disable_region"), isOn: store.mgRegionRestrictionsBinding())
+            Toggle(L("mg_apple_pencil"), isOn: store.mgKeyBinding([MGKey.appPencil]))
+            Toggle(L("mg_action_button"), isOn: store.mgKeyBinding([MGKey.actButton]))
                 .disabled(Utils.requiresVersion(17))
-            Toggle(L("mg_crash_detection"), isOn: store.mgByteBinding(key: MGKey.crashDet))
+            Toggle(L("mg_crash_detection"), isOn: store.mgKeyBinding([MGKey.crashDet]))
         }
     }
 
     @ViewBuilder
     private var advancedSection: some View {
         Section(header: Text(L("section_internal_features"))) {
-            Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
+            Toggle(L("mg_internal_storage"), isOn: store.mgKeyBinding([MGKey.intBuild]))
             Toggle(L("mg_internal_stuff"), isOn: bindingForInternalStuff())
-            Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
-            Toggle(L("mg_metal_hud"), isOn: store.mgByteBinding(key: MGKey.intInstall))
+            Toggle(L("mg_security_research"), isOn: store.mgKeyBinding([MGKey.srd]))
+            Toggle(L("mg_metal_hud"), isOn: store.mgKeyBinding([MGKey.intInstall]))
             Toggle(L("mg_apple_intelligence"), isOn: bindingForAppleIntelligence())
                 .disabled(Utils.requiresVersion(18))
             Picker(L("mg_device_model"), selection: $productType) {
@@ -214,12 +213,11 @@ struct MobileGestaltView: View {
 
                     saveProductType()
                     
-                    // Đồng bộ iPadOS và CacheData
+                    // ĐỒNG BỘ TOÀN BỘ TỪ STORE VÀO LOCAL DICT
                     if let storeCacheExtra = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary,
                        let localCacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
-                        for key in MGKey.ipadosCacheEx {
-                            if let value = storeCacheExtra[key] { localCacheExtra[key] = value }
-                            else { localCacheExtra.removeObject(forKey: key) }
+                        for (key, value) in storeCacheExtra {
+                            localCacheExtra[key as! String] = value
                         }
                     }
                     if let storeCacheData = store.mgCurrentDict["CacheData"] {
@@ -294,7 +292,7 @@ struct MobileGestaltView: View {
         }
     }
 
-    // MARK: - Bindings (Các hàm fallback cho Dictionary)
+    // MARK: - Bindings (Fallbacks)
 
     func bindingForAppleIntelligence() -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
@@ -320,40 +318,22 @@ struct MobileGestaltView: View {
         )
     }
 
-    func bindingForRegionRestriction() -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
-            return State(initialValue: false).projectedValue
-        }
-        return Binding<Bool>(
-            get: {
-                return cacheExtra["h63QSdBCiT/z0WU6rdQv6Q"] as? String == "US" &&
-                cacheExtra["zHeENZu+wbg7PUprwNwBWg"] as? String == "LL/A"
-            },
-            set: { enabled in
-                if enabled {
-                    cacheExtra["h63QSdBCiT/z0WU6rdQv6Q"] = "US"
-                    cacheExtra["zHeENZu+wbg7PUprwNwBWg"] = "LL/A"
-                } else {
-                    cacheExtra.removeObject(forKey: "h63QSdBCiT/z0WU6rdQv6Q")
-                    cacheExtra.removeObject(forKey: "zHeENZu+wbg7PUprwNwBWg")
-                }
-            }
-        )
-    }
-
     func bindingForInternalStuff() -> Binding<Bool> {
         guard let cacheData = mobileGestalt["CacheData"] as? NSMutableData else {
             return State(initialValue: false).projectedValue
         }
-        let off_appleInternalInstall = FindCacheDataOffset("EqrsVvjcYDdxHBiQmGhAWw")
-        let off_HasInternalSettingsBundle = FindCacheDataOffset("Oji6HRoPi7rH7HPdWVakuw")
-        let off_InternalBuild = FindCacheDataOffset("LBJfwOEzExRxzlAnSuI7eg")
+        let off_appleInternalInstall = FindCacheDataOffset(MGKey.intInstall)
+        let off_InternalBuild = FindCacheDataOffset(MGKey.intBuild)
+
+        // Nếu không tìm thấy offset, trả về false
+        guard off_appleInternalInstall != -1, off_InternalBuild != -1 else {
+            return State(initialValue: false).projectedValue
+        }
 
         return Binding(
             get: { cacheData.bytes.load(fromByteOffset: off_appleInternalInstall, as: Int.self) == 1 },
             set: { enabled in
                 cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_appleInternalInstall, as: Int.self)
-                cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_HasInternalSettingsBundle, as: Int.self)
                 cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_InternalBuild, as: Int.self)
             }
         )
@@ -398,15 +378,12 @@ struct MobileGestaltView: View {
 
     func applyDynamicIsland(type: Int) {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-
         let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
-
         if type == 0 {
             cacheExtra.removeObject(forKey: MGKey.artwork)
             cacheExtra.removeObject(forKey: MGKey.island)
         } else if type > 0 && type < subtypeValues.count {
             let subtypeValue = subtypeValues[type]
-
             var gestaltDict: NSMutableDictionary
             if let existing = cacheExtra[MGKey.artwork] as? NSMutableDictionary {
                 gestaltDict = existing
@@ -414,7 +391,6 @@ struct MobileGestaltView: View {
                 gestaltDict = NSMutableDictionary()
                 cacheExtra[MGKey.artwork] = gestaltDict
             }
-
             gestaltDict["ArtworkDeviceSubType"] = subtypeValue
             cacheExtra[MGKey.island] = 1
         }
@@ -422,7 +398,6 @@ struct MobileGestaltView: View {
 
     func applyModelName() {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-
         var gestaltDict: NSMutableDictionary
         if let existing = cacheExtra[MGKey.artwork] as? NSMutableDictionary {
             gestaltDict = existing
@@ -430,13 +405,11 @@ struct MobileGestaltView: View {
             gestaltDict = NSMutableDictionary()
             cacheExtra[MGKey.artwork] = gestaltDict
         }
-
         gestaltDict["ArtworkDeviceProductDescription"] = modelName
     }
 
     func removeModelName() {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-
         if let gestaltDict = cacheExtra[MGKey.artwork] as? NSMutableDictionary {
             gestaltDict.removeObject(forKey: "ArtworkDeviceProductDescription")
         }
