@@ -59,7 +59,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW (LOG 1 DÒNG)
+// MARK: - APPLY TAB VIEW
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -116,11 +116,9 @@ struct ApplyTabView: View {
                 Section(header: Text("Status").font(.headline).textCase(nil)) {
                     HStack(spacing: 12) {
                         if isApplying {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color.orange))
+                            ProgressView().progressViewStyle(CircularProgressViewStyle(tint: Color.orange))
                         } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary)
                         }
                         
                         Text(currentStatus)
