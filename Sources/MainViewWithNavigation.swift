@@ -44,12 +44,10 @@ struct MainViewWithNavigation: View {
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
-        .onChange(of: scenePhase) { newPhase in
-            if newPhase == .background {
-                showApplyTab = false
-                if selectedTab == .apply { selectedTab = .home }
-            }
-        }
+        
+        // ❌ ĐÃ XÓA LOGIC TỰ ĐỘNG ẨN TAB KHI VÀO BACKGROUND
+        // .onChange(of: scenePhase) { newPhase in ... }
+        
         .onAppear { applyTintColor() }
     }
     
@@ -65,7 +63,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW (LOG 1 DÒNG)
+// MARK: - APPLY TAB VIEW
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -90,14 +88,6 @@ struct ApplyTabView: View {
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         return list
     }
-    
-    // Lấy dòng log cuối cùng để hiển thị (như AirCard)
-    private var currentStatus: String {
-        if isApplying {
-            return toolRunner.logs.last?.text ?? "Starting..."
-        }
-        return "Ready to apply."
-    }
 
     var body: some View {
         NavigationStack {
@@ -120,26 +110,16 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // ✅ LOG CHỈ 1 DÒNG KÈM ICON XOAY (GIỐNG AIRCAARD)
-                Section(header: Text("Status").font(.headline).textCase(nil)) {
-                    HStack(spacing: 12) {
-                        if isApplying {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color.orange))
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                if !toolRunner.logs.isEmpty {
+                    Section(header: Text("Apply Logs").font(.headline).textCase(nil)) {
+                        ForEach(toolRunner.logs, id: \.id) { log in
+                            Text(log.text)
+                                .font(.caption)
+                                .foregroundStyle(log.text.contains("❌") ? .red : (log.text.contains("✅") ? .green : .secondary))
                         }
-                        
-                        Text(currentStatus)
-                            .font(.subheadline)
-                            .foregroundStyle(isApplying ? .primary : .secondary)
-                            .lineLimit(1) // Chỉ 1 dòng
-                            .truncationMode(.tail)
                     }
-                    .padding(.vertical, 4)
+                    .listRowBackground(Color(.secondarySystemGroupedBackground))
                 }
-                .listRowBackground(Color(.secondarySystemGroupedBackground))
 
                 Section {
                     WalletStyleButton(
