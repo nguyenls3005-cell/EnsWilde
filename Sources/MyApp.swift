@@ -5,7 +5,6 @@ struct MyApp: App {
     @AppStorage("hasChosenMode") private var hasChosenMode: Bool = false
     
     init() {
-        // Reset tab Apply khi app bị kill
         UserDefaults.standard.set(false, forKey: "ShowApplyTab")
     }
     
@@ -21,26 +20,23 @@ struct MyApp: App {
     
     private func isVersionBlocked() -> Bool {
         let version = UIDevice.current.systemVersion
-        
-        // Nếu không phải iOS 27 -> Không block
         guard version.hasPrefix("27.") || version == "27" else { return false }
         
         let build = getBuildNumber()
         
-        // Danh sách mã Build của Dev Beta 1-4 và Public Beta 1-2
-        let allowedBuilds = [
-            "24A5264n", // Dev Beta 1
-            "24A5289h", // Dev Beta 2 / Public Beta 1
-            "24A5309h", // Dev Beta 3 / Public Beta 2
-            "24A5330c"  // Dev Beta 4
+        // ✅ Danh sách các bản ĐƯỢC HỖ TRỢ (Dev Beta 1-4 / Public 1-2)
+        let supportedBuilds = [
+            "24A5355q", // 27.0 beta 1
+            "24A5370h", // 27.0 beta 2 (Public Beta 1)
+            "24A5380h", // 27.0 beta 3 (Public Beta 2)
+            "24A5390f"  // 27.0 beta 4
         ]
         
-        // Nếu build nằm trong danh sách cho phép -> Không block
-        if allowedBuilds.contains(build) {
+        if supportedBuilds.contains(build) {
             return false
         }
         
-        // Các bản khác (Beta 5 trở đi, 27.0 chính thức) -> Block
+        // ❌ Các bản khác (Beta 5 trở đi, RC, chính thức, 27.2...) đều bị block
         return true
     }
     
@@ -55,7 +51,7 @@ struct MyApp: App {
     }
 }
 
-// MARK: - MÀN HÌNH CHẶN (CÓ NÚT AIRLIFT)
+// MARK: - MÀN HÌNH CHẶN
 struct VersionBlockedView: View {
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     @AppStorage("hasChosenMode") private var hasChosenMode: Bool = false
