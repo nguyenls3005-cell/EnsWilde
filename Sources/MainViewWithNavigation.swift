@@ -1,5 +1,6 @@
 import SwiftUI
 import UserNotifications
+import AirliftFFI
 
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
@@ -64,7 +65,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW (DÙNG LẠI WALLETSTYLEBUTTON, BỎ CHECK HTTP)
+// MARK: - APPLY TAB VIEW
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -74,9 +75,8 @@ struct ApplyTabView: View {
 
     @State private var showErrorAlert = false
     @State private var lastError: String?
-    
     @State private var applyLogs: [String] = []
-    @State private var isApplying: Bool = false
+    @State private var isApplying = false
 
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
@@ -89,7 +89,7 @@ struct ApplyTabView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Tweaks").font(.headline).foregroundColor(.primary).textCase(nil)) {
+                Section(header: Text("Tweaks").font(.headline).textCase(nil)) {
                     if enabledTweaks.isEmpty {
                         Text("No tweaks enabled.").foregroundStyle(.secondary)
                     } else {
@@ -110,10 +110,9 @@ struct ApplyTabView: View {
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     HStack(spacing: 10) {
                         if isApplying {
-                            ProgressView().tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
+                            ProgressView().tint(Color(hex: userTintColorHex))
                         } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary)
                         }
                         Text(isApplying ? (applyLogs.last ?? "Applying...") : "Ready to apply.")
                             .font(.footnote)
@@ -123,8 +122,7 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
                 
-                // Log chi tiết
-                if !applyLogs.isEmpty {
+                if !applyLogs.isEmpty && isApplying {
                     Section(header: Text("Logs")) {
                         ForEach(applyLogs, id: \.self) { log in
                             Text(log).font(.caption).foregroundStyle(log.contains("❌") ? .red : .secondary)
@@ -133,11 +131,11 @@ struct ApplyTabView: View {
                 }
 
                 Section {
-                    // ✅ DÙNG LẠI WALLETSTYLEBUTTON NHƯNG BỎ CHECK HTTP
+                    // DÙNG LẠI NÚT CŨ
                     WalletStyleButton(
                         title: isApplying ? "Applying..." : L("apply_enabled_tweaks"),
                         isLoading: isApplying,
-                        disabled: isApplying, // Chỉ disable khi đang chạy
+                        disabled: isApplying,
                         action: performApply
                     )
                 }
@@ -159,33 +157,32 @@ struct ApplyTabView: View {
             do {
                 appendLog("Starting Apply process...")
                 
+                // 1. Dò IP Loopback và Set cho AirTraffic
+                let targetIP = await getLoopbackIP()
+                appendLog("Using Loopback IP: \(targetIP)")
+                _ = al_set_target_host(targetIP)
+                
+                // 2. Apply Passcode (Gọi AirTraffic)
                 if themeStore.passcodeThemeEnabled {
-                    appendLog("Applying Passcode Theme via AirLift...")
+                    appendLog("Applying Passcode Theme...")
                     if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
                         try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: toolStore)
-                        appendLog("✅ Passcode Theme applied.")
+                        appendLog("✅ Passcode applied.")
                     } else {
-                         appendLog("⚠️ No passcode theme selected.")
+                        appendLog("⚠️ No passcode theme selected.")
                     }
                 }
                 
+                // 3. Apply Wallet (Gọi AirTraffic)
                 if walletStore.appleWalletEnabled {
-                    appendLog("Applying Apple Wallet via AirLift...")
+                    appendLog("Applying Wallet...")
                     try await AppleWalletTask.run(store: toolStore, walletStore: walletStore)
-                    appendLog("✅ Apple Wallet applied.")
+                    appendLog("✅ Wallet applied.")
                 }
                 
-                if toolStore.replaceMobileGestaltEnabled {
-                    appendLog("Applying MobileGestalt...")
-                    // Code MobileGestalt cũ
-                    appendLog("✅ MobileGestalt applied.")
-                }
-                
-                appendLog("All tweaks applied successfully!")
-                
+                appendLog("Done! Respringing...")
                 try await Task.sleep(nanoseconds: 1_000_000_000)
                 if toolStore.soundRespringEnabled {
-                    appendLog("Respringing...")
                     try? RespringHelper.respring()
                 }
                 
@@ -196,18 +193,30 @@ struct ApplyTabView: View {
                 
             } catch {
                 await MainActor.run {
+                    appendLog("❌ Error: \(error.localizedDescription)")
                     lastError = error.localizedDescription
                     showErrorAlert = true
                     isApplying = false
-                    appendLog("❌ Error: \(error.localizedDescription)")
                 }
             }
         }
     }
-    
+
     private func appendLog(_ message: String) {
-        DispatchQueue.main.async {
-            applyLogs.append(message)
+        DispatchQueue.main.async { applyLogs.append(message) }
+    }
+
+    private func getLoopbackIP() async -> String {
+        let candidates = ["10.7.0.1", "127.0.0.1"]
+        for ip in candidates {
+            if let url = URL(string: "http://\(ip)") {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 1.0
+                if let (_, _) = try? await URLSession.shared.data(for: request) {
+                    return ip
+                }
+            }
         }
+        return "127.0.0.1"
     }
 }
