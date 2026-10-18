@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 enum MobileGestaltApplyTask {
-    // Đường dẫn chuẩn iOS 27 (lấy từ GestaltStore)
+    // Đường dẫn chuẩn iOS 27
     static var onDeviceMGPath: String {
         return MGURL.fsGestaltURL.path
     }
