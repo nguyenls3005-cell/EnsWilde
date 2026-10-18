@@ -9,7 +9,7 @@ enum MGURL {
 enum MGKey {
     static let ipadosCacheEx = [
         "uKc7FPnEO++lVhHWHFlGbQ", "mG0AnH/Vy1veoqoLRAIgTA", "UCG5MkVahJxG1YULbbd5Bg",
-        "ZYqko/XM5zD3XBfN5RmaXA", "nVh/gwNpy7Jv1NOk00CMrw", "qeaj75wk3HF4DwQ8qbIi7g"
+        "ZYqko/XM5zD53XBfNRmaXA", "nVh/gwNpy7Jv1NOk00CMrw", "qeaj75wk3HF4DwQ8qbIi7g"
     ]
     static let island = "YlEtTtHlNesRBMal1CqRaA"
     static let AOD = "2OOJf1VhaM7NxfRok3HbWQ"
@@ -131,5 +131,13 @@ final class GestaltStore: ObservableObject {
         }
         mgCurrentDict["CacheData"] = updatedData
         return true
+    }
+    
+    // MARK: - MỚI: Đồng bộ từ file plist trên đĩa vào store
+    func loadFromPlist(url: URL) {
+        if let dict = try? NSMutableDictionary(contentsOf: url, error: ()) {
+            self.mgCurrentDict = dict
+            self.objectWillChange.send()
+        }
     }
 }
