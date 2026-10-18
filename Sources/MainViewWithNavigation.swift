@@ -155,66 +155,34 @@ struct ApplyTabView: View {
         applyLogs.removeAll()
         
         Task {
-            do {
-                appendLog("Starting Apply process...")
-                
-                let targetIP = await getLoopbackIP()
-                appendLog("Using Loopback IP: \(targetIP)")
-                _ = al_set_target_host(targetIP)
-                
-                if themeStore.passcodeThemeEnabled {
-                    appendLog("Applying Passcode Theme...")
-                    if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
-                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: toolStore)
-                        appendLog("✅ Passcode applied.")
-                    } else {
-                        appendLog("⚠️ No passcode theme selected.")
-                    }
+            // Gọi ToolRunner xử lý toàn bộ
+            await toolRunner.applyAll(
+                isSystemReady: true,
+                store: toolStore,
+                walletStore: walletStore,
+                themeStore: themeStore,
+                featureFlagsStore: featureFlagsStore
+            )
+            
+            // Đồng bộ log từ ToolRunner ra giao diện
+            await MainActor.run {
+                for log in toolRunner.logs {
+                    applyLogs.append(log.text)
                 }
                 
-                if walletStore.appleWalletEnabled {
-                    appendLog("Applying Wallet...")
-                    try await AppleWalletTask.run(store: toolStore, walletStore: walletStore)
-                    appendLog("✅ Wallet applied.")
-                }
-                
-                appendLog("Done! Respringing...")
-                try await Task.sleep(nanoseconds: 1_000_000_000)
-                if toolStore.soundRespringEnabled {
-                    try? RespringHelper.respring()
-                }
-                
-                await MainActor.run {
-                    isApplying = false
-                    toolRunner.state = .success
-                }
-                
-            } catch {
-                await MainActor.run {
-                    appendLog("❌ Error: \(error.localizedDescription)")
-                    lastError = error.localizedDescription
+                if case .failed(let msg) = toolRunner.state {
+                    lastError = msg
                     showErrorAlert = true
-                    isApplying = false
                 }
+                
+                isApplying = false
+            }
+            
+            // Respring
+            if toolStore.soundRespringEnabled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? RespringHelper.respring()
             }
         }
-    }
-
-    private func appendLog(_ message: String) {
-        DispatchQueue.main.async { applyLogs.append(message) }
-    }
-
-    private func getLoopbackIP() async -> String {
-        let candidates = ["10.7.0.1", "127.0.0.1"]
-        for ip in candidates {
-            if let url = URL(string: "http://\(ip)") {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 1.0
-                if let (_, _) = try? await URLSession.shared.data(for: request) {
-                    return ip
-                }
-            }
-        }
-        return "127.0.0.1"
     }
 }
