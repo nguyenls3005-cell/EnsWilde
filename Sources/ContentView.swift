@@ -54,7 +54,10 @@ struct ContentView: View {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("system_status")).font(.body)
-                    Text("Ready - Bad_query").font(.footnote).foregroundStyle(.secondary)
+                    // ĐÃ SỬA: Màu xanh lá
+                    Text("Ready - Bad_query")
+                        .font(.footnote)
+                        .foregroundStyle(.green)
                 }
             }.padding(.vertical, 4)
         }.listRowBackground(Color(.secondarySystemGroupedBackground))
