@@ -1,70 +1,40 @@
 import Foundation
+import AirliftFFI // Import thư viện vừa nhúng
 
-enum AppleWalletTask {
+struct AppleWalletTask {
     
-    /// Apply all enabled wallet cards in a single batch operation
-    /// CRITICAL: Background images MUST be processed before cache files for proper rendering
-    /// pass.json (if imported) is applied after card images
-    static func run(store: ToolStore, walletStore: AppleWalletStore) async throws {
-        // Get enabled cards
-        let enabledCards = walletStore.enabledCards()
-        guard !enabledCards.isEmpty else {
-            throw ToolTaskError.generic("No enabled wallet cards to apply")
+    // ✅ Hàm ghi ảnh Wallet bằng AirLift
+    static func applyCardWithAirLift(card: AppleWalletCard, imageData: Data, isAirLiftMode: Bool) throws {
+        if !isAirLiftMode {
+            // Gọi hàm Bad Query cũ của bạn ở đây
+            // try applyCardOldWay(card: card, imageData: imageData)
+            return
+        }
+
+        // 1. Khởi tạo kết nối AirLift (qua LocalDevVPN)
+        // Lưu ý: Tên hàm al_... có thể thay đổi tùy phiên bản, bạn cần check file AirliftFFI.h
+        let initResult = al_exploit_init() 
+        guard initResult else {
+            throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không thể kết nối AirLift. Kiểm tra VPN/Pairing."])
         }
         
-        // Collect ALL files from all enabled cards in proper order
-        var allFiles: [BookRestoreFile] = []
+        // 2. Lưu ảnh ra file tạm trong Sandbox của app
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("card_\(card.id).png")
+        try imageData.write(to: tempURL)
         
-        for card in enabledCards {
-            let cardBasePath = "/private/var/mobile/Library/Passes/Cards/\(card.id)"
-            let cardPrefix = String(card.id.prefix(8))
-            
-            // CRITICAL ORDERING: Background image MUST come first!
-            // Step 1: Add background image (.pkpass) first
-            if let bgImageData = card.backgroundImageData {
-                let bgFileName = card.cardBackgroundFileName
-                let pkpassPath = "\(cardBasePath).pkpass/\(bgFileName)"
-                let uniqueMediaName = "wallet_\(cardPrefix)_\(bgFileName)"
-                allFiles.append(.walletImage(targetPath: pkpassPath, contents: bgImageData, mediaFileName: uniqueMediaName))
-            }
-            
-            // Step 2: Then add cache files (FrontFace, PlaceHolder, Preview)
-            if let frontFaceData = card.frontFaceImageData {
-                let frontFacePath = "\(cardBasePath).cache/FrontFace"
-                let uniqueMediaName = "wallet_\(cardPrefix)_FrontFace"
-                allFiles.append(.walletImage(targetPath: frontFacePath, contents: frontFaceData, mediaFileName: uniqueMediaName))
-            }
-            
-            if let placeHolderData = card.placeHolderImageData {
-                let placeHolderPath = "\(cardBasePath).cache/PlaceHolder"
-                let uniqueMediaName = "wallet_\(cardPrefix)_PlaceHolder"
-                allFiles.append(.walletImage(targetPath: placeHolderPath, contents: placeHolderData, mediaFileName: uniqueMediaName))
-            }
-            
-            if let previewData = card.previewImageData {
-                let previewPath = "\(cardBasePath).cache/Preview"
-                let uniqueMediaName = "wallet_\(cardPrefix)_Preview"
-                allFiles.append(.walletImage(targetPath: previewPath, contents: previewData, mediaFileName: uniqueMediaName))
-            }
-            
-            // Step 3: Add pass.json after card images (if imported)
-            if let passJSONData = card.loadPassJSON() {
-                let passJSONPath = "\(cardBasePath).pkpass/pass.json"
-                let uniqueMediaName = "wallet_\(cardPrefix)_pass.json"
-                allFiles.append(.walletImage(targetPath: passJSONPath, contents: passJSONData, mediaFileName: uniqueMediaName))
-            }
+        // 3. Đường dẫn đích trên hệ thống (Cần check lại đường dẫn thực tế trên iOS 27)
+        // Thường là: /var/mobile/Library/Passes/Cards/<id>/cardBackgroundCombined@3x.png
+        let targetPath = "/var/mobile/Library/Passes/Cards/\(card.id)/cardBackgroundCombined@3x.png"
+        
+        // 4. Gọi AirLift ghi file
+        // Hàm thực tế có thể là: al_exploit_write_file, al_exploit_inject_folder...
+        let success = al_exploit_write_file(tempURL.path, targetPath)
+        
+        // 5. Dọn dẹp
+        try? FileManager.default.removeItem(at: tempURL)
+        
+        if !success {
+            throw NSError(domain: "AirLift", code: -2, userInfo: [NSLocalizedDescriptionKey: "AirLift không thể ghi file."])
         }
-        
-        guard !allFiles.isEmpty else {
-            throw ToolTaskError.generic("No wallet files to apply")
-        }
-        
-        // Apply all files in a single batch using unified BookRestore task
-        print("[AppleWallet] Applying \(allFiles.count) file(s) from \(enabledCards.count) card(s) in batch mode...")
-        try await BookRestoreApplyTask.applyFiles(allFiles, store: store)
-        print("[AppleWallet] Files applied successfully.")
-        
-        // Note: BookRestoreApplyTask already opens Books app at the end.
-        // User should open Wallet app to see the changes applied to cards.
     }
 }
