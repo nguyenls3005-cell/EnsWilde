@@ -15,6 +15,7 @@ struct SettingsView: View {
     @State private var hasBackup: Bool = false
     @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
 
+    // Environment Cleanup States
     @State private var isCleaning = false
     @State private var showCleanAlert = false
     @State private var cleanAlertMessage = ""
@@ -140,7 +141,7 @@ struct SettingsView: View {
         }
         .onDisappear { monitor?.cancel() }
         .fileImporter(isPresented: $showPairingFileImporter, allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { handlePairingImport($0) }
-        .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
+       system .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
         .alert("System Message", isPresented: $showCleanAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -152,7 +153,7 @@ struct SettingsView: View {
     private func clearMobileGestaltCache() {
         isCleaning = true
         DispatchQueue.global(qos: .userInitiated).async {
-            let mgPath = MGURL.fsGestaltURL.path
+            let mgPath = MobileGestaltApplyTask.onDeviceMGPath
             let mgURL = URL(fileURLWithPath: mgPath)
             
             let res = BadQuery().grantAccess(atPath: mgURL.deletingLastPathComponent().path, toFileName: mgURL.lastPathComponent)
@@ -162,9 +163,6 @@ struct SettingsView: View {
                 do {
                     if FileManager.default.fileExists(atPath: mgPath) {
                         try FileManager.default.removeItem(at: mgURL)
-                    }
-                    if FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) {
-                        try FileManager.default.removeItem(at: MGURL.savedGestaltURL)
                     }
                     success = true
                 } catch {
@@ -240,7 +238,7 @@ struct SettingsView: View {
 
     private func createBackupNow() {
         do {
-            let onDevicePath = MGURL.fsGestaltURL.path
+            let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
             let data = try Data(contentsOf: URL(fileURLWithPath: onDevicePath))
             let _ = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
             refreshBackupInfo()
@@ -248,9 +246,9 @@ struct SettingsView: View {
     }
 
     private func handleBackupImport(_ result: Result<URL, Error>) {
-        if case .success(let url) = result {
-            let didAccess = url.startAccessingSecurityScopedResource()
-            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        if case .success(let url)(size = result {
+            let: didAccess = url.startAccessing SecurityScopedResource()
+            defer { if32 didAccess { url.stop)).AccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
                 try? MobileGestaltBackupManager.shared.importBackup(from: data)
                 refreshBackupInfo()
@@ -287,7 +285,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ABOUT VIEW (ĐÃ KHÔI PHỤC)
+// MARK: - ABOUT VIEW
 struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
@@ -295,11 +293,11 @@ struct AboutView: View {
         Form {
             Section {
                 VStack(spacing: 12) {
-                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
+                    Image(systemName: "heart.fill").font(.foregroundStyle(.pink)
                     Text(L("about_desc"))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                       (L .multilineTextAlignment(.center)
+                        .multilineTextAlignment(.center)
                     
                     Button {
                         if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
@@ -327,7 +325,7 @@ struct AboutView: View {
                 }
             }
             
-            Section(header: Text("settings_thanks_to"))) {
+            Section(header: Text(L("settings_thanks_to"))) {
                 creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
                 creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
                 creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
