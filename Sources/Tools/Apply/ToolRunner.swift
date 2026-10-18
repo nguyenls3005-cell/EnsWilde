@@ -10,10 +10,10 @@ final class ToolRunner: ObservableObject {
 
     func resetLogs() { logs.removeAll() }
 
-    // Bỏ Task.sleep, chỉ log ra cho nhanh
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
+        try? await Task.sleep(nanoseconds: 100_000_000) // Tăng tốc độ log
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -40,44 +40,16 @@ final class ToolRunner: ObservableObject {
                 return
             }
             await log("✅ Pairing File found.")
+            _ = al_set_target_host("127.0.0.1")
         }
         
-        // Helper chạy ngầm kèm Timeout 20s
-        func runBackgroundWithTimeout<T>(_ operation: @escaping () async throws -> T) async throws -> T {
-            try await withThrowingTaskGroup(of: T.self) { group in
-                group.addTask {
-                    try await operation()
-                }
-                group.addTask {
-                    try await Task.sleep(nanoseconds: 20_000_000_000) // 20s
-                    throw NSError(domain: "Timeout", code: -1, userInfo: [NSLocalizedDescriptionKey: "Quá 20 giây không phản hồi. Kiểm tra lại VPN."])
-                }
-                let result = try await group.next()!
-                group.cancelAll()
-                return result
-            }
-        }
-        
-        // ==========================================
-        // 1. PASSCODE
-        // ==========================================
         if hasPasscode {
             state = .running(toolName: "Passcode Theme")
             await log("--- Passcode Theme (AirLift) ---")
-            
             if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
                 do {
-                    // Ép cứng IP
-                    _ = al_set_target_host("127.0.0.1")
-                    
-                    // Chạy TOÀN BỘ quá trình trên Background Thread
-                    try await runBackgroundWithTimeout {
-                        try await Task.detached(priority: .high) {
-                            let vm = PasscodeThemeViewModel(store: themeStore)
-                            try await vm.applyTheme(selectedTheme, store: store) { msg in
-                                Task { await self.log(msg) }
-                            }
-                        }.value
+                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { logMsg in
+                        Task { await self.log(logMsg) }
                     }
                     await log("✅ Passcode applied successfully.")
                 } catch {
@@ -88,21 +60,12 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // ==========================================
-        // 2. WALLET
-        // ==========================================
         if hasWallet {
             state = .running(toolName: "Apple Wallet")
             await log("--- Apple Wallet (AirLift) ---")
             do {
-                _ = al_set_target_host("127.0.0.1")
-                
-                try await runBackgroundWithTimeout {
-                    try await Task.detached(priority: .high) {
-                        try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
-                            Task { await self.log(msg) }
-                        }
-                    }.value
+                try await AppleWalletTask.run(store: store, walletStore: walletStore) { logMsg in
+                    Task { await self.log(logMsg) }
                 }
                 await log("✅ Wallet applied successfully.")
             } catch {
@@ -110,9 +73,6 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // ==========================================
-        // 3. MOBILEGESTALT
-        // ==========================================
         if hasMobileGestalt {
             state = .running(toolName: "MobileGestalt")
             await log("--- MobileGestalt (Bad Query) ---")
@@ -123,33 +83,21 @@ final class ToolRunner: ObservableObject {
                     throw NSError(domain: "ToolRunner", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing ModifiedMobileGestalt.plist."])
                 }
                 let mgData = try Data(contentsOf: modMGURL)
-                
-                try await runBackgroundWithTimeout {
-                    try await Task.detached(priority: .high) {
-                        try BadQueryWrapper.writeFile(at: MobileGestaltApplyTask.onDeviceMGPath, data: mgData)
-                    }.value
-                }
+                try BadQueryWrapper.writeFile(at: MobileGestaltApplyTask.onDeviceMGPath, data: mgData)
                 await log("✅ MobileGestalt written.")
             } catch {
                 await log("❌ MobileGestalt failed: \(error.localizedDescription)")
             }
         }
 
-        // ==========================================
-        // 4. CONFIG TWEAKS
-        // ==========================================
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
             await log("--- Config Tweaks (Bad Query) ---")
             do {
-                try await runBackgroundWithTimeout {
-                    try await Task.detached(priority: .high) {
-                        let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
-                        let access = BadQuery().grantAccess(atPath: configDir)
-                        if !access.0 {
-                            throw NSError(domain: "ToolRunner", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to grant access."])
-                        }
-                    }.value
+                let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
+                let access = BadQuery().grantAccess(atPath: configDir)
+                guard access.0 else {
+                    throw NSError(domain: "ToolRunner", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to grant access."])
                 }
                 await log("✅ Config Tweaks granted.")
             } catch {
