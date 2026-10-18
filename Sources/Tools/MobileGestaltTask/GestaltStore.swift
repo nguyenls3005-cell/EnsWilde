@@ -11,41 +11,29 @@ enum MGKey {
         "uKc7FPnEO++lVhHWHFlGbQ", "mG0AnH/Vy1veoqoLRAIgTA", "UCG5MkVahJxG1YULbbd5Bg",
         "ZYqko/XM5zD3XBfN5RmaXA", "nVh/gwNpy7Jv1NOk00CMrw", "qeaj75wk3HF4DwQ8qbIi7g"
     ]
-    
-    // hardware features
-    static let island = "YlEtTtHlNesRBMal1CqRaA" 
-    static let AOTime = "j8/Omm6s1lsmTDFsXjsBfA" 
-    static let AOD = "2OOJf1VhaM7NxfRok3HbWQ" 
-    static let AODVibrancy = "ykpu7qyhqFweVMKtxNylWA" 
-    static let chargeLim = "37NVydb//GP/GrhuTN+exg" 
-    static let bootChime = "QHxt+hGLaBPbQJbXiUJX3w" 
-    
-    // internal
-    static let intInstall = "EqrsVvjcYDdxHBiQmGhAWw" 
-    static let intBuild = "LBJfwOEzExRxzlAnSuI7eg" 
-    
-    // eligbility
-    static let srd = "XYlJKKkj2hztRP1NWWnhlw" 
-    static let appIntell = "A62OafQ85EJAiiqKn4agtg" 
-    static let regionCode = "h63QSdBCiT/z0WU6rdQv6Q" 
-    static let regionSysconfig = "yK+xavymRGZ3xWc1tb8XDg" 
-    
-    // prefs
-    static let crashDet = "HCzWusHQwZDea6nNhaKndw" 
-    static let pwm = "6IejgN+1Fmu5/QrZFOIeNw" 
-    static let appPencil = "yhHcB0iH0d1XzPO/CFd3ow" 
-    static let camButton = "CwvKxM2cEogD3p+HYgaW0Q" 
-    static let grapPefr = "oOV1jhJbdV3AddkcCg0AEA" 
-    static let actButton = "cT44WE1EohiwRzhsZ8xEsw" 
-    static let tapToWake = "yZf3GTRMGTuwSV/lD7Cagw" 
-    
-    // ipados
-    static let stageMgr = "qeaj75wk3HF4DwQ8qbIi7g" 
-    
-    // lookup
-    static let deviceClass = "+3Uf0Pm5F8Xy7Onyvko0vA" 
-    static let artwork = "oPeik/9e8lQWMszEjbPzng" 
-    static let prodType = "h9jDsbgj7xIVeIQ8S3/X3Q" 
+    static let island = "YlEtTtHlNesRBMal1CqRaA"
+    static let AOTime = "j8/Omm6s1lsmTDFsXjsBfA"
+    static let AOD = "2OOJf1VhaM7NxfRok3HbWQ"
+    static let AODVibrancy = "ykpu7qyhqFweVMKtxNylWA"
+    static let chargeLim = "37NVydb//GP/GrhuTN+exg"
+    static let bootChime = "QHxt+hGLaBPbQJbXiUJX3w"
+    static let intInstall = "EqrsVvjcYDdxHBiQmGhAWw"
+    static let intBuild = "LBJfwOEzExRxzlAnSuI7eg"
+    static let srd = "XYlJKKkj2hztRP1NWWnhlw"
+    static let appIntell = "A62OafQ85EJAiiqKn4agtg"
+    static let stageMgr = "qeaj75wk3HF4DwQ8qbIi7g"
+    static let crashDet = "HCzWusHQwZDea6nNhaKndw"
+    static let pwm = "6IejgN+1Fmu5/QrZFOIeNw"
+    static let appPencil = "yhHcB0iH0d1XzPO/CFd3ow"
+    static let camButton = "CwvKxM2cEogD3p+HYgaW0Q"
+    static let grapPefr = "oOV1jhJbdV3AddkcCg0AEA"
+    static let actButton = "cT44WE1EohiwRzhsZ8xEsw"
+    static let tapToWake = "yZf3GTRMGTuwSV/lD7Cagw"
+    static let regionCode = "h63QSdBCiT/z0WU6rdQv6Q"
+    static let regionSysconfig = "yK+xavymRGZ3xWc1tb8XDg"
+    static let deviceClass = "+3Uf0Pm5F8Xy7Onyvko0vA"
+    static let artwork = "oPeik/9e8lQWMszEjbPzng"
+    static let prodType = "h9jDsbgj7xIVeIQ8S3/X3Q"
 }
 
 final class GestaltStore: ObservableObject {
@@ -56,8 +44,6 @@ final class GestaltStore: ObservableObject {
         return mgCurrentDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
     }
     
-    init() {}
-    
     func loadFromPlist(url: URL) {
         if let dict = try? NSMutableDictionary(contentsOf: url, error: ()) {
             self.mgCurrentDict = dict
@@ -65,68 +51,105 @@ final class GestaltStore: ObservableObject {
         }
     }
     
-    func mgPullKeys(_ keys: [String]) {
-        for key in keys {
-            cacheExtra.removeObject(forKey: key)
-        }
+    // TÌM OFFSET CỦA KEY TRONG CACHEDATA (Dùng cho iOS 27)
+    func FindCacheDataOffset(_ key: String) -> Int {
+        guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSDictionary,
+              let uid = cacheExtra[key] as? Int else { return -1 }
+        let uidBytes = withUnsafeBytes(of: uid.littleEndian) { Data($0) }
+        
+        guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return -1 }
+        let range = cacheData.range(of: uidBytes)
+        return range?.lowerBound ?? -1
     }
     
-    func isEnabled(_ keys: [String], enableValue: Int = 1) -> Bool {
-        let values = self.cacheExtra[keys] as? [Int] ?? []
-        let testVal = self.cacheExtra[keys.first!] as? Int
-        if values.allSatisfy({ $0 == testVal }) {
-            return testVal == enableValue
-        }
-        return false
-    }
-    
-    func strVal(forKey key: String) -> String {
-        return self.cacheExtra[key] as? String ?? ""
-    }
-    
-    func mgKeyBinding(_ keys: [String], defaultValue: Int = 0, enableValue: Int = 1) -> Binding<Bool> {
+    // CƠ CHẾ "KÌ DỊ": SỬA BYTE TRỰC TIẾP TRONG CACHEDATA
+    func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> {
         return Binding(get: {
-            if let value = self.cacheExtra[keys.first!] as? Int {
-                return value == enableValue
+            let offset = self.FindCacheDataOffset(key)
+            guard offset != -1, let cacheData = self.mgCurrentDict["CacheData"] as? Data, offset < cacheData.count else {
+                return (self.cacheExtra[key] as? Int) == Int(enableValue)
             }
-            return false
+            return cacheData[offset] == enableValue
         }, set: { enabled in
             self.objectWillChange.send()
-            for key in keys {
-                if enabled {
-                    self.cacheExtra[key] = enableValue
-                } else {
-                    self.cacheExtra.removeObject(forKey: key)
-                }
-            }
+            
+            // Luôn ghi vào CacheExtra để đảm bảo Dictionary được lưu
+            if enabled { self.cacheExtra[key] = Int(enableValue) }
+            else { self.cacheExtra.removeObject(forKey: key) }
+            
+            // Ghi đè vào Byte (CacheData)
+            let offset = self.FindCacheDataOffset(key)
+            guard offset != -1, let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData, offset < mutableData.length else { return }
+            
+            var value = enabled ? enableValue : disableValue
+            mutableData.replaceBytes(in: NSRange(location: offset, length: 1), withBytes: &value)
         })
     }
-    
+
+    // CƠ CHẾ ĐẶC BIỆT CHO DYNAMIC ISLAND
+    func applyDynamicIsland(type: Int) -> Bool {
+        guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSMutableDictionary else { return false }
+        
+        let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
+        
+        // Xóa cấu hình cũ
+        cacheExtra.removeObject(forKey: MGKey.artwork)
+        cacheExtra.removeObject(forKey: MGKey.island)
+        
+        if type > 0 && type < subtypeValues.count {
+            let subtypeValue = subtypeValues[type]
+            
+            // Ghi vào CacheExtra
+            var gestaltDict = NSMutableDictionary()
+            gestaltDict["ArtworkDeviceSubType"] = subtypeValue
+            cacheExtra[MGKey.artwork] = gestaltDict
+            cacheExtra[MGKey.island] = 1
+            
+            // TÌM VÀ GHI ĐÈ VÀO CACHEDATA
+            if let artworkOffset = FindCacheDataOffset(MGKey.artwork) {
+                if let cacheData = mgCurrentDict["CacheData"] as? NSMutableData, artworkOffset + 4 < cacheData.length {
+                    var subtypeBytes = subtypeValue.littleEndian
+                    cacheData.replaceBytes(in: NSRange(location: artworkOffset, length: 4), withBytes: &subtypeBytes)
+                }
+            }
+            
+            if let islandOffset = FindCacheDataOffset(MGKey.island) {
+                if let cacheData = mgCurrentDict["CacheData"] as? NSMutableData, islandOffset < cacheData.length {
+                    var val: UInt8 = 1
+                    cacheData.replaceBytes(in: NSRange(location: islandOffset, length: 1), withBytes: &val)
+                }
+            }
+        } else {
+            // Nếu tắt (type = 0), ghi đè số 0 vào CacheData nếu tìm thấy
+            if let islandOffset = FindCacheDataOffset(MGKey.island) {
+                if let cacheData = mgCurrentDict["CacheData"] as? NSMutableData, islandOffset < cacheData.length {
+                    var val: UInt8 = 0
+                    cacheData.replaceBytes(in: NSRange(location: islandOffset, length: 1), withBytes: &val)
+                }
+            }
+        }
+        return true
+    }
+
     func mgTrollPadBinding() -> Binding<Bool> {
         return Binding(get: {
-            if let value = self.cacheExtra[MGKey.ipadosCacheEx.first!] as? Int {
-                return value == 1
-            }
+            if let value = self.cacheExtra[MGKey.ipadosCacheEx.first!] as? Int { return value == 1 }
             return false
         }, set: { enabled in
             self.objectWillChange.send()
-            if self.mgSetiPadOS(enable: enabled) {
-                for key in MGKey.ipadosCacheEx {
-                    if enabled {
-                        self.cacheExtra[key] = 1
-                    } else {
-                        self.cacheExtra.removeObject(forKey: key)
-                    }
-                }
+            for key in MGKey.ipadosCacheEx {
+                if enabled { self.cacheExtra[key] = 1 }
+                else { self.cacheExtra.removeObject(forKey: key) }
+            }
+            if self.mgCurrentDict["CacheData"] is Data {
+                _ = self.mgSetiPadOS(enable: enabled)
             }
         })
     }
     
     func mgRegionRestrictionsBinding() -> Binding<Bool> {
         return Binding<Bool>(
-            get: {
-                return self.cacheExtra[MGKey.regionCode] as? String == "LL" && self.cacheExtra[MGKey.regionSysconfig] as? String == "LL/A"
-            },
+            get: { return self.cacheExtra[MGKey.regionCode] as? String == "LL" && self.cacheExtra[MGKey.regionSysconfig] as? String == "LL/A" },
             set: { enabled in
                 self.objectWillChange.send()
                 if enabled {
@@ -141,23 +164,16 @@ final class GestaltStore: ObservableObject {
     }
     
     func mgSetiPadOS(enable: Bool) -> Bool {
-        guard let cacheData = mgCurrentDict["CacheData"] as? Data else {
-            print("(mg) failed to set ipados: couldn't get cachedata")
-            return false
-        }
+        guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return false }
         let hexString = cacheData.map { String(format: "%02x", $0) }.joined()
         var hex = Array(hexString)
         let sliceStart = 1616
         let sliceLength = 200
-        
         guard hex.count > sliceStart else { return false }
-        
         let end = min(hex.count, sliceStart + sliceLength)
         let slice = String(hex[sliceStart..<end])
-        
         guard let regex = try? NSRegularExpression(pattern: "0+(?:5555)*([0-9a-f]{4})") else { return false }
         let nsRange = NSRange(slice.startIndex..<slice.endIndex, in: slice)
-        
         var matchedOffset: Int?
         regex.enumerateMatches(in: slice, range: nsRange) { match, _, stop in
             guard let match = match, let range = Range(match.range(at: 1), in: slice) else { return }
@@ -167,16 +183,13 @@ final class GestaltStore: ObservableObject {
                 stop.pointee = true
             }
         }
-        
         guard let offset = matchedOffset else { return false }
         let rightOffset = offset + 13
         let leftOffset = offset - 67
-        
         guard leftOffset > 0, rightOffset < hex.count - 1 else { return false }
         for position in [leftOffset, rightOffset] {
             guard ["1", "3"].contains(String(hex[position])), hex[position - 1] == "0", hex[position + 1] == "0" else { return false }
         }
-        
         hex[leftOffset] = enable ? "3" : "1"
         let updatedHex = String(hex)
         var updatedData = Data(capacity: updatedHex.count / 2)
