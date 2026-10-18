@@ -2,17 +2,21 @@ import SwiftUI
 
 @main
 struct MyApp: App {
+    // Trạng thái lưu chế độ: false = Bad Query (mặc định), true = AirLift
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     
     init() {
+        // Reset tab Apply mỗi khi mở app
         UserDefaults.standard.set(false, forKey: "ShowApplyTab")
     }
     
     var body: some Scene {
         WindowGroup {
+            // Nếu máy chạy iOS 27.0 VÀ chưa chọn AirLift -> Hiện màn hình chặn
             if isVersionBlocked() && !isAirLiftMode {
                 VersionBlockedView()
             } else {
+                // Các máy iOS cũ hoặc đã chọn AirLift -> Vào thẳng app
                 MainViewWithNavigation()
             }
         }
@@ -20,7 +24,7 @@ struct MyApp: App {
     
     private func isVersionBlocked() -> Bool {
         let version = UIDevice.current.systemVersion
-        // Nếu là iOS 27.0 thì bị chặn (bỏ check mã build để test)
+        // Chỉ chặn nếu là iOS 27.0
         if version.hasPrefix("27.0") {
             return true
         }
@@ -28,7 +32,7 @@ struct MyApp: App {
     }
 }
 
-// MARK: - MÀN HÌNH CHẶN PHIÊN BẢN (Giao diện nút AirLift màu cam)
+// MARK: - MÀN HÌNH CHẶN PHIÊN BẢN
 struct VersionBlockedView: View {
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     
@@ -86,7 +90,7 @@ struct VersionBlockedView: View {
                     
                     Divider().background(Color.gray)
                     
-                    // NÚT AIRLIFT MÀU CAM, BO TRÒN
+                    // ✅ NÚT AIRLIFT: Nền cam đặc 100%, chữ trắng, bo góc
                     Button(action: {
                         withAnimation {
                             isAirLiftMode = true
@@ -94,21 +98,16 @@ struct VersionBlockedView: View {
                     }) {
                         HStack(spacing: 8) {
                             Image(systemName: "airplane.circle.fill")
+                                .font(.system(size: 18, weight: .bold))
                             Text("Tiếp tục với AirLift (Không có MobileGestalt)")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                                .multilineTextAlignment(.center)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
-                        .background(Color.orange.opacity(0.2)) // Nền mờ
-                        .foregroundColor(.orange)
-                        .cornerRadius(25) // Bo tròn
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 25)
-                                .stroke(Color.orange, lineWidth: 2) // Khung viền cam
-                        )
+                        .padding(.vertical, 14)
+                        .background(Color.orange) // Cam đặc
+                        .foregroundColor(.white)   // Chữ trắng
+                        .cornerRadius(25)          // Bo góc tròn
                     }
                     .padding(.top, 10)
                 }
