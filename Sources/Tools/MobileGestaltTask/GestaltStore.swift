@@ -49,44 +49,56 @@ final class GestaltStore: ObservableObject {
         }
     }
     
-    // Hàm tìm vị trí byte (Offset) trong CacheData
+    // TÌM OFFSET CHUẨN (Hỗ trợ cả little-endian và fallback)
     func FindCacheDataOffset(_ key: String) -> Int {
         guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSDictionary,
               let uid = cacheExtra[key] as? Int else { return -1 }
-        let uidBytes = withUnsafeBytes(of: uid.littleEndian) { Data($0) }
         
+        // Thử tìm theo dạng little-endian (4 bytes)
+        let uidBytes = withUnsafeBytes(of: uid.littleEndian) { Data($0) }
         guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return -1 }
-        let range = cacheData.range(of: uidBytes)
-        return range?.lowerBound ?? -1
+        
+        if let range = cacheData.range(of: uidBytes) {
+            return range.lowerBound
+        }
+        
+        // Fallback: Thử tìm theo dạng big-endian (nếu iOS 27 thay đổi cấu trúc)
+        let uidBytesBE = withUnsafeBytes(of: uid.bigEndian) { Data($0) }
+        if let range = cacheData.range(of: uidBytesBE) {
+            return range.lowerBound
+        }
+        
+        return -1
     }
     
-    // Binding chung cho iOS 27: Ghi trực tiếp vào CacheData (Byte)
+    // BINDING GHI TRỰC TIẾP VÀO BYTE (Dùng cho iOS 27)
     func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> {
         return Binding(get: {
             let offset = self.FindCacheDataOffset(key)
-            guard offset != -1, let cacheData = self.mgCurrentDict["CacheData"] as? Data, offset < cacheData.count else { return false }
+            guard offset != -1, let cacheData = self.mgCurrentDict["CacheData"] as? Data, offset < cacheData.count else { 
+                // Nếu không tìm thấy trong Byte, fallback đọc từ CacheExtra
+                return (self.cacheExtra[key] as? Int) == Int(enableValue)
+            }
             return cacheData[offset] == enableValue
         }, set: { enabled in
             self.objectWillChange.send()
-            var offset = self.FindCacheDataOffset(key)
             
-            // Nếu key chưa tồn tại trong CacheData (offset == -1), phải fallback về CacheExtra (tuỳ logic máy)
-            if offset == -1 {
-                if enabled { self.cacheExtra[key] = 1 }
-                else { self.cacheExtra.removeObject(forKey: key) }
-                return
-            }
+            // Luôn ghi vào CacheExtra để đảm bảo file plist lưu đúng cấu trúc
+            if enabled { self.cacheExtra[key] = Int(enableValue) }
+            else { self.cacheExtra.removeObject(forKey: key) }
             
-            guard let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData else { return }
+            // Cố gắng ghi đè vào Byte (CacheData) nếu tìm thấy
+            let offset = self.FindCacheDataOffset(key)
+            guard offset != -1, let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData, offset < mutableData.length else { return }
+            
             var value = enabled ? enableValue : disableValue
             mutableData.replaceBytes(in: NSRange(location: offset, length: 1), withBytes: &value)
         })
     }
 
-    // Binding MA THUẬT cho iPadOS (TrollPad)
+    // BINDING CHO iPADOS
     func mgTrollPadBinding() -> Binding<Bool> {
         return Binding(get: {
-            // iOS 27 dùng CacheData hoặc CacheExtra tuỳ key
             if let value = self.cacheExtra[MGKey.ipadosCacheEx.first!] as? Int { return value == 1 }
             return false
         }, set: { enabled in
@@ -97,14 +109,13 @@ final class GestaltStore: ObservableObject {
                 else { self.cacheExtra.removeObject(forKey: key) }
             }
             
-            // Vẫn dùng hàm Hex chuẩn Erosion
             if self.mgCurrentDict["CacheData"] is Data {
                 _ = self.mgSetiPadOS(enable: enabled)
             }
         })
     }
     
-    // Hàm sửa Hex iPadOS - Giữ nguyên từ Erosion
+    // HÀM HEX CHO iPADOS (Erosion)
     func mgSetiPadOS(enable: Bool) -> Bool {
         guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return false }
         let hexString = cacheData.map { String(format: "%02x", $0) }.joined()
