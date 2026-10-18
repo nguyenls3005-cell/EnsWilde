@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AirliftFFI // ✅ Đã thêm dòng này để fix lỗi không tìm thấy al_set_target_host
 
 @MainActor
 final class ToolRunner: ObservableObject {
@@ -12,7 +13,7 @@ final class ToolRunner: ObservableObject {
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        try? await Task.sleep(nanoseconds: 300_000_000)
+        try? await Task.sleep(nanoseconds: 400_000_000)
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -34,16 +35,13 @@ final class ToolRunner: ObservableObject {
         await log("Starting Apply process...")
         
         do {
-            // KIỂM TRA ĐIỀU KIỆN TIÊN QUYẾT (CHỈ KHI DÙNG AIRLIFT)
             if isAirLiftMode {
-                // 1. Check Pairing
                 let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
                 guard FileManager.default.fileExists(atPath: pairingPath) else {
                     throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing Pairing File! Vào Settings để import."])
                 }
                 await log("✅ Pairing File found.")
                 
-                // 2. Check Loopback IP
                 let targetIP = await getLoopbackIP()
                 guard let validIP = targetIP else {
                     throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Cannot connect to LocalDevVPN! Hãy bật VPN."])
@@ -52,7 +50,6 @@ final class ToolRunner: ObservableObject {
                 _ = al_set_target_host(validIP)
             }
 
-            // CHẠY PASSCODE
             if hasPasscode {
                 state = .running(toolName: "Passcode Theme")
                 await log("--- Passcode Theme ---")
@@ -65,7 +62,6 @@ final class ToolRunner: ObservableObject {
                 }
             }
 
-            // CHẠY WALLET
             if hasWallet {
                 state = .running(toolName: "Apple Wallet")
                 await log("--- Apple Wallet ---")
@@ -74,7 +70,6 @@ final class ToolRunner: ObservableObject {
                 }
             }
 
-            // CHẠY BAD QUERY (NẾU KHÔNG DÙNG AIRLIFT)
             if !isAirLiftMode {
                 if hasMobileGestalt {
                     state = .running(toolName: "MobileGestalt")
@@ -101,12 +96,9 @@ final class ToolRunner: ObservableObject {
                 }
             }
 
-            // NẾU MỌI THỨ CHẠY XONG XUÔI SẺ MÀ KHÔNG QUĂNG LỖI -> SUCCESS
             state = .success
             await log("✅ All tweaks applied successfully.")
-
         } catch {
-            // NẾU CÓ BẤT KỲ LỖI NÀO VĂNG RA -> DỪNG LẠI VÀ BÁO ĐỎ
             state = .failed(message: "\(error.localizedDescription)")
             await log("❌ Failed: \(error.localizedDescription)")
         }
