@@ -65,18 +65,23 @@ final class GestaltStore: ObservableObject {
         })
     }
     
-    // Binding MA THUẬT cho iPadOS (Copy từ Erosion)
+    // Binding MA THUẬT cho iPadOS (Sửa đổi để không phụ thuộc vào CacheData cũ)
     func mgTrollPadBinding() -> Binding<Bool> {
         return Binding(get: {
             if let value = self.cacheExtra[MGKey.ipadosCacheEx.first!] as? Int { return value == 1 }
             return false
         }, set: { enabled in
             self.objectWillChange.send()
-            if self.mgSetiPadOS(enable: enabled) {
-                for key in MGKey.ipadosCacheEx {
-                    if enabled { self.cacheExtra[key] = 1 }
-                    else { self.cacheExtra.removeObject(forKey: key) }
-                }
+            
+            // 1. Thêm/Xóa các key trong CacheExtra
+            for key in MGKey.ipadosCacheEx {
+                if enabled { self.cacheExtra[key] = 1 }
+                else { self.cacheExtra.removeObject(forKey: key) }
+            }
+            
+            // 2. Thử sửa Hex nếu có CacheData (không bắt buộc, chỉ để đồng bộ)
+            if self.mgCurrentDict["CacheData"] is Data {
+                _ = self.mgSetiPadOS(enable: enabled)
             }
         })
     }
