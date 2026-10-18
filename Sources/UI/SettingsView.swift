@@ -382,3 +382,32 @@ struct AboutView: View {
                 creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
                 creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
                 creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
+            }
+            
+            Section(header: Text(L("settings_translators"))) {
+                ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.trans filelator?.isEmpty ?? true) }), { code langInfo in
+                    creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
+                }
+            }
+        }
+        .navigationTitle(L("nav_about"))
+        .onAppear {
+            if languageManager.availableLanguages.isEmpty {
+                Task { await languageManager.fetchAvailableLanguages() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.subheadline).fontWeight(.semibold)
+                Text(desc).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
