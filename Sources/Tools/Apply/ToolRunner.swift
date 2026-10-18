@@ -16,10 +16,15 @@ final class ToolRunner: ObservableObject {
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
+        let isAirLiftMode = UserDefaults.standard.bool(forKey: "isAirLiftMode")
+        
         let hasMobileGestalt = store.replaceMobileGestaltEnabled
         let hasConfigTweaks = store.configTweaksEnabled
+        let hasPasscode = themeStore.passcodeThemeEnabled
+        let hasWallet = walletStore.appleWalletEnabled
 
-        if !hasMobileGestalt && !hasConfigTweaks {
+        // Kiểm tra xem có Tweak nào bật không
+        if !hasMobileGestalt && !hasConfigTweaks && !hasPasscode && !hasWallet {
             state = .failed(message: "No tweaks enabled.")
             return
         }
@@ -27,12 +32,40 @@ final class ToolRunner: ObservableObject {
         resetLogs()
         state = .running(toolName: "Initializing")
         
-        await log("Initializing Bad_Query exploit...")
-        await log("Checking system permissions...")
+        await log("Starting Apply process...")
         
         do {
+            // ==========================================
+            // PHẦN 1: CHẠY AIRLIFT (PASSCODE & WALLET)
+            // ==========================================
+            if isAirLiftMode {
+                await log("AirLift mode detected.")
+                
+                if hasPasscode {
+                    state = .running(toolName: "Passcode Theme")
+                    await log("Applying Passcode Theme via AirLift...")
+                    if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
+                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store)
+                        await log("✓ Passcode Theme applied.")
+                    } else {
+                        await log("⚠️ No passcode theme selected.")
+                    }
+                }
+                
+                if hasWallet {
+                    state = .running(toolName: "Apple Wallet")
+                    await log("Applying Apple Wallet via AirLift...")
+                    try await AppleWalletTask.run(store: store, walletStore: walletStore)
+                    await log("✓ Apple Wallet applied.")
+                }
+            }
+
+            // ==========================================
+            // PHẦN 2: CHẠY BAD QUERY (MOBILEGESTALT & CONFIG)
+            // ==========================================
             if hasMobileGestalt {
                 state = .running(toolName: "MobileGestalt")
+                await log("Initializing Bad_Query exploit...")
                 await log("Locating ModifiedMobileGestalt.plist...")
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
@@ -58,7 +91,7 @@ final class ToolRunner: ObservableObject {
                 let cloudConfigPath = "\(configDir)/CloudConfigurationDetails.plist"
 
                 await log("Granting access...")
-                let access = bq.grantAccess(atPath: configDir)
+                let access = BadQuery().grantAccess(atPath: configDir)
                 guard access.0 else {
                     throw NSError(domain: "ToolRunner", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to grant access."])
                 }
