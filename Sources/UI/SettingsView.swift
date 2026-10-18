@@ -117,13 +117,11 @@ struct SettingsView: View {
             Section(header: Text(L("settings_language"))) {
                 NavigationLink(destination: LanguageSettingsView()) { Label(L("settings_language"), systemImage: "globe") }
             }
-
             Section(header: Text(L("settings_accent_color"))) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) { ForEach(tintOptions, id: \.hex) { option in colorOptionView(option: option) } }
                 }
             }
-
             Section(header: Text(L("settings_app_info"))) {
                 HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary) }
                 HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
@@ -186,14 +184,7 @@ struct SettingsView: View {
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
             
-            let result = al_exploit_run(
-                pairingPath,
-                "/var/mobile/Library",
-                nil,
-                nil,
-                &outJson,
-                &outError
-            )
+            let result = al_exploit_run(pairingPath, "/var/mobile/Library", nil, nil, &outJson, &outError)
 
             DispatchQueue.main.async {
                 if result == 0 {
