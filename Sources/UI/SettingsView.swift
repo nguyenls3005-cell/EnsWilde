@@ -24,8 +24,6 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            // Đã xóa phần System Status ở đây
-
             Section(header: Text(L("connection_status"))) {
                 statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
                 statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
@@ -50,7 +48,8 @@ struct SettingsView: View {
                     if hasBackup, let info = backupInfo {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Image(systemName: "checkforegroundStyle(.green)
+                                Image(systemName: "checkmark.shield.fill")
+                                    .foregroundStyle(.green)
                                 Text(L("backup_available")).font(.subheadline.bold())
                                 Spacer()
                             }
@@ -214,7 +213,7 @@ struct SettingsView: View {
     }
 }
 
-// AboutView (giữ nguyên như cũ)
+// MARK: - ABOUT VIEW 
 struct AboutView: View { 
     @ObservedObject private var languageManager = LanguageManager.shared
 
