@@ -110,7 +110,15 @@ struct SettingsView: View {
             refreshBackupInfo()
         }
         .onDisappear { monitor?.cancel() }
-        .fileImporter(isPresented: $showPairingFileImporter, allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { handlePairingImport($0) }
+        // ✅ SỬA: Hỗ trợ cả RPPairing.plist và .mobiledevicepairing
+        .fileImporter(
+            isPresented: $showPairingFileImporter, 
+            allowedContentTypes: [
+                .propertyList, 
+                UTType(filenameExtension: "mobiledevicepairing") ?? .data,
+                UTType(filenameExtension: "rppairing") ?? .data
+            ]
+        ) { handlePairingImport($0) }
         .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
     }
 
@@ -140,13 +148,24 @@ struct SettingsView: View {
             }
     }
 
+    // ✅ SỬA: Xử lý import file chuẩn xác, lưu thành "pairingFile.plist" để các module khác đọc
     private func handlePairingImport(_ result: Result<URL, Error>) {
         if case .success(let url) = result {
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-            if let data = try? Data(contentsOf: url) {
-                try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
+            
+            do {
+                // Đọc dữ liệu file được chọn
+                let data = try Data(contentsOf: url)
+                
+                // Ghi đè vào thư mục Documents với tên cố định là pairingFile.plist
+                let saveURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+                try data.write(to: saveURL)
+                
+                // Cập nhật AppStorage để giao diện biết đã có file
                 pairingFile = url.lastPathComponent
+            } catch {
+                print("Lỗi khi import Pairing File: \(error.localizedDescription)")
             }
         }
     }
