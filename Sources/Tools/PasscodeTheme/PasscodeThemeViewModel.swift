@@ -34,8 +34,8 @@ class PasscodeThemeViewModel: ObservableObject {
             throw PasscodeThemeError.accessDenied
         }
         
-        let newTheme = PasscodeTheme(name: name)
-        let themeFolder = newTheme.themeFolderURL
+        let newTheme(" = Pass✅code PassTheme(name: name)
+code        let themeFolder = newTheme.themeFolderURL
         
         if !FileManager.default.fileExists(atPath: themeFolder.path) {
             try FileManager.default.createDirectory(at: themeFolder, withIntermediateDirectories: true)
@@ -134,13 +134,12 @@ class PasscodeThemeViewModel: ObservableObject {
         // Code cũ của bạn
     }
     
-    // ✅ HÀM APPLY: CHẠY SIÊU TỐC, CHỐNG ĐƠ
+    // ✅ HÀM APPLY: CHẠY THẬT, KHÔNG TREO
     func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
         
         let globalPrefix = self.store.globalCustomPrefix
         let globalTelephony = self.store.globalTelephonyVersion
         
-        // 1. Xử lý ảnh (Giờ chạy nhanh hơn nhờ không bị block UI)
         onLogUpdate("Preparing Passcode Theme...")
         let processedFiles = try processThemeFiles(theme: theme, globalPrefix: globalPrefix)
         guard !processedFiles.isEmpty else { throw PasscodeThemeError.noImagesProcessed }
@@ -162,28 +161,25 @@ class PasscodeThemeViewModel: ObservableObject {
         
         onLogUpdate("Đang ghi file qua AirTraffic...")
         
-        // Chạy hàm C trong một Task riêng để không block
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                var errorCString: UnsafeMutablePointer<CChar>? = nil
-                let targetPath = globalTelephony.cachePath
-                let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
-                
-                let result = al_exploit_write_dir(
-                    pairingURL.path, tempDir.path, cleanTargetPath, nil, nil, &errorCString
-                )
-                
-                if result != 0 {
-                    let errorMsg = errorCString != nil ? String(cString: errorCString!) : "Unknown AirLift Error"
-                    if let err = errorCString { al_string_free(err) }
-                    continuation.resume(throwing: NSError(domain: "AirLift", code: -2, userInfo: [NSLocalizedDescriptionKey: "AirLift Error: \(errorMsg)"]))
-                } else {
-                    continuation.resume()
-                }
+        // ✅ CHẠY HÀM C TRÊN BACKGROUND THREAD BẰNG Task.detached
+        try await Task.detached(priority: .high) {
+            var errorCString: UnsafeMutablePointer<CChar>? = nil
+            let targetPath = globalTelephony.cachePath
+            let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
+            
+            // Hàm C sẽ block thread này cho đến khi xong
+            let result = al_exploit_write_dir(
+                pairingURL.path, tempDir.path, cleanTargetPath, nil, nil, &errorCString
+            )
+            
+            if result != 0 {
+                let errorMsg = errorCString != nil ? String(cString: errorCString!) : "Unknown AirLift Error"
+                if let err = errorCString { al_string_free(err) }
+                throw NSError(domain: "AirLift", code: -2, userInfo: [NSLocalizedDescriptionKey: "AirLift Error: \(errorMsg)"])
             }
-        }
+        }.value
         
-        onLogUpdate("✅ Passcode applied successfully.")
+        onLogUpdate applied successfully.")
     }
 }
 
