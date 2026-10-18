@@ -351,24 +351,15 @@ struct MobileGestaltView: View {
         cacheExtra[MGKey.prodType] = productType
     }
 
-    // ✅ ĐÃ SỬA: Tạo lại toàn bộ cấu trúc ArtworkTraits để iOS 27 không bị "tàng hình"
+    // ✅ SỬA: Lấy Dictionary gốc ra, chỉ thay đổi Tên
     func applyModelName() {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
         
-        // Cấu trúc chuẩn của iOS 27 cho ArtworkTraits
-        let newArtworkTraits: NSMutableDictionary = [
-            "ArtworkDeviceProductDescription": modelName,
-            "ArtworkDeviceSubType": 2436, // Mặc định kích thước chuẩn (có thể thay đổi theo preset nếu cần)
-            "ArtworkDeviceIdiom": "phone",
-            "ArtworkDeviceScaleFactor": 3,
-            "ArtworkIsRoundedCorner": true
-        ]
+        let currentDict = (cacheExtra[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+        currentDict["ArtworkDeviceProductDescription"] = modelName
         
-        // Ghi đè vào CacheExtra
-        cacheExtra[MGKey.artwork] = newArtworkTraits
-        
-        // Đồng bộ thêm vào store để khi Save nó lưu đúng
-        store.cacheExtra[MGKey.artwork] = newArtworkTraits
+        cacheExtra[MGKey.artwork] = currentDict
+        store.cacheExtra[MGKey.artwork] = currentDict
         store.objectWillChange.send()
     }
 
