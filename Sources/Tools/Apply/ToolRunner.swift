@@ -12,8 +12,7 @@ final class ToolRunner: ObservableObject {
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        // Tăng thời gian chờ lên 0.5s để bạn kịp đọc log
-        try? await Task.sleep(nanoseconds: 500_000_000) 
+        try? await Task.sleep(nanoseconds: 400_000_000)
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -33,14 +32,14 @@ final class ToolRunner: ObservableObject {
         resetLogs()
         state = .running(toolName: "Initializing")
         
-        await log("Initializing Apply process...")
+        await log("Starting Apply process...")
         
         do {
             // ==========================================
-            // 1. CHẠY AIRLIFT (PASSCODE & WALLET)
+            // CHẾ ĐỘ AIRLIFT
             // ==========================================
             if isAirLiftMode {
-                await log("AirLift mode detected.")
+                await log("AirLift mode active.")
                 
                 if hasPasscode {
                     state = .running(toolName: "Passcode Theme")
@@ -62,7 +61,7 @@ final class ToolRunner: ObservableObject {
             }
 
             // ==========================================
-            // 2. CHẠY BAD QUERY (MOBILEGESTALT & CONFIG)
+            // CHẾ ĐỘ BAD QUERY (Chỉ khi không phải AirLift)
             // ==========================================
             if !isAirLiftMode {
                 if hasMobileGestalt {
