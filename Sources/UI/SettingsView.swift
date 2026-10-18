@@ -10,6 +10,9 @@ struct SettingsView: View {
     @State private var showPairingFileImporter = false 
     @State private var vpnActive: Bool = false 
     @State private var monitor: NWPathMonitor?
+    
+    // Nhận biết chế độ AirLift
+    @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
 
     @State private var showBackupImporter = false
     @State private var hasBackup: Bool = false
@@ -24,7 +27,7 @@ struct SettingsView: View {
         Form {
             Section(header: Text(L("system_status"))) {
                 HStack(spacing: 12) {
-                    if pairingFile != nil && vpnActive {
+                    if (pairingFile != nil && vpnActive) || isAirLiftMode {
                         Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                         Text(L("status_ready")).font(.body)
                     } else {
@@ -35,46 +38,53 @@ struct SettingsView: View {
             }
 
             Section(header: Text(L("connection_status"))) {
-                statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
-                statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
-            }
-
-            Section(header: Text(L("pairing_file"))) {
-                if pairingFile != nil {
-                    Button(role: .destructive) {
-                        pairingFile = nil
-                        try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
+                if !isAirLiftMode {
+                    statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
+                    statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
                 } else {
-                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
+                    statusRow(title: "AirLift", subtitle: L("status_ready"), ok: true)
                 }
             }
 
-            Section(header: Text(L("backup_title"))) {
-                if hasBackup, let info = backupInfo {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
-                            Text(L("backup_available")).font(.subheadline.bold())
-                            Spacer()
-                        }
-                        Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                        Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
-                    }.padding(.vertical, 4)
-                } else {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("backup_none")).font(.subheadline.bold())
-                            Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }.padding(.vertical, 4)
+            if !isAirLiftMode {
+                Section(header: Text(L("pairing_file"))) {
+                    if pairingFile != nil {
+                        Button(role: .destructive) {
+                            pairingFile = nil
+                            try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
+                        } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
+                    } else {
+                        Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
+                    }
                 }
-                
-                Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
-                Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
-                if hasBackup {
-                    Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
+
+                // ✅ Ẩn Backup nếu đang ở AirLift
+                Section(header: Text(L("backup_title"))) {
+                    if hasBackup, let info = backupInfo {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
+                                Text(L("backup_available")).font(.subheadline.bold())
+                                Spacer()
+                            }
+                            Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+                            Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
+                        }.padding(.vertical, 4)
+                    } else {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L("backup_none")).font(.subheadline.bold())
+                                Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                    
+                    Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
+                    Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
+                    if hasBackup {
+                        Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
+                    }
                 }
             }
 
@@ -106,11 +116,12 @@ struct SettingsView: View {
         }
         .navigationTitle(L("nav_settings"))
         .onAppear {
-            startMonitoringVPN()
-            refreshBackupInfo()
+            if !isAirLiftMode {
+                startMonitoringVPN()
+                refreshBackupInfo()
+            }
         }
         .onDisappear { monitor?.cancel() }
-        // ✅ SỬA: Hỗ trợ cả RPPairing.plist và .mobiledevicepairing
         .fileImporter(
             isPresented: $showPairingFileImporter, 
             allowedContentTypes: [
@@ -148,21 +159,15 @@ struct SettingsView: View {
             }
     }
 
-    // ✅ SỬA: Xử lý import file chuẩn xác, lưu thành "pairingFile.plist" để các module khác đọc
     private func handlePairingImport(_ result: Result<URL, Error>) {
         if case .success(let url) = result {
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             
             do {
-                // Đọc dữ liệu file được chọn
                 let data = try Data(contentsOf: url)
-                
-                // Ghi đè vào thư mục Documents với tên cố định là pairingFile.plist
                 let saveURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
                 try data.write(to: saveURL)
-                
-                // Cập nhật AppStorage để giao diện biết đã có file
                 pairingFile = url.lastPathComponent
             } catch {
                 print("Lỗi khi import Pairing File: \(error.localizedDescription)")
