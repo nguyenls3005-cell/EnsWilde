@@ -179,10 +179,7 @@ struct MobileGestaltView: View {
     private var advancedSection: some View {
         Section(header: Text(L("section_internal_features"))) {
             Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
-            
-            // ✅ Internal Stuff giờ dùng mgByteBinding chuẩn, không bị khóa
             Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
-            
             Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
             
             Toggle(L("mg_apple_intelligence"), isOn: bindingForAppleIntelligence())
@@ -337,6 +334,8 @@ struct MobileGestaltView: View {
         )
     }
 
+    // MARK: - Helpers
+
     static func machineName() -> String {
         var systemInfo = utsname()
         uname(&systemInfo)
@@ -352,22 +351,34 @@ struct MobileGestaltView: View {
         cacheExtra[MGKey.prodType] = productType
     }
 
+    // ✅ ĐÃ SỬA: Tạo lại toàn bộ cấu trúc ArtworkTraits để iOS 27 không bị "tàng hình"
     func applyModelName() {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
-        var gestaltDict: NSMutableDictionary
-        if let existing = cacheExtra[MGKey.artwork] as? NSMutableDictionary {
-            gestaltDict = existing
-        } else {
-            gestaltDict = NSMutableDictionary()
-            cacheExtra[MGKey.artwork] = gestaltDict
-        }
-        gestaltDict["ArtworkDeviceProductDescription"] = modelName
+        
+        // Cấu trúc chuẩn của iOS 27 cho ArtworkTraits
+        let newArtworkTraits: NSMutableDictionary = [
+            "ArtworkDeviceProductDescription": modelName,
+            "ArtworkDeviceSubType": 2436, // Mặc định kích thước chuẩn (có thể thay đổi theo preset nếu cần)
+            "ArtworkDeviceIdiom": "phone",
+            "ArtworkDeviceScaleFactor": 3,
+            "ArtworkIsRoundedCorner": true
+        ]
+        
+        // Ghi đè vào CacheExtra
+        cacheExtra[MGKey.artwork] = newArtworkTraits
+        
+        // Đồng bộ thêm vào store để khi Save nó lưu đúng
+        store.cacheExtra[MGKey.artwork] = newArtworkTraits
+        store.objectWillChange.send()
     }
 
     func removeModelName() {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return }
         if let gestaltDict = cacheExtra[MGKey.artwork] as? NSMutableDictionary {
             gestaltDict.removeObject(forKey: "ArtworkDeviceProductDescription")
+        }
+        if let storeGestalt = store.cacheExtra[MGKey.artwork] as? NSMutableDictionary {
+            storeGestalt.removeObject(forKey: "ArtworkDeviceProductDescription")
         }
     }
 }
