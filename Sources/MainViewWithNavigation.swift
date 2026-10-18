@@ -31,7 +31,8 @@ struct MainViewWithNavigation: View {
             .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }
             .tag(NavigationTab.themeStore)
             
-            NavigationStack { SettingsView() }
+            // SỬA: Truyền toolStore vào SettingsView
+            NavigationStack { SettingsView(toolStore: toolStore) }
             .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }
             .tag(NavigationTab.settings)
             
@@ -52,7 +53,7 @@ struct MainViewWithNavigation: View {
             if !newValue && selectedTab == .apply { selectedTab = .home }
         }
         .onAppear { applyTintColor() }
-    } // <-- ĐÃ ĐÓNG NGOẶC Ở ĐÂY
+    }
     
     private func applyTintColor() {
         let uiColor = UIColor(Color(hex: userTintColorHex))
@@ -66,7 +67,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW
+// ApplyTabView giữ nguyên như cũ
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
