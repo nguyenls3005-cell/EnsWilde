@@ -51,81 +51,75 @@ final class GestaltStore: ObservableObject {
         }
     }
     
-    // TÌM OFFSET CỦA KEY TRONG CACHEDATA (Dùng cho iOS 27)
-    func FindCacheDataOffset(_ key: String) -> Int {
+    // Trả về Optional để dùng được if let
+    func FindCacheDataOffset(_ key: String) -> Int? {
         guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSDictionary,
-              let uid = cacheExtra[key] as? Int else { return -1 }
+              let uid = cacheExtra[key] as? Int else { return nil }
         let uidBytes = withUnsafeBytes(of: uid.littleEndian) { Data($0) }
         
-        guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return -1 }
-        let range = cacheData.range(of: uidBytes)
-        return range?.lowerBound ?? -1
+        guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return nil }
+        return cacheData.range(of: uidBytes)?.lowerBound
     }
     
-    // CƠ CHẾ "KÌ DỊ": SỬA BYTE TRỰC TIẾP TRONG CACHEDATA
     func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> {
         return Binding(get: {
-            let offset = self.FindCacheDataOffset(key)
-            guard offset != -1, let cacheData = self.mgCurrentDict["CacheData"] as? Data, offset < cacheData.count else {
-                return (self.cacheExtra[key] as? Int) == Int(enableValue)
+            if let offset = self.FindCacheDataOffset(key),
+               let cacheData = self.mgCurrentDict["CacheData"] as? Data,
+               offset < cacheData.count {
+                return cacheData[offset] == enableValue
             }
-            return cacheData[offset] == enableValue
+            return (self.cacheExtra[key] as? Int) == Int(enableValue)
         }, set: { enabled in
             self.objectWillChange.send()
             
-            // Luôn ghi vào CacheExtra để đảm bảo Dictionary được lưu
             if enabled { self.cacheExtra[key] = Int(enableValue) }
             else { self.cacheExtra.removeObject(forKey: key) }
             
-            // Ghi đè vào Byte (CacheData)
-            let offset = self.FindCacheDataOffset(key)
-            guard offset != -1, let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData, offset < mutableData.length else { return }
+            guard let offset = self.FindCacheDataOffset(key),
+                  let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData,
+                  offset < mutableData.length else { return }
             
             var value = enabled ? enableValue : disableValue
             mutableData.replaceBytes(in: NSRange(location: offset, length: 1), withBytes: &value)
         })
     }
 
-    // CƠ CHẾ ĐẶC BIỆT CHO DYNAMIC ISLAND
     func applyDynamicIsland(type: Int) -> Bool {
         guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSMutableDictionary else { return false }
         
         let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
         
-        // Xóa cấu hình cũ
         cacheExtra.removeObject(forKey: MGKey.artwork)
         cacheExtra.removeObject(forKey: MGKey.island)
         
         if type > 0 && type < subtypeValues.count {
             let subtypeValue = subtypeValues[type]
             
-            // Ghi vào CacheExtra
-            var gestaltDict = NSMutableDictionary()
+            let gestaltDict = NSMutableDictionary()
             gestaltDict["ArtworkDeviceSubType"] = subtypeValue
             cacheExtra[MGKey.artwork] = gestaltDict
             cacheExtra[MGKey.island] = 1
             
-            // TÌM VÀ GHI ĐÈ VÀO CACHEDATA
-            if let artworkOffset = FindCacheDataOffset(MGKey.artwork) {
-                if let cacheData = mgCurrentDict["CacheData"] as? NSMutableData, artworkOffset + 4 < cacheData.length {
-                    var subtypeBytes = subtypeValue.littleEndian
-                    cacheData.replaceBytes(in: NSRange(location: artworkOffset, length: 4), withBytes: &subtypeBytes)
-                }
+            // SỬA: Dùng if let với Optional Int
+            if let artworkOffset = FindCacheDataOffset(MGKey.artwork),
+               let cacheData = mgCurrentDict["CacheData"] as? NSMutableData,
+               artworkOffset + 4 < cacheData.length {
+                var subtypeBytes = subtypeValue.littleEndian
+                cacheData.replaceBytes(in: NSRange(location: artworkOffset, length: 4), withBytes: &subtypeBytes)
             }
             
-            if let islandOffset = FindCacheDataOffset(MGKey.island) {
-                if let cacheData = mgCurrentDict["CacheData"] as? NSMutableData, islandOffset < cacheData.length {
-                    var val: UInt8 = 1
-                    cacheData.replaceBytes(in: NSRange(location: islandOffset, length: 1), withBytes: &val)
-                }
+            if let islandOffset = FindCacheDataOffset(MGKey.island),
+               let cacheData = mgCurrentDict["CacheData"] as? NSMutableData,
+               islandOffset < cacheData.length {
+                var val: UInt8 = 1
+                cacheData.replaceBytes(in: NSRange(location: islandOffset, length: 1), withBytes: &val)
             }
         } else {
-            // Nếu tắt (type = 0), ghi đè số 0 vào CacheData nếu tìm thấy
-            if let islandOffset = FindCacheDataOffset(MGKey.island) {
-                if let cacheData = mgCurrentDict["CacheData"] as? NSMutableData, islandOffset < cacheData.length {
-                    var val: UInt8 = 0
-                    cacheData.replaceBytes(in: NSRange(location: islandOffset, length: 1), withBytes: &val)
-                }
+            if let islandOffset = FindCacheDataOffset(MGKey.island),
+               let cacheData = mgCurrentDict["CacheData"] as? NSMutableData,
+               islandOffset < cacheData.length {
+                var val: UInt8 = 0
+                cacheData.replaceBytes(in: NSRange(location: islandOffset, length: 1), withBytes: &val)
             }
         }
         return true
