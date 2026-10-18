@@ -16,7 +16,7 @@ class PasscodeThemeViewModel: ObservableObject {
         self.store = store
     }
     
-    // Import Theme (Giữ nguyên)
+    // Import Theme
     func importTheme(from sourceURL: URL, name: String) async throws {
         isProcessing = true
         defer { isProcessing = false }
@@ -58,7 +58,7 @@ class PasscodeThemeViewModel: ObservableObject {
         store.addTheme(themeWithSize)
     }
     
-    // Process files (Giữ nguyên)
+    // Process files
     func processThemeFiles(theme: PasscodeTheme, globalPrefix: PasscodeTheme.PrefixLanguage? = nil) throws -> [(sourceURL: URL, processedData: Data, targetFilename: String)] {
         var processedFiles: [(URL, Data, String)] = []
         let imageFiles = theme.getImageFiles()
@@ -130,10 +130,10 @@ class PasscodeThemeViewModel: ObservableObject {
     }
     
     func importDefaultPasscode(from sourceURL: URL, name: String, themeStore: PasscodeThemeStore) async throws {
-        // Code cũ
+        // Code cũ của bạn
     }
     
-    // ✅ HÀM APPLY: In log, xử lý lỗi rõ ràng
+    // ✅ HÀM APPLY CHUẨN
     func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
         isProcessing = true
         defer { isProcessing = false }
@@ -207,5 +207,22 @@ class PasscodeThemeViewModel: ObservableObject {
             }
         }
         return nil
+    }
+}
+
+// ✅ ĐÃ THÊM LẠI ENUM NÀY ĐỂ FIX LỖI BUILD
+enum PasscodeThemeError: LocalizedError {
+    case accessDenied
+    case noImagesFound
+    case noImagesProcessed
+    case invalidFormat
+    
+    var errorDescription: String? {
+        switch self {
+        case .accessDenied: return "Unable to access the selected file"
+        case .noImagesFound: return "No image files found in theme package"
+        case .noImagesProcessed: return "No images could be processed from theme"
+        case .invalidFormat: return "Invalid theme format"
+        }
     }
 }
