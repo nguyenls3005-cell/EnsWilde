@@ -32,7 +32,7 @@ final class ToolRunner: ObservableObject {
         state = .running(toolName: "Initializing")
         await log("Starting Apply process...")
         
-        // Khởi tạo IP cho AirLift (nếu có dùng Passcode/Wallet)
+        // KHỞI TẠO AIRLIFT
         if hasPasscode || hasWallet {
             let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
             if !FileManager.default.fileExists(atPath: pairingPath) {
@@ -42,19 +42,14 @@ final class ToolRunner: ObservableObject {
             }
             await log("✅ Pairing File found.")
             
-            if let validIP = await getLoopbackIP() {
-                await log("✅ Loopback IP active: \(validIP)")
-                _ = al_set_target_host(validIP)
-            } else {
-                state = .failed(message: "Cannot connect to LocalDevVPN!")
-                await log("❌ Cannot connect to LocalDevVPN! Hãy bật VPN.")
-                return
-            }
+            // Ép cứng IP 10.7.0.1 (Cách của AirCard)
+            // Nếu 10.7.0.1 không được, Rust core tự fallback về 127.0.0.1
+            let targetIP = "10.7.0.1"
+            await log("Using Loopback IP: \(targetIP)")
+            _ = al_set_target_host(targetIP)
         }
         
-        // ==========================================
         // 1. PASSCODE (AIRLIFT)
-        // ==========================================
         if hasPasscode {
             state = .running(toolName: "Passcode Theme")
             await log("--- Passcode Theme (AirLift) ---")
@@ -71,9 +66,7 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // ==========================================
         // 2. WALLET (AIRLIFT)
-        // ==========================================
         if hasWallet {
             state = .running(toolName: "Apple Wallet")
             await log("--- Apple Wallet (AirLift) ---")
@@ -86,9 +79,7 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // ==========================================
-        // 3. MOBILEGESTALT (BAD QUERY - CÓ BỌC LỖI HTTP)
-        // ==========================================
+        // 3. MOBILEGESTALT (BAD QUERY)
         if hasMobileGestalt {
             state = .running(toolName: "MobileGestalt")
             await log("--- MobileGestalt (Bad Query) ---")
@@ -102,15 +93,11 @@ final class ToolRunner: ObservableObject {
                 try BadQueryWrapper.writeFile(at: MobileGestaltApplyTask.onDeviceMGPath, data: mgData)
                 await log("✅ MobileGestalt written.")
             } catch {
-                // Bọc lỗi HTTP ở đây
                 await log("❌ MobileGestalt failed: \(error.localizedDescription)")
-                await log("⚠️ Lưu ý: Bad Query có thể bị chặn trên iOS 27.")
             }
         }
 
-        // ==========================================
         // 4. CONFIG TWEAKS (BAD QUERY)
-        // ==========================================
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
             await log("--- Config Tweaks (Bad Query) ---")
@@ -128,17 +115,5 @@ final class ToolRunner: ObservableObject {
 
         state = .success
         await log("✅ All tweaks applied successfully.")
-    }
-    
-    private func getLoopbackIP() async -> String? {
-        let candidates = ["10.7.0.1", "127.0.0.1"]
-        for ip in candidates {
-            if let url = URL(string: "http://\(ip)") {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 1.0
-                if let (_, _) = try? await URLSession.shared.data(for: request) { return ip }
-            }
-        }
-        return nil
     }
 }
