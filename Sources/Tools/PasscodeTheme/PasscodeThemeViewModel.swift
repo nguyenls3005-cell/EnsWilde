@@ -193,11 +193,6 @@ class PasscodeThemeViewModel: ObservableObject {
         
         onLogUpdate("Đang ghi file qua AirTraffic...")
         
-        let bgTask = await UIApplication.shared.beginBackgroundTask(withName: "AirliftApplyPasscode") {
-            onLogUpdate("⚠️ Hết thời gian chạy ngầm, nhưng có thể vẫn đang ghi.")
-        }
-        defer { UIApplication.shared.endBackgroundTask(bgTask) }
-        
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 var errorCString: UnsafeMutablePointer<CChar>? = nil
@@ -208,11 +203,7 @@ class PasscodeThemeViewModel: ObservableObject {
                     pairingPath,
                     tempDir.path,
                     cleanTargetPath,
-                    { _, msg in
-                        guard let msg = msg else { return }
-                        let line = String(cString: msg)
-                        DispatchQueue.main.async { onLogUpdate(line) }
-                    },
+                    nil,
                     nil,
                     &errorCString
                 )
