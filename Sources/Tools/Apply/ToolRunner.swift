@@ -30,56 +30,32 @@ final class ToolRunner: ObservableObject {
 
         resetLogs()
         state = .running(toolName: "Initializing")
-        await log("Starting...")
+        await log("Starting Apply Process...")
         
+        // 1. KIỂM TRA ĐIỀU KIỆN CHUNG CHO AIRLIFT
         if hasPasscode || hasWallet {
             let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
             if !FileManager.default.fileExists(atPath: pairingPath) {
                 state = .failed(message: "Missing Pairing File!")
-                await log("❌ Missing Pairing File!")
+                await log("❌ Missing Pairing File! Import pairingFile.plist vào Documents.")
                 return
             }
-            await log("✅ Pairing File found.")
-            _ = al_set_target_host("127.0.0.1")
-        }
-        
-        // 1. PASSCODE (AIRLIFT)
-        if hasPasscode {
-            state = .running(toolName: "Passcode")
-            if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
-                do {
-                    _ = al_set_target_host("127.0.0.1")
-                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { msg in
-                        Task { await self.log(msg) }
-                    }
-                    await log("✅ Passcode applied.")
-                } catch {
-                    await log("❌ Passcode failed: \(error.localizedDescription)")
-                }
-            } else {
-                await log("⚠️ No passcode theme selected.")
+            if !NetworkStatus.isVPNTunnelPresent() {
+                state = .failed(message: "VPN tunnel not active.")
+                await log("❌ Không phát hiện VPN tunnel. Bật LocalDevVPN hoặc StikDebug.")
+                return
             }
+            await log("✅ Pairing & VPN OK.")
         }
 
-        // 2. WALLET (AIRLIFT)
-        if hasWallet {
-            state = .running(toolName: "Wallet")
-            do {
-                _ = al_set_target_host("127.0.0.1")
-                try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
-                    Task { await self.log(msg) }
-                }
-                await log("✅ Wallet applied.")
-            } catch {
-                await log("❌ Wallet failed: \(error.localizedDescription)")
-            }
-        }
-
-        // 3. MOBILEGESTALT (BAD QUERY)
+        // 2. CHẠY MOBILEGESTALT (BAD QUERY) TRƯỚC
         if hasMobileGestalt {
             state = .running(toolName: "MobileGestalt")
             await log("--- MobileGestalt (Bad Query) ---")
             do {
+                try BadQueryManager.ensureMobileGestaltAccess()
+                await log("✅ Granted BadQuery access.")
+                
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
                 guard FileManager.default.fileExists(atPath: modMGURL.path) else {
@@ -93,10 +69,10 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // 4. CONFIG (BAD QUERY)
+        // 3. CHẠY CONFIG TWEAKS (BAD QUERY)
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
-            await log("--- Config Tweaks ---")
+            await log("--- Config Tweaks (Bad Query) ---")
             do {
                 let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
                 let access = BadQuery().grantAccess(atPath: configDir)
@@ -109,7 +85,37 @@ final class ToolRunner: ObservableObject {
             }
         }
 
+        // 4. CHẠY PASSCODE (AIRLIFT) SAU CÙNG
+        if hasPasscode {
+            state = .running(toolName: "Passcode (Airlift)")
+            if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
+                do {
+                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { msg in
+                        Task { await self.log(msg) }
+                    }
+                    await log("✅ Passcode applied.")
+                } catch {
+                    await log("❌ Passcode failed: \(error.localizedDescription)")
+                }
+            } else {
+                await log("⚠️ No passcode theme selected.")
+            }
+        }
+
+        // 5. CHẠY WALLET (AIRLIFT) SAU CÙNG
+        if hasWallet {
+            state = .running(toolName: "Wallet (Airlift)")
+            do {
+                try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
+                    Task { await self.log(msg) }
+                }
+                await log("✅ Wallet applied.")
+            } catch {
+                await log("❌ Wallet failed: \(error.localizedDescription)")
+            }
+        }
+
         state = .success
-        await log("✅ Done.")
+        await log("✅ All done.")
     }
 }
