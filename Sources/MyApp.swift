@@ -1,88 +1,56 @@
 import SwiftUI
-import UIKit
-import UniformTypeIdentifiers
-import UserNotifications
-
-extension UIDocumentPickerViewController {
-    @objc func fix_init(forOpeningContentTypes contentTypes: [UTType], asCopy: Bool) -> UIDocumentPickerViewController {
-        return fix_init(forOpeningContentTypes: contentTypes, asCopy: true)
-    }
-}
 
 @main
 struct MyApp: App {
-    private static let antiTamperMessage: String = "Fuck you. Get out..."
-    @State private var isSupportedOS: Bool = false
-
+    // Mặc định là false (Bad Query). Nếu bấm AirLift sẽ thành true.
+    @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
+    
     init() {
-        if Self.antiTamperMessage.isEmpty { return }
-
-        let hexString = UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"
-        let tintColor = UIColor(Color(hex: hexString))
-        UIView.appearance(whenContainedInInstancesOf: [UIWindow.self]).tintColor = tintColor
-        UITabBar.appearance().tintColor = tintColor
-        UINavigationBar.appearance().tintColor = tintColor
-
-        let fixMethod = class_getInstanceMethod(UIDocumentPickerViewController.self, #selector(UIDocumentPickerViewController.fix_init(forOpeningContentTypes:asCopy:)))!
-        let origMethod = class_getInstanceMethod(UIDocumentPickerViewController.self, #selector(UIDocumentPickerViewController.init(forOpeningContentTypes:asCopy:)))!
-        method_exchangeImplementations(origMethod, fixMethod)
-
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        UserDefaults.standard.set(false, forKey: "ShowApplyTab")
     }
-
+    
     var body: some Scene {
         WindowGroup {
-            let osCheck = isOSVersionSupported()
-            if osCheck.supported {
-                MainViewWithNavigation()
+            // Nếu máy chạy iOS 27.0 VÀ chưa chọn AirLift -> Hiện màn hình chặn
+            if isVersionBlocked() && !isAirLiftMode {
+                VersionBlockedView()
             } else {
-                UnsupportedVersionView(currentVersion: osCheck.versionString)
+                // Đủ điều kiện hoặc đã chọn AirLift -> Vào thẳng app
+                MainViewWithNavigation()
             }
         }
     }
     
-    private func isOSVersionSupported() -> (supported: Bool, versionString: String) {
-        let osVersion = UIDevice.current.systemVersion
-        let build = getBuildNumber()
+    private func isVersionBlocked() -> Bool {
+        let version = UIDevice.current.systemVersion
         
-        // Mã Build cho phép: Beta 1, 2, PB1, 3, 4, PB4
-        let allowedBuilds = ["24A5355q", "24A5370", "24A5380h", "24A5390f"]
-        
-        if allowedBuilds.contains(build) {
-            return (true, osVersion)
-        } else {
-            return (false, osVersion)
+        // Nếu là iOS 27.0 thì bị chặn
+        if version.hasPrefix("27.0") {
+            return true
         }
-    }
-    
-    private func getBuildNumber() -> String {
-        var size = 0
-        sysctlbyname("kern.osversion", nil, &size, nil, 0)
-        var machine = [CChar](repeating: 0, count: size)
-        sysctlbyname("kern.osversion", &machine, &size, nil, 0)
-        return String(cString: machine)
+        return false
     }
 }
 
-struct UnsupportedVersionView: View {
-    var currentVersion: String
+// MARK: - MÀN HÌNH CHẶN PHIÊN BẢN (Chỉ có nút AirLift)
+struct VersionBlockedView: View {
+    @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            Color.black.edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 20) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.orange)
-                    .padding(.bottom, 10)
+                    .font(.system(size: 60))
+                    .foregroundStyle(.orange)
                 
                 Text("iOS Version Not Supported")
                     .font(.title.bold())
                     .foregroundColor(.white)
                 
                 Text("This app only supports iOS versions 27.0 Developer Beta 1-4 / Public Beta 1-2")
-                    .font(.body)
+                    .font(.subheadline)
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
@@ -90,17 +58,16 @@ struct UnsupportedVersionView: View {
                 Text("Your current iOS version:")
                     .font(.subheadline)
                     .foregroundColor(.gray)
-                    .padding(.top, 10)
                 
-                Text(currentVersion)
+                Text(UIDevice.current.systemVersion)
                     .font(.title2.bold())
                     .foregroundColor(.white)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .background(Color.white.opacity(0.1))
                     .cornerRadius(10)
                 
-                VStack(alignment: .leading, spacing: 15) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text("To use this app:")
                         .font(.headline)
                         .foregroundColor(.white)
@@ -109,25 +76,44 @@ struct UnsupportedVersionView: View {
                         Image(systemName: "arrow.down.circle.fill")
                             .foregroundColor(.gray)
                         Text("Downgrade to iOS 27 Developer Beta 4 or earlier")
-                            .font(.subheadline)
                             .foregroundColor(.gray)
+                            .font(.subheadline)
                     }
                     
                     HStack(spacing: 10) {
                         Image(systemName: "questionmark.circle.fill")
                             .foregroundColor(.gray)
                         Text("Contact the developer for support")
-                            .font(.subheadline)
                             .foregroundColor(.gray)
+                            .font(.subheadline)
                     }
+                    
+                    Divider().background(Color.gray)
+                    
+                    // CHỈ CÓ NÚT AIRLIFT (Vì nếu đủ điều kiện đã tự vào app rồi)
+                    Button(action: {
+                        withAnimation {
+                            isAirLiftMode = true
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "airplane.circle.fill")
+                            Text("Tiếp tục với AirLift (Không có MobileGestalt)")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                    .padding(.top, 10)
                 }
-                .padding()
-                .background(Color(UIColor.secondarySystemGroupedBackground))
-                .cornerRadius(15)
-                .padding(.top, 20)
+                .padding(20)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(16)
                 .padding(.horizontal)
             }
-            .padding()
         }
     }
 }
