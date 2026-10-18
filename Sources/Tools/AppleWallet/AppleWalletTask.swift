@@ -5,100 +5,66 @@ import Network
 enum AppleWalletTask {
     
     static func run(store: ToolStore, walletStore: AppleWalletStore, onLogUpdate: @escaping (String) -> Void) async throws {
-        let isAirLiftMode = UserDefaults.standard.bool(forKey: "isAirLiftMode")
         let enabledCards = walletStore.enabledCards()
         
         guard !enabledCards.isEmpty else {
             throw ToolTaskError.generic("No enabled wallet cards to apply")
         }
         
-        if isAirLiftMode {
-            onLogUpdate("Preparing AirLift for Wallet...")
+        onLogUpdate("Preparing AirLift for Wallet...")
+        
+        guard let pairingPath = getPairingPath() else {
+            throw ToolTaskError.generic("Không tìm thấy Pairing File.")
+        }
+        
+        let targetIP = await findActiveLoopbackIP()
+        guard let validIP = targetIP else {
+            throw ToolTaskError.generic("Không thể kết nối tới LocalDevVPN. Hãy bật VPN và thử lại.")
+        }
+        onLogUpdate("Using Loopback IP: \(validIP)")
+        _ = al_set_target_host(validIP)
+        
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftWallet_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        for card in enabledCards {
+            let cardBasePath = tempDir.appendingPathComponent("Passes/Cards/\(card.id)")
+            try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("pkpass"), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("cache"), withIntermediateDirectories: true)
             
-            guard let pairingPath = getPairingPath() else {
-                throw ToolTaskError.generic("Không tìm thấy Pairing File.")
+            if let bgData = card.backgroundImageData {
+                try bgData.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent(card.cardBackgroundFileName))
             }
-            
-            let targetIP = await findActiveLoopbackIP()
-            guard let validIP = targetIP else {
-                throw ToolTaskError.generic("Không thể kết nối tới LocalDevVPN. Hãy bật VPN và thử lại.")
+            if let frontFaceData = card.frontFaceImageData {
+                try frontFaceData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("FrontFace"))
             }
-            onLogUpdate("Using Loopback IP: \(validIP)")
-            _ = al_set_target_host(validIP)
-            
-            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftWallet_\(UUID().uuidString)")
-            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-            
-            for card in enabledCards {
-                let cardBasePath = tempDir.appendingPathComponent("Passes/Cards/\(card.id)")
-                try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("pkpass"), withIntermediateDirectories: true)
-                try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("cache"), withIntermediateDirectories: true)
-                
-                if let bgData = card.backgroundImageData {
-                    try bgData.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent(card.cardBackgroundFileName))
-                }
-                if let frontFaceData = card.frontFaceImageData {
-                    try frontFaceData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("FrontFace"))
-                }
-                if let placeHolderData = card.placeHolderImageData {
-                    try placeHolderData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("PlaceHolder"))
-                }
-                if let previewData = card.previewImageData {
-                    try previewData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("Preview"))
-                }
-                if let passJSON = card.loadPassJSON() {
-                    try passJSON.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent("pass.json"))
-                }
+            if let placeHolderData = card.placeHolderImageData {
+                try placeHolderData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("PlaceHolder"))
             }
-            
-            onLogUpdate("Pushing files via AirTraffic...")
-            var errorCString: UnsafeMutablePointer<CChar>? = nil
-            let targetSystemPath = "/var/mobile/Library/Passes/Cards"
-            
-            let result = al_exploit_write_dir(
-                pairingPath, tempDir.path + "/Passes/Cards", targetSystemPath, nil, nil, &errorCString
-            )
-            
-            if result != 0 {
-                let errorMsg = errorCString != nil ? String(cString: errorCString!) : "Unknown AirLift Error"
-                if let err = errorCString { al_string_free(err) }
-                throw ToolTaskError.generic("AirLift Error: \(errorMsg)")
+            if let previewData = card.previewImageData {
+                try previewData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("Preview"))
             }
-            
-            onLogUpdate("✅ Wallet applied via AirLift.")
-            
-        } else {
-            onLogUpdate("Preparing Bad Query for Wallet...")
-            var allFiles: [BookRestoreFile] = []
-            for card in enabledCards {
-                let cardBasePath = "/private/var/mobile/Library/Passes/Cards/\(card.id)"
-                let cardPrefix = String(card.id.prefix(8))
-                
-                if let bgImageData = card.backgroundImageData {
-                    let bgFileName = card.cardBackgroundFileName
-                    let pkpassPath = "\(cardBasePath).pkpass/\(bgFileName)"
-                    allFiles.append(.walletImage(targetPath: pkpassPath, contents: bgImageData, mediaFileName: "wallet_\(cardPrefix)_\(bgFileName)"))
-                }
-                if let frontFaceData = card.frontFaceImageData {
-                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).cache/FrontFace", contents: frontFaceData, mediaFileName: "wallet_\(cardPrefix)_FrontFace"))
-                }
-                if let placeHolderData = card.placeHolderImageData {
-                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).cache/PlaceHolder", contents: placeHolderData, mediaFileName: "wallet_\(cardPrefix)_PlaceHolder"))
-                }
-                if let previewData = card.previewImageData {
-                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).cache/Preview", contents: previewData, mediaFileName: "wallet_\(cardPrefix)_Preview"))
-                }
-                if let passJSONData = card.loadPassJSON() {
-                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).pkpass/pass.json", contents: passJSONData, mediaFileName: "wallet_\(cardPrefix)_pass.json"))
-                }
-            }
-            
-            guard !allFiles.isEmpty else { throw ToolTaskError.generic("No wallet files to apply") }
-            try await BookRestoreApplyTask.applyFiles(allFiles, store: store) { msg in
-                onLogUpdate(msg)
+            if let passJSON = card.loadPassJSON() {
+                try passJSON.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent("pass.json"))
             }
         }
+        
+        onLogUpdate("Pushing files via AirTraffic...")
+        var errorCString: UnsafeMutablePointer<CChar>? = nil
+        let targetSystemPath = "/var/mobile/Library/Passes/Cards"
+        
+        let result = al_exploit_write_dir(
+            pairingPath, tempDir.path + "/Passes/Cards", targetSystemPath, nil, nil, &errorCString
+        )
+        
+        if result != 0 {
+            let errorMsg = errorCString != nil ? String(cString: errorCString!) : "Unknown AirLift Error"
+            if let err = errorCString { al_string_free(err) }
+            throw ToolTaskError.generic("AirLift Error: \(errorMsg)")
+        }
+        
+        onLogUpdate("✅ Wallet applied via AirLift.")
     }
     
     private static func getPairingPath() -> String? {
