@@ -9,7 +9,7 @@ enum MGURL {
 enum MGKey {
     static let ipadosCacheEx = [
         "uKc7FPnEO++lVhHWHFlGbQ", "mG0AnH/Vy1veoqoLRAIgTA", "UCG5MkVahJxG1YULbbd5Bg",
-        "ZYqko/XM5zD53XBfNRmaXA", "nVh/gwNpy7Jv1NOk00CMrw", "qeaj75wk3HF4DwQ8qbIi7g"
+        "ZYqko/XM5zD3XBfN5RmaXA", "nVh/gwNpy7Jv1NOk00CMrw", "qeaj75wk3HF4DwQ8qbIi7g"
     ]
     static let island = "YlEtTtHlNesRBMal1CqRaA"
     static let AOD = "2OOJf1VhaM7NxfRok3HbWQ"
@@ -42,51 +42,69 @@ final class GestaltStore: ObservableObject {
         return mgCurrentDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
     }
     
-    func mgPullKeys(_ keys: [String]) {
-        for key in keys { cacheExtra.removeObject(forKey: key) }
+    func loadFromPlist(url: URL) {
+        if let dict = try? NSMutableDictionary(contentsOf: url, error: ()) {
+            self.mgCurrentDict = dict
+            self.objectWillChange.send()
+        }
     }
     
-    func isEnabled(_ keys: [String], enableValue: Int = 1) -> Bool {
-        let testVal = self.cacheExtra[keys.first!] as? Int
-        return testVal == enableValue
+    // Hàm tìm vị trí byte (Offset) trong CacheData
+    func FindCacheDataOffset(_ key: String) -> Int {
+        guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSDictionary,
+              let uid = cacheExtra[key] as? Int else { return -1 }
+        let uidBytes = withUnsafeBytes(of: uid.littleEndian) { Data($0) }
+        
+        guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return -1 }
+        let range = cacheData.range(of: uidBytes)
+        return range?.lowerBound ?? -1
     }
     
-    // Binding cho các nút gạt thông thường
-    func mgKeyBinding(_ keys: [String], defaultValue: Int = 0, enableValue: Int = 1) -> Binding<Bool> {
+    // Binding chung cho iOS 27: Ghi trực tiếp vào CacheData (Byte)
+    func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> {
         return Binding(get: {
-            if let value = self.cacheExtra[keys.first!] as? Int { return value == enableValue }
-            return false
+            let offset = self.FindCacheDataOffset(key)
+            guard offset != -1, let cacheData = self.mgCurrentDict["CacheData"] as? Data, offset < cacheData.count else { return false }
+            return cacheData[offset] == enableValue
         }, set: { enabled in
             self.objectWillChange.send()
-            for key in keys {
-                if enabled { self.cacheExtra[key] = enableValue }
+            var offset = self.FindCacheDataOffset(key)
+            
+            // Nếu key chưa tồn tại trong CacheData (offset == -1), phải fallback về CacheExtra (tuỳ logic máy)
+            if offset == -1 {
+                if enabled { self.cacheExtra[key] = 1 }
                 else { self.cacheExtra.removeObject(forKey: key) }
+                return
             }
+            
+            guard let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData else { return }
+            var value = enabled ? enableValue : disableValue
+            mutableData.replaceBytes(in: NSRange(location: offset, length: 1), withBytes: &value)
         })
     }
-    
-    // Binding MA THUẬT cho iPadOS (Sửa đổi để không phụ thuộc vào CacheData cũ)
+
+    // Binding MA THUẬT cho iPadOS (TrollPad)
     func mgTrollPadBinding() -> Binding<Bool> {
         return Binding(get: {
+            // iOS 27 dùng CacheData hoặc CacheExtra tuỳ key
             if let value = self.cacheExtra[MGKey.ipadosCacheEx.first!] as? Int { return value == 1 }
             return false
         }, set: { enabled in
             self.objectWillChange.send()
             
-            // 1. Thêm/Xóa các key trong CacheExtra
             for key in MGKey.ipadosCacheEx {
                 if enabled { self.cacheExtra[key] = 1 }
                 else { self.cacheExtra.removeObject(forKey: key) }
             }
             
-            // 2. Thử sửa Hex nếu có CacheData (không bắt buộc, chỉ để đồng bộ)
+            // Vẫn dùng hàm Hex chuẩn Erosion
             if self.mgCurrentDict["CacheData"] is Data {
                 _ = self.mgSetiPadOS(enable: enabled)
             }
         })
     }
     
-    // Hàm sửa Hex - Copy nguyên bản từ Erosion
+    // Hàm sửa Hex iPadOS - Giữ nguyên từ Erosion
     func mgSetiPadOS(enable: Bool) -> Bool {
         guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return false }
         let hexString = cacheData.map { String(format: "%02x", $0) }.joined()
@@ -131,13 +149,5 @@ final class GestaltStore: ObservableObject {
         }
         mgCurrentDict["CacheData"] = updatedData
         return true
-    }
-    
-    // MARK: - MỚI: Đồng bộ từ file plist trên đĩa vào store
-    func loadFromPlist(url: URL) {
-        if let dict = try? NSMutableDictionary(contentsOf: url, error: ()) {
-            self.mgCurrentDict = dict
-            self.objectWillChange.send()
-        }
     }
 }
