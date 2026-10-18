@@ -1,23 +1,19 @@
-import SwiftUI
-import UIKit
-import UniformTypeIdentifiers
+import SwiftUI 
+import UIKit 
+import UniformTypeIdentifiers 
 import Network
 
-struct SettingsView: View {
-    @ObservedObject var toolStore: ToolStore
-    @ObservedObject private var localizationManager = LocalizationManager.shared
-    @AppStorage("PairingFile") private var pairingFile: String?
-    @State private var showPairingFileImporter = false
-    @State private var vpnActive: Bool = false
+struct SettingsView: View { 
+    @ObservedObject var toolStore: ToolStore 
+    @ObservedObject private var localizationManager = LocalizationManager.shared 
+    @AppStorage("PairingFile") private var pairingFile: String? 
+    @State private var showPairingFileImporter = false 
+    @State private var vpnActive: Bool = false 
     @State private var monitor: NWPathMonitor?
 
     @State private var showBackupImporter = false
     @State private var hasBackup: Bool = false
     @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
-
-    @State private var isCleaning = false
-    @State private var showCleanAlert = false
-    @State private var cleanAlertMessage = ""
 
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     private let tintOptions: [(name: String, hex: String)] = [
@@ -54,25 +50,6 @@ struct SettingsView: View {
                 }
             }
 
-            // MARK: - ENVIRONMENT CLEANUP
-            Section(header: Text("Environment Cleanup")) {
-                if isCleaning {
-                    HStack { ProgressView(); Text("Cleaning...").padding(.leading, 8) }
-                } else {
-                    Button {
-                        clearMobileGestaltCache()
-                    } label: {
-                        Label("Clear MobileGestalt cache", systemImage: "trash.slash").foregroundColor(.red)
-                    }
-
-                    Button {
-                        respringClean()
-                    } label: {
-                        Label("Respring (Clean Environment)", systemImage: "arrow.triangle.2.circlepath").foregroundColor(.orange)
-                    }
-                }
-            }
-
             Section(header: Text(L("backup_title"))) {
                 if hasBackup, let info = backupInfo {
                     VStack(alignment: .leading, spacing: 6) {
@@ -93,7 +70,7 @@ struct SettingsView: View {
                         }
                     }.padding(.vertical, 4)
                 }
-
+                
                 Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
                 Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
                 if hasBackup {
@@ -135,39 +112,6 @@ struct SettingsView: View {
         .onDisappear { monitor?.cancel() }
         .fileImporter(isPresented: $showPairingFileImporter, allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { handlePairingImport($0) }
         .fileImporter(isPresented: $showBackupImporter, allowedContentTypes: [.propertyList]) { handleBackupImport($0) }
-        .alert("System Message", isPresented: $showCleanAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(cleanAlertMessage)
-        }
-    }
-
-    // MARK: - LOGIC DỌN DẸP
-    private func clearMobileGestaltCache() {
-        isCleaning = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            let mgPath = MobileGestaltApplyTask.onDeviceMGPath
-
-            var success = false
-            do {
-                if FileManager.default.fileExists(atPath: mgPath) {
-                    try FileManager.default.removeItem(atPath: mgPath)
-                }
-                success = true
-            } catch {
-                print("Lỗi xóa: \(error)")
-            }
-
-            DispatchQueue.main.async {
-                self.isCleaning = false
-                self.cleanAlertMessage = success ? "Đã xóa cache MobileGestalt thành công!" : "Không thể xóa cache."
-                self.showCleanAlert = true
-            }
-        }
-    }
-
-    private func respringClean() {
-        try? RespringHelper.respring()
     }
 
     @ViewBuilder
@@ -261,8 +205,8 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ABOUT VIEW
-struct AboutView: View {
+// MARK: - ABOUT VIEW 
+struct AboutView: View { 
     @ObservedObject private var languageManager = LanguageManager.shared
 
     var body: some View {
@@ -274,7 +218,7 @@ struct AboutView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-
+                    
                     Button {
                         if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
                     } label: {
@@ -288,7 +232,7 @@ struct AboutView: View {
                     }.buttonStyle(.plain)
                 }
             }
-
+            
             Section {
                 Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
                     Label(L("about_group_yang"), systemImage: "safari")
@@ -300,7 +244,7 @@ struct AboutView: View {
                     Label(L("about_contact"), systemImage: "paperplane.fill")
                 }
             }
-
+            
             Section(header: Text(L("settings_thanks_to"))) {
                 creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
                 creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
@@ -311,7 +255,7 @@ struct AboutView: View {
                 creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
                 creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
             }
-
+            
             Section(header: Text(L("settings_translators"))) {
                 ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
                     creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
