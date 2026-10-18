@@ -11,7 +11,6 @@ struct SettingsView: View {
     @State private var vpnActive: Bool = false 
     @State private var monitor: NWPathMonitor?
     
-    // Biến này dùng để ẩn/hiện giao diện, KHÔNG dùng để auto-đánh dấu Ready
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
 
     @State private var showBackupImporter = false
@@ -23,7 +22,6 @@ struct SettingsView: View {
         ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
     ]
 
-    // Logic kiểm tra trạng thái thật
     private var isSystemReady: Bool {
         pairingFile != nil && vpnActive
     }
@@ -87,7 +85,6 @@ struct SettingsView: View {
                 }
             }
 
-            // Ẩn Backup nếu ở AirLift (vì AirLift không dùng MobileGestalt)
             if !isAirLiftMode {
                 Section(header: Text(L("backup_title"))) {
                     if hasBackup, let info = backupInfo {
@@ -254,5 +251,82 @@ struct SettingsView: View {
             return id + String(UnicodeScalar(UInt8(value)))
         }
         return "\(UIDevice.current.model) (\(identifier))"
+    }
+}
+
+// MARK: - ABOUT VIEW 
+struct AboutView: View { 
+    @ObservedObject private var languageManager = LanguageManager.shared
+
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
+                    Text(L("about_desc"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button {
+                        if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
+                    } label: {
+                        Text(L("button_donate"))
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(AppTheme.accent)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }.buttonStyle(.plain)
+                }
+            }
+            
+            Section {
+                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_group_yang"), systemImage: "safari")
+                }
+                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_group_ls"), systemImage: "safari")
+                }
+                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_contact"), systemImage: "paperplane.fill")
+                }
+            }
+            
+            Section(header: Text(L("settings_thanks_to"))) {
+                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
+                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
+                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
+                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
+                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
+            }
+            
+            Section(header: Text(L("settings_translators"))) {
+                ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
+                    creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
+                }
+            }
+        }
+        .navigationTitle(L("nav_about"))
+        .onAppear {
+            if languageManager.availableLanguages.isEmpty {
+                Task { await languageManager.fetchAvailableLanguages() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.subheadline).fontWeight(.semibold)
+                Text(desc).font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
