@@ -97,10 +97,7 @@ struct SettingsView: View {
                                 Spacer()
                             }
                             Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                            Text("\(
-            }
-        }
-L("   backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
+                            Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
                         }.padding(.vertical, 4)
                     } else {
                         HStack(spacing: 10) {
@@ -247,7 +244,10 @@ L("   backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.s
                     airLiftLogs.append("❌ AirLift failed: \(errMsg)")
                     airLiftLogs.append("👉 Hãy kiểm tra LocalDevVPN và Pairing File.")
                 }
-                isCheckingAirLift = false }
+                isCheckingAirLift = false
+            }
+        }
+    }
 
     // MARK: - HANDLE PAIRING IMPORT
     private func handlePairingImport(_ result: Result<[URL], Error>) {
