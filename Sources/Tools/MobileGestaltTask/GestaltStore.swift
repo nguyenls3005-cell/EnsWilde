@@ -39,7 +39,13 @@ final class GestaltStore: ObservableObject {
     @Published var mgCurrentDict = NSMutableDictionary()
     
     var cacheExtra: NSMutableDictionary {
-        return mgCurrentDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
+        if let existing = mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
+            return existing
+        } else {
+            let newDict = NSMutableDictionary()
+            mgCurrentDict["CacheExtra"] = newDict
+            return newDict
+        }
     }
     
     func loadFromPlist(url: URL) {
@@ -49,54 +55,23 @@ final class GestaltStore: ObservableObject {
         }
     }
     
-    // TÌM OFFSET CHUẨN (Hỗ trợ cả little-endian và fallback)
-    func FindCacheDataOffset(_ key: String) -> Int {
-        guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSDictionary,
-              let uid = cacheExtra[key] as? Int else { return -1 }
-        
-        // Thử tìm theo dạng little-endian (4 bytes)
-        let uidBytes = withUnsafeBytes(of: uid.littleEndian) { Data($0) }
-        guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return -1 }
-        
-        if let range = cacheData.range(of: uidBytes) {
-            return range.lowerBound
-        }
-        
-        // Fallback: Thử tìm theo dạng big-endian (nếu iOS 27 thay đổi cấu trúc)
-        let uidBytesBE = withUnsafeBytes(of: uid.bigEndian) { Data($0) }
-        if let range = cacheData.range(of: uidBytesBE) {
-            return range.lowerBound
-        }
-        
-        return -1
-    }
-    
-    // BINDING GHI TRỰC TIẾP VÀO BYTE (Dùng cho iOS 27)
+    // GHI TRỰC TIẾP VÀO CacheExtra (Chuẩn xác nhất cho mọi iOS)
     func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> {
         return Binding(get: {
-            let offset = self.FindCacheDataOffset(key)
-            guard offset != -1, let cacheData = self.mgCurrentDict["CacheData"] as? Data, offset < cacheData.count else { 
-                // Nếu không tìm thấy trong Byte, fallback đọc từ CacheExtra
-                return (self.cacheExtra[key] as? Int) == Int(enableValue)
-            }
-            return cacheData[offset] == enableValue
+            return (self.cacheExtra[key] as? Int) == Int(enableValue)
         }, set: { enabled in
             self.objectWillChange.send()
             
-            // Luôn ghi vào CacheExtra để đảm bảo file plist lưu đúng cấu trúc
-            if enabled { self.cacheExtra[key] = Int(enableValue) }
-            else { self.cacheExtra.removeObject(forKey: key) }
+            // Xóa key cũ trước khi ghi mới (tránh xung đột kiểu dữ liệu)
+            self.cacheExtra.removeObject(forKey: key)
             
-            // Cố gắng ghi đè vào Byte (CacheData) nếu tìm thấy
-            let offset = self.FindCacheDataOffset(key)
-            guard offset != -1, let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData, offset < mutableData.length else { return }
-            
-            var value = enabled ? enableValue : disableValue
-            mutableData.replaceBytes(in: NSRange(location: offset, length: 1), withBytes: &value)
+            if enabled {
+                self.cacheExtra[key] = Int(enableValue)
+            }
         })
     }
 
-    // BINDING CHO iPADOS
+    // BINDING CHO iPADOS (Giữ nguyên hàm Hex vì nó hoạt động tốt)
     func mgTrollPadBinding() -> Binding<Bool> {
         return Binding(get: {
             if let value = self.cacheExtra[MGKey.ipadosCacheEx.first!] as? Int { return value == 1 }
