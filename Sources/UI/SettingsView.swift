@@ -11,7 +11,7 @@ struct SettingsView: View {
     @State private var vpnActive: Bool = false 
     @State private var monitor: NWPathMonitor?
     
-    // Nhận biết chế độ AirLift
+    // Biến này dùng để ẩn/hiện giao diện, KHÔNG dùng để auto-đánh dấu Ready
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
 
     @State private var showBackupImporter = false
@@ -23,42 +23,72 @@ struct SettingsView: View {
         ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
     ]
 
+    // Logic kiểm tra trạng thái thật
+    private var isSystemReady: Bool {
+        pairingFile != nil && vpnActive
+    }
+
     var body: some View {
         Form {
             Section(header: Text(L("system_status"))) {
                 HStack(spacing: 12) {
-                    if (pairingFile != nil && vpnActive) || isAirLiftMode {
+                    if isSystemReady {
                         Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
-                        Text(L("status_ready")).font(.body)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("system_status")).font(.body)
+                            Text("Ready").font(.footnote).foregroundStyle(.green)
+                        }
                     } else {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
-                        Text(L("status_not_ready")).font(.body)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("system_status")).font(.body)
+                            Text("Not Ready").font(.footnote).foregroundStyle(.red)
+                        }
                     }
                 }.padding(.vertical, 4)
+                
+                if !isSystemReady {
+                    if pairingFile == nil {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Missing pairing file").font(.subheadline.bold())
+                                Text("Please import a pairing file to continue").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.padding(.vertical, 4)
+                    } else if !vpnActive {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Heartbeat not running").font(.subheadline.bold())
+                                Text("Enable LocalDevVPN or StikDebug and reopen app").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                }
             }
 
             Section(header: Text(L("connection_status"))) {
-                if !isAirLiftMode {
-                    statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
-                    statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
-                } else {
-                    statusRow(title: "AirLift", subtitle: L("status_ready"), ok: true)
+                statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
+                statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
+                if isAirLiftMode {
+                    statusRow(title: "AirLift Mode", subtitle: "Enabled", ok: true)
                 }
             }
 
-            if !isAirLiftMode {
-                Section(header: Text(L("pairing_file"))) {
-                    if pairingFile != nil {
-                        Button(role: .destructive) {
-                            pairingFile = nil
-                            try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                        } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
-                    } else {
-                        Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
-                    }
+            Section(header: Text(L("pairing_file"))) {
+                if pairingFile != nil {
+                    Button(role: .destructive) {
+                        pairingFile = nil
+                        try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
+                    } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
+                } else {
+                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
                 }
+            }
 
-                // ✅ Ẩn Backup nếu đang ở AirLift
+            // Ẩn Backup nếu ở AirLift (vì AirLift không dùng MobileGestalt)
+            if !isAirLiftMode {
                 Section(header: Text(L("backup_title"))) {
                     if hasBackup, let info = backupInfo {
                         VStack(alignment: .leading, spacing: 6) {
@@ -116,10 +146,8 @@ struct SettingsView: View {
         }
         .navigationTitle(L("nav_settings"))
         .onAppear {
-            if !isAirLiftMode {
-                startMonitoringVPN()
-                refreshBackupInfo()
-            }
+            startMonitoringVPN()
+            refreshBackupInfo()
         }
         .onDisappear { monitor?.cancel() }
         .fileImporter(
@@ -226,82 +254,5 @@ struct SettingsView: View {
             return id + String(UnicodeScalar(UInt8(value)))
         }
         return "\(UIDevice.current.model) (\(identifier))"
-    }
-}
-
-// MARK: - ABOUT VIEW 
-struct AboutView: View { 
-    @ObservedObject private var languageManager = LanguageManager.shared
-
-    var body: some View {
-        Form {
-            Section {
-                VStack(spacing: 12) {
-                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
-                    Text(L("about_desc"))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    
-                    Button {
-                        if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
-                    } label: {
-                        Text(L("button_donate"))
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(AppTheme.accent)
-                            .foregroundColor(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }.buttonStyle(.plain)
-                }
-            }
-            
-            Section {
-                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_group_yang"), systemImage: "safari")
-                }
-                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_group_ls"), systemImage: "safari")
-                }
-                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_contact"), systemImage: "paperplane.fill")
-                }
-            }
-            
-            Section(header: Text(L("settings_thanks_to"))) {
-                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
-                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
-                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
-                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
-                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
-                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
-                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
-                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
-            }
-            
-            Section(header: Text(L("settings_translators"))) {
-                ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
-                    creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
-                }
-            }
-        }
-        .navigationTitle(L("nav_about"))
-        .onAppear {
-            if languageManager.availableLanguages.isEmpty {
-                Task { await languageManager.fetchAvailableLanguages() }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func creditRow(name: String, desc: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.subheadline).fontWeight(.semibold)
-                Text(desc).font(.caption).foregroundStyle(.secondary)
-            }
-        }
     }
 }
