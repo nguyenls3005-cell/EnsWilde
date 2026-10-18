@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import Network
 
 struct ContentView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
@@ -12,8 +13,12 @@ struct ContentView: View {
     @ObservedObject var themeStore: PasscodeThemeStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
     
-    // Trạng thái AirLift
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
+    
+    // Kiểm tra trạng thái thực tế
+    @AppStorage("PairingFile") private var pairingFile: String?
+    @State private var vpnActive: Bool = false
+    @State private var monitor: NWPathMonitor?
 
     init(
         themeStore: PasscodeThemeStore,
@@ -48,29 +53,70 @@ struct ContentView: View {
                 destinationView(for: route)
             }
         }
+        .onAppear {
+            if !isAirLiftMode {
+                startMonitoringVPN()
+            }
+        }
+        .onDisappear { monitor?.cancel() }
+    }
+
+    // Logic xác định xem đã "Ready" chưa
+    private var isSystemReady: Bool {
+        if isAirLiftMode {
+            return true // AirLift luôn Ready
+        } else {
+            // Bad Query: Cần có cả Pairing File và VPN
+            return pairingFile != nil && vpnActive
+        }
     }
 
     @ViewBuilder
     private var statusSection: some View {
         Section(header: Text(L("section_status")).font(.headline).foregroundColor(.primary).textCase(nil)) {
             HStack(spacing: 12) {
-                Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("system_status")).font(.body)
-                    
-                    // Đổi chữ dựa trên chế độ
-                    Text(isAirLiftMode ? "Ready - Airlift" : "Ready - Bad_query")
-                        .font(.footnote)
-                        .foregroundStyle(.green)
+                if isSystemReady {
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L("system_status")).font(.body)
+                        Text(isAirLiftMode ? "Ready - Airlift" : "Ready - Bad_query")
+                            .font(.footnote).foregroundStyle(.green)
+                    }
+                } else {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L("system_status")).font(.body)
+                        Text("Not Ready").font(.footnote).foregroundStyle(.red)
+                    }
                 }
             }.padding(.vertical, 4)
+            
+            // Cảnh báo nếu Bad Query thiếu điều kiện
+            if !isAirLiftMode && !isSystemReady {
+                if pairingFile == nil {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Missing pairing file").font(.subheadline.bold())
+                            Text("Please import a pairing file to continue").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }.padding(.vertical, 4)
+                } else if !vpnActive {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Heartbeat not running").font(.subheadline.bold())
+                            Text("Enable LocalDevVPN or StikDebug and reopen app").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }.padding(.vertical, 4)
+                }
+            }
         }.listRowBackground(Color(.secondarySystemGroupedBackground))
     }
 
     @ViewBuilder
     private var tweaksSection: some View {
         Section(header: Text(L("section_tweaks")).font(.headline).foregroundColor(.primary).textCase(nil)) {
-            // Nếu đang ở AirLift thì ẩn 2 tool này
             if !isAirLiftMode {
                 toolNavigationLink(value: "MobileGestalt", title: L("tool_mobile_gestalt"), subtitle: L("tool_mobile_gestalt_desc"), icon: "cpu", isEnabled: toolStore.replaceMobileGestaltEnabled)
                 toolNavigationLink(value: "ConfigTweaks", title: L("tool_config_tweaks"), subtitle: L("tool_config_tweaks_desc"), icon: "textformat", isEnabled: toolStore.configTweaksEnabled)
@@ -103,5 +149,16 @@ struct ContentView: View {
                 if isEnabled { Image(systemName: "checkmark.seal.fill").foregroundStyle(.green).font(.caption) }
             }
         }
+    }
+
+    private func startMonitoringVPN() {
+        monitor = NWPathMonitor()
+        monitor?.pathUpdateHandler = { path in
+            DispatchQueue.main.async {
+                let hasVPN = path.availableInterfaces.contains { $0.type == .other || $0.name.hasPrefix("utun") || $0.name.hasPrefix("ipsec") }
+                self.vpnActive = hasVPN
+            }
+        }
+        monitor?.start(queue: DispatchQueue(label: "VPNMonitor"))
     }
 }
