@@ -13,12 +13,6 @@ struct MainViewWithNavigation: View {
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
-    private var isAnyTweakEnabled: Bool {
-        toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || 
-        toolStore.disableSoundEnabled || walletStore.appleWalletEnabled || 
-        themeStore.passcodeThemeEnabled || featureFlagsStore.featureFlagsEnabled
-    }
-
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -39,7 +33,9 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            if showApplyTab && isAnyTweakEnabled {
+            // CHỈ HIỆN KHI showApplyTab == true (do bấm Save/Reset)
+            // Bỏ điều kiện isAnyTweakEnabled để tránh việc bật tweak khác tự động hiện tab
+            if showApplyTab {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
                 .tag(NavigationTab.apply)
@@ -48,8 +44,18 @@ struct MainViewWithNavigation: View {
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
-        .onChange(of: isAnyTweakEnabled) { newValue in
-            if !newValue && selectedTab == .apply { selectedTab = .home }
+        .onChange(of: toolStore.replaceMobileGestaltEnabled) { isEnabled in
+            // Nếu tắt Enable Tweak -> Ẩn tab Apply ngay lập tức
+            if !isEnabled {
+                showApplyTab = false
+                if selectedTab == .apply { selectedTab = .home }
+            }
+        }
+        .onChange(of: showApplyTab) { isVisible in
+            // Nếu tab Apply bị ẩn mà đang đứng ở tab Apply thì nhảy về Home
+            if !isVisible && selectedTab == .apply {
+                selectedTab = .home
+            }
         }
         .onAppear { applyTintColor() }
     }
