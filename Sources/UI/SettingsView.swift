@@ -18,7 +18,7 @@ struct SettingsView: View {
     @State private var showCleanAlert = false
     @State private var cleanAlertMessage = ""
 
-    @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9fup_title"76"
+    @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     private let tintOptions: [(name: String, hex: String)] = [
         ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
     ]
@@ -70,7 +70,7 @@ struct SettingsView: View {
                     Button {
                         clearMobileGestaltCache()
                     } label: {
-                        Label("Clear MobileGestalt cache (Clean The Environment)", systemImage: "trash.slash")
+                        Label("Clear MobileGestalt cache", systemImage: "trash.slash")
                             .foregroundColor(.orange)
                     }
                     
@@ -90,7 +90,7 @@ struct SettingsView: View {
                 }
             }
             
-            Section(header: Text(L("back))) {
+            Section(header: Text(L("backup_title"))) {
                 if hasBackup, let info = backupInfo {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -214,8 +214,8 @@ struct SettingsView: View {
     }
 
     private func respringClean() {
-        // ĐÃ SỬA LỖI: Gọi hàm NeoSpring có sẵn của dự án
-        RespringHelper.respring() 
+        // Gọi hàm NeoSpring có sẵn của dự án
+        RespringHelper.respring()
     }
 
     @ViewBuilder
