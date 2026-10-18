@@ -11,6 +11,9 @@ struct ContentView: View {
     @ObservedObject var walletStore: AppleWalletStore
     @ObservedObject var themeStore: PasscodeThemeStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
+    
+    // Trạng thái AirLift
+    @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
 
     init(
         themeStore: PasscodeThemeStore,
@@ -54,8 +57,9 @@ struct ContentView: View {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("system_status")).font(.body)
-                    // ĐÃ SỬA: Màu xanh lá
-                    Text("Ready - Bad_query")
+                    
+                    // Đổi chữ dựa trên chế độ
+                    Text(isAirLiftMode ? "Ready - Airlift" : "Ready - Bad_query")
                         .font(.footnote)
                         .foregroundStyle(.green)
                 }
@@ -66,8 +70,12 @@ struct ContentView: View {
     @ViewBuilder
     private var tweaksSection: some View {
         Section(header: Text(L("section_tweaks")).font(.headline).foregroundColor(.primary).textCase(nil)) {
-            toolNavigationLink(value: "MobileGestalt", title: L("tool_mobile_gestalt"), subtitle: L("tool_mobile_gestalt_desc"), icon: "cpu", isEnabled: toolStore.replaceMobileGestaltEnabled)
-            toolNavigationLink(value: "ConfigTweaks", title: L("tool_config_tweaks"), subtitle: L("tool_config_tweaks_desc"), icon: "textformat", isEnabled: toolStore.configTweaksEnabled)
+            // Nếu đang ở AirLift thì ẩn 2 tool này
+            if !isAirLiftMode {
+                toolNavigationLink(value: "MobileGestalt", title: L("tool_mobile_gestalt"), subtitle: L("tool_mobile_gestalt_desc"), icon: "cpu", isEnabled: toolStore.replaceMobileGestaltEnabled)
+                toolNavigationLink(value: "ConfigTweaks", title: L("tool_config_tweaks"), subtitle: L("tool_config_tweaks_desc"), icon: "textformat", isEnabled: toolStore.configTweaksEnabled)
+            }
+            
             toolNavigationLink(value: "PasscodeTheme", title: L("tool_passcode_theme"), subtitle: L("tool_passcode_theme_desc"), icon: "lock.rectangle", isEnabled: themeStore.passcodeThemeEnabled)
             toolNavigationLink(value: "AppleWallet", title: L("tool_apple_wallet"), subtitle: L("tool_apple_wallet_desc"), icon: "wallet.pass", isEnabled: walletStore.appleWalletEnabled)
         }.listRowBackground(Color(.secondarySystemGroupedBackground))
