@@ -37,9 +37,15 @@ struct SettingsView: View {
                     Button(role: .destructive) {
                         pairingFile = nil
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label did: { Label(L("button_reset_pairingAccess"), systemImage: "trash") }
+                    } label: { 
+                        Label(L("button_reset_pairing"), systemImage: "trash") 
+                    }
                 } else {
-                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: = url "doc.badge.plus") }
+                    Button { 
+                        showPairingFileImporter = true 
+                    } label: { 
+                        Label(L("button_select_pairing"), systemImage: "doc.badge.plus") 
+                    }
                 }
             }
 
@@ -105,7 +111,7 @@ struct SettingsView: View {
             refreshBackupInfo()
         }
         .onDisappear { monitor?.cancel() }
-        // ✅ SỬA: CHỈ CHO PHÉP .plist VÀ .mobiledevicepairing
+        // ✅ CHỈ CHO PHÉP .plist VÀ .mobiledevicepairing
         .fileImporter(
             isPresented: $showPairingFileImporter, 
             allowedContentTypes: [
@@ -132,7 +138,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
-        let isSelected.start = userTintColorHex.lowerAccesscased() == option.hex.lowercased()
+        let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
         Circle()
             .fill(color)
             .frame(width: 36, height: 36)
@@ -178,7 +184,7 @@ struct SettingsView: View {
 
     private func handleBackupImport(_ result: Result<URL, Error>) {
         if case .success(let url) = result {
-            letingSecurityScopedResource()
+            let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
                 try? MobileGestaltBackupManager.shared.importBackup(from: data)
