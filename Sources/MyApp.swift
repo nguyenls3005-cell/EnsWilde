@@ -22,10 +22,7 @@ struct MyApp: App {
         let version = UIDevice.current.systemVersion
         guard version.hasPrefix("27.") || version == "27" else { return false }
         
-        // ✅ Lấy Build Number bằng ProcessInfo (Chuẩn xác 100%)
-        let buildString = ProcessInfo.processInfo.operatingSystemVersionString
-        
-        // Danh sách các bản ĐƯỢC HỖ TRỢ
+        let build = getCleanBuildNumber()
         let supportedBuilds = [
             "24A5355q", // 27.0 beta 1
             "24A5370h", // 27.0 beta 2
@@ -33,15 +30,21 @@ struct MyApp: App {
             "24A5390f"  // 27.0 beta 4
         ]
         
-        // Kiểm tra xem chuỗi buildString có chứa mã build hỗ trợ nào không
-        // (Vì operatingSystemVersionString có dạng "Version 27.0 (Build 24A5390f)")
-        for supported in supportedBuilds {
-            if buildString.contains(supported) {
-                return false // Có chứa mã hỗ trợ -> Không block
-            }
+        if supportedBuilds.contains(build) {
+            return false
         }
-        
-        return true // Không tìm thấy mã hỗ trợ -> Block
+        return true
+    }
+    
+    private func getCleanBuildNumber() -> String {
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let machineMirror = Mirror(reflecting: systemInfo.version)
+        let rawString = machineMirror.children.reduce("") { identifier, element in
+            guard let value = element.value as? Int8, value != 0 else { return identifier }
+            return identifier + String(UnicodeScalar(UInt8(value)))
+        }
+        return rawString.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\0", with: "")
     }
 }
 
@@ -86,19 +89,15 @@ struct VersionBlockedView: View {
                         .foregroundColor(.white)
                     
                     HStack(spacing: 10) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .foregroundColor(.gray)
+                        Image(systemName: "arrow.down.circle.fill").foregroundColor(.gray)
                         Text("Downgrade to iOS 27 Developer Beta 4 or earlier")
-                            .foregroundColor(.gray)
-                            .font(.subheadline)
+                            .foregroundColor(.gray).font(.subheadline)
                     }
                     
                     HStack(spacing: 10) {
-                        Image(systemName: "questionmark.circle.fill")
-                            .foregroundColor(.gray)
+                        Image(systemName: "questionmark.circle.fill").foregroundColor(.gray)
                         Text("Contact the developer for support")
-                            .foregroundColor(.gray)
-                            .font(.subheadline)
+                            .foregroundColor(.gray).font(.subheadline)
                     }
                     
                     Divider().background(Color.gray)
@@ -112,8 +111,7 @@ struct VersionBlockedView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "airplane.circle.fill")
                             Text("Tiếp tục với AirLift (Không có MobileGestalt)")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
+                                .font(.subheadline).fontWeight(.semibold)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
