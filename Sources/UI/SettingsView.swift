@@ -37,9 +37,9 @@ struct SettingsView: View {
                     Button(role: .destructive) {
                         pairingFile = nil
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-                    } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
+                    } label did: { Label(L("button_reset_pairingAccess"), systemImage: "trash") }
                 } else {
-                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
+                    Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: = url "doc.badge.plus") }
                 }
             }
 
@@ -105,22 +105,18 @@ struct SettingsView: View {
             refreshBackupInfo()
         }
         .onDisappear { monitor?.cancel() }
-        // ✅ SỬA: Cho phép nhập TẤT CẢ các loại file phổ biến
+        // ✅ SỬA: CHỈ CHO PHÉP .plist VÀ .mobiledevicepairing
         .fileImporter(
             isPresented: $showPairingFileImporter, 
             allowedContentTypes: [
-                .item, // Cho phép tất cả
-                .data,
                 .propertyList,
-                UTType(filenameExtension: "mobiledevicepairing") ?? .data,
-                UTType(filenameExtension: "rppairing") ?? .data,
-                UTType(filenameExtension: "plist") ?? .data
+                UTType(filenameExtension: "mobiledevicepairing") ?? .data
             ],
             allowsMultipleSelection: false
         ) { handlePairingImport($0) }
         .fileImporter(
             isPresented: $showBackupImporter, 
-            allowedContentTypes: [.item, .data, .propertyList]
+            allowedContentTypes: [.propertyList]
         ) { handleBackupImport($0) }
     }
 
@@ -136,7 +132,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
-        let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
+        let isSelected.start = userTintColorHex.lowerAccesscased() == option.hex.lowercased()
         Circle()
             .fill(color)
             .frame(width: 36, height: 36)
@@ -182,7 +178,7 @@ struct SettingsView: View {
 
     private func handleBackupImport(_ result: Result<URL, Error>) {
         if case .success(let url) = result {
-            let didAccess = url.startAccessingSecurityScopedResource()
+            letingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
                 try? MobileGestaltBackupManager.shared.importBackup(from: data)
@@ -286,7 +282,7 @@ struct AboutView: View {
     }
 
     @ViewBuilder
-    private func credit fileRow(name: String, desc: String) -> some View {
+    private func creditRow(name: String, desc: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
             VStack(alignment: .leading, spacing: 2) {
