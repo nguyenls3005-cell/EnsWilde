@@ -43,29 +43,14 @@ final class ToolRunner: ObservableObject {
             _ = al_set_target_host("127.0.0.1")
         }
         
-        // Hàm helper bọc Timeout 20 giây chống đơ
-        func runWithTimeout<T>(_ operation: @escaping () async throws -> T) async throws -> T {
-            try await withThrowingTaskGroup(of: T.self) { group in
-                group.addTask { try await operation() }
-                group.addTask {
-                    try await Task.sleep(nanoseconds: 20_000_000_000)
-                    throw NSError(domain: "Timeout", code: -1, userInfo: [NSLocalizedDescriptionKey: "Quá 20 giây không phản hồi. Kiểm tra lại VPN."])
-                }
-                let result = try await group.next()!
-                group.cancelAll()
-                return result
-            }
-        }
-        
+        // 1. PASSCODE (AIRLIFT)
         if hasPasscode {
             state = .running(toolName: "Passcode")
             if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
                 do {
                     _ = al_set_target_host("127.0.0.1")
-                    try await runWithTimeout {
-                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { msg in
-                            Task { await self.log(msg) }
-                        }
+                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { msg in
+                        Task { await self.log(msg) }
                     }
                     await log("✅ Passcode applied.")
                 } catch {
@@ -76,14 +61,13 @@ final class ToolRunner: ObservableObject {
             }
         }
 
+        // 2. WALLET (AIRLIFT)
         if hasWallet {
             state = .running(toolName: "Wallet")
             do {
                 _ = al_set_target_host("127.0.0.1")
-                try await runWithTimeout {
-                    try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
-                        Task { await self.log(msg) }
-                    }
+                try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
+                    Task { await self.log(msg) }
                 }
                 await log("✅ Wallet applied.")
             } catch {
@@ -91,6 +75,7 @@ final class ToolRunner: ObservableObject {
             }
         }
 
+        // 3. MOBILEGESTALT (BAD QUERY)
         if hasMobileGestalt {
             state = .running(toolName: "MobileGestalt")
             await log("--- MobileGestalt (Bad Query) ---")
@@ -108,6 +93,7 @@ final class ToolRunner: ObservableObject {
             }
         }
 
+        // 4. CONFIG (BAD QUERY)
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
             await log("--- Config Tweaks ---")
