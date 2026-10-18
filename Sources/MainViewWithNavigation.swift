@@ -77,8 +77,11 @@ struct ApplyTabView: View {
 
     @State private var showErrorAlert = false
     @State private var lastError: String?
-    @State private var applyLogs: [String] = []
-    @State private var isApplying = false
+    
+    private var isApplying: Bool {
+        if case .running = toolRunner.state { return true }
+        return false
+    }
 
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
@@ -109,27 +112,16 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
-                    HStack(spacing: 10) {
-                        if isApplying {
-                            ProgressView().tint(Color(hex: userTintColorHex))
-                        } else {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary)
-                        }
-                        Text(isApplying ? (applyLogs.last ?? "Applying...") : "Ready to apply.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                .listRowBackground(Color(.secondarySystemGroupedBackground))
-                
-                if !applyLogs.isEmpty && isApplying {
-                    Section(header: Text("Logs")) {
-                        ForEach(applyLogs, id: \.self) { log in
-                            Text(log).font(.caption).foregroundStyle(log.contains("❌") ? .red : .secondary)
+                // HIỂN THỊ LOG CHI TIẾT (Lấy trực tiếp từ ToolRunner)
+                if !toolRunner.logs.isEmpty {
+                    Section(header: Text("Apply Logs").font(.headline).textCase(nil)) {
+                        ForEach(toolRunner.logs, id: \.id) { log in
+                            Text(log.text)
+                                .font(.caption)
+                                .foregroundStyle(log.text.contains("❌") ? .red : (log.text.contains("✅") ? .green : .secondary))
                         }
                     }
+                    .listRowBackground(Color(.secondarySystemGroupedBackground))
                 }
 
                 Section {
@@ -151,11 +143,8 @@ struct ApplyTabView: View {
     }
 
     private func performApply() {
-        isApplying = true
-        applyLogs.removeAll()
-        
         Task {
-            // Gọi ToolRunner xử lý toàn bộ
+            // Gọi ToolRunner (ToolRunner tự động log ra màn hình)
             await toolRunner.applyAll(
                 isSystemReady: true,
                 store: toolStore,
@@ -164,23 +153,17 @@ struct ApplyTabView: View {
                 featureFlagsStore: featureFlagsStore
             )
             
-            // Đồng bộ log từ ToolRunner ra giao diện
+            // Xử lý khi xong
             await MainActor.run {
-                for log in toolRunner.logs {
-                    applyLogs.append(log.text)
-                }
-                
                 if case .failed(let msg) = toolRunner.state {
                     lastError = msg
                     showErrorAlert = true
                 }
-                
-                isApplying = false
             }
             
-            // Respring
-            if toolStore.soundRespringEnabled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            // Respring sau khi xong hoàn toàn
+            if toolStore.soundRespringEnabled && toolRunner.state == .success {
+                try? await Task.sleep(nanoseconds: 1_500_000_000) // Đợi 1.5s
                 try? RespringHelper.respring()
             }
         }
