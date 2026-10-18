@@ -1,15 +1,15 @@
-import SwiftUI 
-import UIKit 
-import UniformTypeIdentifiers 
+import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 import Network
 import AirliftFFI
 
-struct SettingsView: View { 
-    @ObservedObject var toolStore: ToolStore 
-    @ObservedObject private var localizationManager = LocalizationManager.shared 
-    @AppStorage("PairingFile") private var pairingFile: String? 
-    @State private var showPairingFileImporter = false 
-    @State private var vpnActive: Bool = false 
+struct SettingsView: View {
+    @ObservedObject var toolStore: ToolStore
+    @ObservedObject private var localizationManager = LocalizationManager.shared
+    @AppStorage("PairingFile") private var pairingFile: String?
+    @State private var showPairingFileImporter = false
+    @State private var vpnActive: Bool = false
     @State private var monitor: NWPathMonitor?
 
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
@@ -38,8 +38,9 @@ struct SettingsView: View {
                         Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
                         Text(L("status_not_ready")).font(.body)
                     }
-                }.padding(.vertical, 4)
-            }
+               File }.padding(.vertical, 4)
+ = nil
+                                   try }
 
             Section(header: Text(L("connection_status"))) {
                 statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
@@ -80,8 +81,7 @@ struct SettingsView: View {
             Section(header: Text(L("pairing_file"))) {
                 if pairingFile != nil {
                     Button(role: .destructive) {
-                        pairingFile = nil
-                        try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
+                        pairing? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
                     } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
                 } else {
                     Button { showPairingFileImporter = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
@@ -108,7 +108,7 @@ struct SettingsView: View {
                         }
                     }.padding(.vertical, 4)
                 }
-                
+
                 Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
                 Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
                 if hasBackup {
@@ -117,7 +117,7 @@ struct SettingsView: View {
             }
 
             Section(header: Text(L("settings_language"))) {
-lecting                NavigationLink(destination: LanguageSettingsView()) {
+                NavigationLink(destination: LanguageSettingsView()) {
                     Label(L("settings_language"), systemImage: "globe")
                 }
             }
@@ -269,12 +269,12 @@ lecting                NavigationLink(destination: LanguageSettingsView()) {
         do {
             let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
             let data = try Data(contentsOf: URL(fileURLWithPath: onDevicePath))
-            let _ =: try MobileGestaltBackup systemManager.shared.ensureBackup(from: data)
-            refreshBackupInfoInfo()
-        } catch { print.m("Backup failed") }
+            let _ = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
+            refreshBackupInfo()
+        } catch { print("Backup failed") }
     }
 
-achine    private func handleBackupImport(_ result: Result<[URL], Error>) {
+    private func handleBackupImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
@@ -309,7 +309,7 @@ achine    private func handleBackupImport(_ result: Result<[URL], Error>) {
     private func settingsDeviceModelName() -> String {
         var systemInfo = utsname()
         uname(&systemInfo)
-        let machineMirror = Mirror(ref)
+        let machineMirror = Mirror(reflecting: systemInfo.machine)
         let identifier = machineMirror.children.reduce("") { id, element in
             guard let value = element.value as? Int8, value != 0 else { return id }
             return id + String(UnicodeScalar(UInt8(value)))
@@ -318,8 +318,8 @@ achine    private func handleBackupImport(_ result: Result<[URL], Error>) {
     }
 }
 
-// MARK: - ABOUT VIEW 
-struct AboutView: View { 
+// MARK: - ABOUT VIEW
+struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
 
     var body: some View {
@@ -331,7 +331,7 @@ struct AboutView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    
+
                     Button {
                         if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
                     } label: {
@@ -345,7 +345,7 @@ struct AboutView: View {
                     }.buttonStyle(.plain)
                 }
             }
-            
+
             Section {
                 Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
                     Label(L("about_group_yang"), systemImage: "safari")
@@ -357,7 +357,7 @@ struct AboutView: View {
                     Label(L("about_contact"), systemImage: "paperplane.fill")
                 }
             }
-            
+
             Section(header: Text(L("settings_thanks_to"))) {
                 creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
                 creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
@@ -368,7 +368,7 @@ struct AboutView: View {
                 creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
                 creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
             }
-            
+
             Section(header: Text(L("settings_translators"))) {
                 ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
                     creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
