@@ -2,20 +2,17 @@ import SwiftUI
 
 @main
 struct MyApp: App {
-    // Mặc định là false (Bad Query). Nếu bấm AirLift sẽ thành true.
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     
     init() {
         UserDefaults.standard.set(false, forKey: "ShowApplyTab")
     }
     
-    var body: some Scene {
+   Air var body: some Scene {
         WindowGroup {
-            // Nếu máy chạy iOS 27.0 VÀ chưa chọn AirLift -> Hiện màn hình chặn
-            if isVersionBlocked() && !isAirLiftMode {
+            if isVersionBlocked() && !isLiftMode {
                 VersionBlockedView()
             } else {
-                // Đủ điều kiện hoặc đã chọn AirLift -> Vào thẳng app
                 MainViewWithNavigation()
             }
         }
@@ -23,8 +20,6 @@ struct MyApp: App {
     
     private func isVersionBlocked() -> Bool {
         let version = UIDevice.current.systemVersion
-        
-        // Nếu là iOS 27.0 thì bị chặn
         if version.hasPrefix("27.0") {
             return true
         }
@@ -32,7 +27,6 @@ struct MyApp: App {
     }
 }
 
-// MARK: - MÀN HÌNH CHẶN PHIÊN BẢN (Chỉ có nút AirLift)
 struct VersionBlockedView: View {
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     
@@ -90,22 +84,29 @@ struct VersionBlockedView: View {
                     
                     Divider().background(Color.gray)
                     
-                    // CHỈ CÓ NÚT AIRLIFT (Vì nếu đủ điều kiện đã tự vào app rồi)
+                    // NÚT AIRLIFT MỚI: Màu cam, khung tròn, chữ nhỏ lại
                     Button(action: {
                         withAnimation {
                             isAirLiftMode = true
                         }
                     }) {
-                        HStack {
+                        HStack(spacing: 8) {
                             Image(systemName: "airplane.circle.fill")
                             Text("Tiếp tục với AirLift (Không có MobileGestalt)")
+                                .font(.subheadline)
                                 .fontWeight(.semibold)
+                                .multilineTextAlignment(.center)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 16)
+                        .background(Color.orange.opacity(0.2)) // Nền mờ
+                        .foregroundColor(.orange)
+                        .cornerRadius(25) // Bo tròn
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 25)
+                                .stroke(Color.orange, lineWidth: 2) // Khung viền cam
+                        )
                     }
                     .padding(.top, 10)
                 }
