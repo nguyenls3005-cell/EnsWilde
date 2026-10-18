@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 import Network
 import AirliftFFI
 
-// MARK: - Document Picker (Mở khóa mọi loại file)
+// KHAI BÁO DUY NHẤT 1 LẦN Ở ĐÂY
 struct DocumentPickerView: UIViewControllerRepresentable {
     var allowedContentTypes: [UTType] = [.data, .item]
     let onPick: (URL) -> Void
@@ -115,18 +115,12 @@ struct SettingsView: View {
             }
 
             Section(header: Text(L("settings_language"))) {
-                NavigationLink(destination: LanguageSettingsView()) {
-                    Label(L("settings_language"), systemImage: "globe")
-                }
+                NavigationLink(destination: LanguageSettingsView()) { Label(L("settings_language"), systemImage: "globe") }
             }
 
             Section(header: Text(L("settings_accent_color"))) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(tintOptions, id: \.hex) { option in
-                            colorOptionView(option: option)
-                        }
-                    }
+                    HStack(spacing: 12) { ForEach(tintOptions, id: \.hex) { option in colorOptionView(option: option) } }
                 }
             }
 
@@ -138,10 +132,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle(L("nav_settings"))
-        .onAppear {
-            startMonitoringVPN()
-            refreshBackupInfo()
-        }
+        .onAppear { startMonitoringVPN(); refreshBackupInfo() }
         .onDisappear { monitor?.cancel() }
         .sheet(isPresented: $showPairingPicker) {
             DocumentPickerView(allowedContentTypes: [.data, .item]) { url in
@@ -195,7 +186,6 @@ struct SettingsView: View {
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
             
-            // Đã fix lỗi C function pointer: truyền nil thay vì closure
             let result = al_exploit_run(
                 pairingPath,
                 "/var/mobile/Library",
@@ -226,18 +216,13 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Handle Import (Mở khóa 100%, không check ext)
     private func handlePairingImport(_ url: URL) {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        
         if let data = try? Data(contentsOf: url) {
             try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
             pairingFile = url.lastPathComponent
             airLiftLogs.append("✅ Imported: \(url.lastPathComponent) (\(data.count) bytes)")
-            showAirLiftLogs = true
-        } else {
-            airLiftLogs.append("❌ Failed to read file: \(url.lastPathComponent)")
             showAirLiftLogs = true
         }
     }
@@ -283,10 +268,8 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - About View
 struct AboutView: View {
     @ObservedObject private var languageManager = LanguageManager.shared
-
     var body: some View {
         Form {
             Section {
@@ -296,29 +279,15 @@ struct AboutView: View {
                     Button {
                         if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
                     } label: {
-                        Text(L("button_donate"))
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(AppTheme.accent)
-                            .foregroundColor(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        Text(L("button_donate")).font(.headline.bold()).frame(maxWidth: .infinity).frame(height: 50).background(AppTheme.accent).foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }.buttonStyle(.plain)
                 }
             }
-
             Section {
-                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_group_yang"), systemImage: "safari")
-                }
-                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_group_ls"), systemImage: "safari")
-                }
-                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_contact"), systemImage: "paperplane.fill")
-                }
+                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) { Label(L("about_group_yang"), systemImage: "safari") }
+                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) { Label(L("about_group_ls"), systemImage: "safari") }
+                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) { Label(L("about_contact"), systemImage: "paperplane.fill") }
             }
-
             Section(header: Text(L("settings_thanks_to"))) {
                 creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
                 creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
@@ -329,7 +298,6 @@ struct AboutView: View {
                 creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
                 creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
             }
-
             Section(header: Text(L("settings_translators"))) {
                 ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
                     creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
@@ -337,21 +305,13 @@ struct AboutView: View {
             }
         }
         .navigationTitle(L("nav_about"))
-        .onAppear {
-            if languageManager.availableLanguages.isEmpty {
-                Task { await languageManager.fetchAvailableLanguages() }
-            }
-        }
+        .onAppear { if languageManager.availableLanguages.isEmpty { Task { await languageManager.fetchAvailableLanguages() } } }
     }
 
-    @ViewBuilder
-    private func creditRow(name: String, desc: String) -> some View {
+    @ViewBuilder private func creditRow(name: String, desc: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.subheadline).fontWeight(.semibold)
-                Text(desc).font(.caption).foregroundStyle(.secondary)
-            }
+            VStack(alignment: .leading, spacing: 2) { Text(name).font(.subheadline).fontWeight(.semibold); Text(desc).font(.caption).foregroundStyle(.secondary) }
         }
     }
 }
