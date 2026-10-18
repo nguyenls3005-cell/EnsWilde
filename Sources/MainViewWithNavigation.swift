@@ -73,7 +73,6 @@ struct ApplyTabView: View {
     @ObservedObject var themeStore: PasscodeThemeStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
 
-    // ✅ ĐÃ THÊM DÒNG NÀY ĐỂ FIX LỖI
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
 
     @State private var showErrorAlert = false
@@ -116,7 +115,7 @@ struct ApplyTabView: View {
                             ProgressView().tint(Color(hex: userTintColorHex))
                         } else {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary)
-                        message }
+                        }
                         Text(isApplying ? (applyLogs.last ?? "Applying...") : "Ready to apply.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -134,7 +133,6 @@ struct ApplyTabView: View {
                 }
 
                 Section {
-                    // ✅ DÙNG LẠI NÚT CŨ (WALLETSTYLEBUTTON)
                     WalletStyleButton(
                         title: isApplying ? "Applying..." : L("apply_enabled_tweaks"),
                         isLoading: isApplying,
@@ -160,12 +158,10 @@ struct ApplyTabView: View {
             do {
                 appendLog("Starting Apply process...")
                 
-                // 1. Dò IP Loopback
                 let targetIP = await getLoopbackIP()
                 appendLog("Using Loopback IP: \(targetIP)")
                 _ = al_set_target_host(targetIP)
                 
-                // 2. Apply Passcode
                 if themeStore.passcodeThemeEnabled {
                     appendLog("Applying Passcode Theme...")
                     if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
@@ -176,7 +172,6 @@ struct ApplyTabView: View {
                     }
                 }
                 
-                // 3. Apply Wallet
                 if walletStore.appleWalletEnabled {
                     appendLog("Applying Wallet...")
                     try await AppleWalletTask.run(store: toolStore, walletStore: walletStore)
@@ -205,7 +200,7 @@ struct ApplyTabView: View {
         }
     }
 
-    private func appendLog(_: String) {
+    private func appendLog(_ message: String) {
         DispatchQueue.main.async { applyLogs.append(message) }
     }
 
