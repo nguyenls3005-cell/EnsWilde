@@ -4,7 +4,7 @@ import Network
 
 enum AppleWalletTask {
     
-    static func run(store: ToolStore, walletStore: AppleWalletStore, onLogUpdate: ((String) -> Void)? = nil) async throws {
+    static func run(store: ToolStore, walletStore: AppleWalletStore, onLogUpdate: @escaping (String) -> Void) async throws {
         let isAirLiftMode = UserDefaults.standard.bool(forKey: "isAirLiftMode")
         let enabledCards = walletStore.enabledCards()
         
@@ -13,21 +13,19 @@ enum AppleWalletTask {
         }
         
         if isAirLiftMode {
-            onLogUpdate?("[Wallet] Preparing AirLift...")
+            onLogUpdate("Preparing AirLift for Wallet...")
             
             guard let pairingPath = getPairingPath() else {
                 throw ToolTaskError.generic("Không tìm thấy Pairing File.")
             }
             
-            // Dò IP
             let targetIP = await findActiveLoopbackIP()
             guard let validIP = targetIP else {
                 throw ToolTaskError.generic("Không thể kết nối tới LocalDevVPN. Hãy bật VPN và thử lại.")
             }
-            onLogUpdate?("[Wallet] Using IP: \(validIP)")
+            onLogUpdate("Using Loopback IP: \(validIP)")
             _ = al_set_target_host(validIP)
             
-            // Chuẩn bị file
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftWallet_\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -54,8 +52,7 @@ enum AppleWalletTask {
                 }
             }
             
-            // Gọi AirLift
-            onLogUpdate?("[Wallet] Writing files...")
+            onLogUpdate("Pushing files via AirTraffic...")
             var errorCString: UnsafeMutablePointer<CChar>? = nil
             let targetSystemPath = "/var/mobile/Library/Passes/Cards"
             
@@ -69,10 +66,10 @@ enum AppleWalletTask {
                 throw ToolTaskError.generic("AirLift Error: \(errorMsg)")
             }
             
-            onLogUpdate?("✅ Wallet applied via AirLift.")
+            onLogUpdate("✅ Wallet applied via AirLift.")
             
         } else {
-            // Bad Query cũ
+            onLogUpdate("Preparing Bad Query for Wallet...")
             var allFiles: [BookRestoreFile] = []
             for card in enabledCards {
                 let cardBasePath = "/private/var/mobile/Library/Passes/Cards/\(card.id)"
@@ -81,29 +78,26 @@ enum AppleWalletTask {
                 if let bgImageData = card.backgroundImageData {
                     let bgFileName = card.cardBackgroundFileName
                     let pkpassPath = "\(cardBasePath).pkpass/\(bgFileName)"
-                    let uniqueMediaName = "wallet_\(cardPrefix)_\(bgFileName)"
-                    allFiles.append(.walletImage(targetPath: pkpassPath, contents: bgImageData, mediaFileName: uniqueMediaName))
+                    allFiles.append(.walletImage(targetPath: pkpassPath, contents: bgImageData, mediaFileName: "wallet_\(cardPrefix)_\(bgFileName)"))
                 }
                 if let frontFaceData = card.frontFaceImageData {
-                    let frontFacePath = "\(cardBasePath).cache/FrontFace"
-                    allFiles.append(.walletImage(targetPath: frontFacePath, contents: frontFaceData, mediaFileName: "wallet_\(cardPrefix)_FrontFace"))
+                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).cache/FrontFace", contents: frontFaceData, mediaFileName: "wallet_\(cardPrefix)_FrontFace"))
                 }
                 if let placeHolderData = card.placeHolderImageData {
-                    let placeHolderPath = "\(cardBasePath).cache/PlaceHolder"
-                    allFiles.append(.walletImage(targetPath: placeHolderPath, contents: placeHolderData, mediaFileName: "wallet_\(cardPrefix)_PlaceHolder"))
+                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).cache/PlaceHolder", contents: placeHolderData, mediaFileName: "wallet_\(cardPrefix)_PlaceHolder"))
                 }
                 if let previewData = card.previewImageData {
-                    let previewPath = "\(cardBasePath).cache/Preview"
-                    allFiles.append(.walletImage(targetPath: previewPath, contents: previewData, mediaFileName: "wallet_\(cardPrefix)_Preview"))
+                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).cache/Preview", contents: previewData, mediaFileName: "wallet_\(cardPrefix)_Preview"))
                 }
                 if let passJSONData = card.loadPassJSON() {
-                    let passJSONPath = "\(cardBasePath).pkpass/pass.json"
-                    allFiles.append(.walletImage(targetPath: passJSONPath, contents: passJSONData, mediaFileName: "wallet_\(cardPrefix)_pass.json"))
+                    allFiles.append(.walletImage(targetPath: "\(cardBasePath).pkpass/pass.json", contents: passJSONData, mediaFileName: "wallet_\(cardPrefix)_pass.json"))
                 }
             }
             
             guard !allFiles.isEmpty else { throw ToolTaskError.generic("No wallet files to apply") }
-            try await BookRestoreApplyTask.applyFiles(allFiles, store: store)
+            try await BookRestoreApplyTask.applyFiles(allFiles, store: store) { msg in
+                onLogUpdate(msg)
+            }
         }
     }
     
