@@ -110,9 +110,10 @@ class PasscodeThemeViewModel: ObservableObject {
         } catch { return .unknown }
     }
     
+    // Hàm fix lỗi syntax tại đây (theme quaFolder -> themeFolder)
     private func extractImagesFromTelephonySubfolder(themeFolder: URL) throws {
         let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(atPath: theme quaFolder.path) else { return }
+        guard let contents = try? fm.contentsOfDirectory(atPath: themeFolder.path) else { return }
         guard let telephonyFolder = contents.first(where: { $0.hasPrefix("Telephony") || $0.hasPrefix("TelephonyUI") }) else { return }
         
         let telephonyFolderURL = themeFolder.appendingPathComponent(telephonyFolder)
@@ -174,7 +175,7 @@ class PasscodeThemeViewModel: ObservableObject {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
         
-        onLogUpdate("Đang ghi AirTraffic...")
+        onLogUpdate("Đang ghi qua AirTraffic...")
         let targetPath = globalTelephony.cachePath
         let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
         let pairingPath = pairingURL.path
