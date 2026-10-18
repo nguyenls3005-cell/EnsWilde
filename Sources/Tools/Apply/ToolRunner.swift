@@ -13,7 +13,7 @@ final class ToolRunner: ObservableObject {
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        try? await Task.sleep(nanoseconds: 100_000_000) // Tăng tốc độ log
+        try? await Task.sleep(nanoseconds: 100_000_000)
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -30,7 +30,7 @@ final class ToolRunner: ObservableObject {
 
         resetLogs()
         state = .running(toolName: "Initializing")
-        await log("Starting Apply process...")
+        await log("Starting...")
         
         if hasPasscode || hasWallet {
             let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
@@ -43,15 +43,31 @@ final class ToolRunner: ObservableObject {
             _ = al_set_target_host("127.0.0.1")
         }
         
+        // Hàm helper bọc Timeout 20 giây chống đơ
+        func runWithTimeout<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+            try await withThrowingTaskGroup(of: T.self) { group in
+                group.addTask { try await operation() }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: 20_000_000_000)
+                    throw NSError(domain: "Timeout", code: -1, userInfo: [NSLocalizedDescriptionKey: "Quá 20 giây không phản hồi. Kiểm tra lại VPN."])
+                }
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            }
+        }
+        
         if hasPasscode {
-            state = .running(toolName: "Passcode Theme")
-            await log("--- Passcode Theme (AirLift) ---")
+            state = .running(toolName: "Passcode")
             if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
                 do {
-                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { logMsg in
-                        Task { await self.log(logMsg) }
+                    _ = al_set_target_host("127.0.0.1")
+                    try await runWithTimeout {
+                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { msg in
+                            Task { await self.log(msg) }
+                        }
                     }
-                    await log("✅ Passcode applied successfully.")
+                    await log("✅ Passcode applied.")
                 } catch {
                     await log("❌ Passcode failed: \(error.localizedDescription)")
                 }
@@ -61,13 +77,15 @@ final class ToolRunner: ObservableObject {
         }
 
         if hasWallet {
-            state = .running(toolName: "Apple Wallet")
-            await log("--- Apple Wallet (AirLift) ---")
+            state = .running(toolName: "Wallet")
             do {
-                try await AppleWalletTask.run(store: store, walletStore: walletStore) { logMsg in
-                    Task { await self.log(logMsg) }
+                _ = al_set_target_host("127.0.0.1")
+                try await runWithTimeout {
+                    try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
+                        Task { await self.log(msg) }
+                    }
                 }
-                await log("✅ Wallet applied successfully.")
+                await log("✅ Wallet applied.")
             } catch {
                 await log("❌ Wallet failed: \(error.localizedDescription)")
             }
@@ -92,7 +110,7 @@ final class ToolRunner: ObservableObject {
 
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
-            await log("--- Config Tweaks (Bad Query) ---")
+            await log("--- Config Tweaks ---")
             do {
                 let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
                 let access = BadQuery().grantAccess(atPath: configDir)
@@ -106,6 +124,6 @@ final class ToolRunner: ObservableObject {
         }
 
         state = .success
-        await log("✅ Apply process finished.")
+        await log("✅ Done.")
     }
 }
