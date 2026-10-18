@@ -15,7 +15,7 @@ struct ContentView: View {
     
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     
-    // Trạng thái kết nối để hiển thị lên Home
+    // Trạng thái kết nối
     @AppStorage("PairingFile") private var pairingFile: String?
     @State private var vpnActive: Bool = false
     @State private var monitor: NWPathMonitor?
@@ -78,17 +78,20 @@ struct ContentView: View {
     @ViewBuilder
     private var statusSection: some View {
         Section(header: Text(L("section_status")).font(.headline).foregroundColor(.primary).textCase(nil)) {
-            // Dòng System Status chính
             HStack(spacing: 12) {
                 if isSystemReady {
-                    Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.green)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L("system_status")).font(.body)
                         Text(isAirLiftMode ? "Ready - Airlift" : "Ready - Bad_query")
                             .font(.footnote).foregroundStyle(.green)
                     }
                 } else {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.red)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L("system_status")).font(.body)
                         Text("Not Ready").font(.footnote).foregroundStyle(.red)
@@ -96,7 +99,6 @@ struct ContentView: View {
                 }
             }.padding(.vertical, 4)
             
-            // Khung cảnh báo (Bấm vào để chọn file hoặc hướng dẫn bật VPN)
             if !isAirLiftMode && !isSystemReady {
                 if pairingFile == nil {
                     Button(action: { showPairingFileImporter = true }) {
@@ -138,13 +140,18 @@ struct ContentView: View {
 
     @ViewBuilder
     private func destinationView(for route: String) -> some View {
-        if route == "MobileGestalt" { MobileGestaltView(toolStore: toolStore) }
-        else if route == "ConfigTweaks" { ConfigView(toolStore: toolStore) }
-        else if route == "AppleWallet" { AppleWalletView(walletStore: walletStore) }
-        else if route == "PasscodeThememark" { PasscodeThemeView(theme.shStore: themeStore) }
+        if route == "MobileGestalt" {
+            MobileGestaltView(toolStore: toolStore)
+        } else if route == "ConfigTweaks" {
+            ConfigView(toolStore: toolStore)
+        } else if route == "AppleWallet" {
+            AppleWalletView(walletStore: walletStore)
+        } else if route == "PasscodeTheme" {
+            PasscodeThemeView(themeStore: themeStore)
+        }
     }
 
-ield.fill").    @ViewBuilder
+    @ViewBuilder
     private func toolNavigationLink(value: String, title: String, subtitle: String, icon: String, isEnabled: Bool) -> some View {
         NavigationLink(value: value) {
             HStack {
