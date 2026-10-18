@@ -286,7 +286,7 @@ struct AboutView: View {
     var body: some View {
         Form {
             Section {
-                VStack "(spacing: 12) {
+                VStack(spacing: 12) {
                     Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
                     Text(L("about_desc")).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Button {
@@ -311,7 +311,7 @@ struct AboutView: View {
                     Label(L("about_group_ls"), systemImage: "safari")
                 }
                 Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_contact"), systemImage:paperplane.fill")
+                    Label(L("about_contact"), systemImage: "paperplane.fill")
                 }
             }
 
