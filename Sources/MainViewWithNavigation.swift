@@ -9,12 +9,14 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
+    // ✅ ĐÃ THÊM DÒNG NÀY ĐỂ FIX LỖI
+    @Environment(\.scenePhase) private var scenePhase
+    
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
     private var isAnyTweakEnabled: Bool {
-        // Chỉ cần bật Passcode, Wallet hoặc các tool khác là được
         toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || 
         toolStore.disableSoundEnabled || walletStore.appleWalletEnabled || 
         themeStore.passcodeThemeEnabled || featureFlagsStore.featureFlagsEnabled
@@ -51,7 +53,6 @@ struct MainViewWithNavigation: View {
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
         .onChange(of: toolStore.replaceMobileGestaltEnabled) { isEnabled in
             if !isEnabled && selectedTab == .apply {
-                // Chỉ nhảy về Home nếu tắt hết các tweak khác
                 if !themeStore.passcodeThemeEnabled && !walletStore.appleWalletEnabled {
                     showApplyTab = false
                     selectedTab = .home
@@ -95,7 +96,6 @@ struct ApplyTabView: View {
     @State private var showErrorAlert = false
     @State private var lastError: String?
     
-    // State dùng để hiển thị log tiến trình
     @State private var applyLogs: [String] = []
     @State private var isApplying: Bool = false
 
@@ -162,7 +162,8 @@ struct ApplyTabView: View {
                     WalletStyleButton(
                         title: (isApplying || isRunning) ? "Applying..." : L("apply_enabled_tweaks"),
                         isLoading: (isApplying || isRunning),
-                        disabled: (isApplying || isRunning) || enabledTweaks.isEmpty,
+                        // Đã bỏ điều kiện enabledTweaks.isEmpty để luôn cho phép bấm Apply
+                        disabled: (isApplying || isRunning),
                         action: performApply
                     )
                 }
@@ -177,22 +178,22 @@ struct ApplyTabView: View {
     }
 
     private func performApply() {
-        // Bỏ qua lỗi "No tweaks enabled", cho phép bấm Apply ngay lập tức
-        // if enabledTweaks.isEmpty { ... }
-        
         isApplying = true
         applyLogs.removeAll()
         
         Task {
             do {
-                // Ghi log tiến trình giống MobileGestalt
                 appendLog("Starting Apply process...")
                 
                 if themeStore.passcodeThemeEnabled {
                     appendLog("Applying Passcode Theme...")
-                    // Hàm applyTheme này bên trong sẽ tự gọi AirLift
-                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(themeStore.themes.first(where: { $0.isSelected }) ?? PasscodeTheme(name: "Dummy"), store: toolStore)
-                    appendLog("✅ Passcode Theme applied.")
+                    // Cần lấy theme đang được chọn
+                    if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
+                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: toolStore)
+                        appendLog("✅ Passcode Theme applied.")
+                    } else {
+                         appendLog("⚠️ No passcode theme selected.")
+                    }
                 }
                 
                 if walletStore.appleWalletEnabled {
@@ -210,7 +211,6 @@ struct ApplyTabView: View {
                 
                 appendLog("All tweaks applied successfully!")
                 
-                // Respring
                 try await Task.sleep(nanoseconds: 1_000_000_000)
                 if toolStore.soundRespringEnabled {
                     appendLog("Respringing...")
@@ -219,7 +219,7 @@ struct ApplyTabView: View {
                 
                 await MainActor.run {
                     isApplying = false
-                    toolRunner.state = .success // Đánh dấu thành công
+                    toolRunner.state = .success
                 }
                 
             } catch {
