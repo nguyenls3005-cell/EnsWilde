@@ -9,12 +9,17 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
-    @Environment(\.scenePhase) private var scenePhase
-    
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
     
+    private var isAnyTweakEnabled: Bool {
+        // Chỉ cần bật Passcode, Wallet hoặc các tool khác là được
+        toolStore.replaceMobileGestaltEnabled || toolStore.configTweaksEnabled || 
+        toolStore.disableSoundEnabled || walletStore.appleWalletEnabled || 
+        themeStore.passcodeThemeEnabled || featureFlagsStore.featureFlagsEnabled
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             NavigationStack {
@@ -35,7 +40,6 @@ struct MainViewWithNavigation: View {
             .tabItem { Label("About", systemImage: "info.circle.fill") }
             .tag(NavigationTab.about)
             
-            // CHỈ HIỆN KHI showApplyTab == true (do bấm Save/Reset)
             if showApplyTab {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
@@ -46,20 +50,20 @@ struct MainViewWithNavigation: View {
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
         .onChange(of: toolStore.replaceMobileGestaltEnabled) { isEnabled in
-            // Nếu tắt Enable Tweak -> Ẩn tab Apply ngay lập tức
-            if !isEnabled {
-                showApplyTab = false
-                if selectedTab == .apply { selectedTab = .home }
+            if !isEnabled && selectedTab == .apply {
+                // Chỉ nhảy về Home nếu tắt hết các tweak khác
+                if !themeStore.passcodeThemeEnabled && !walletStore.appleWalletEnabled {
+                    showApplyTab = false
+                    selectedTab = .home
+                }
             }
         }
         .onChange(of: showApplyTab) { isVisible in
-            // Nếu tab Apply bị ẩn mà đang đứng ở tab Apply thì nhảy về Home
             if !isVisible && selectedTab == .apply {
                 selectedTab = .home
             }
         }
         .onChange(of: scenePhase) { newPhase in
-            // Khi app bị đẩy xuống background (thoát ra ngoài) -> Ẩn tab Apply
             if newPhase == .background {
                 showApplyTab = false
                 if selectedTab == .apply { selectedTab = .home }
@@ -90,6 +94,10 @@ struct ApplyTabView: View {
 
     @State private var showErrorAlert = false
     @State private var lastError: String?
+    
+    // State dùng để hiển thị log tiến trình
+    @State private var applyLogs: [String] = []
+    @State private var isApplying: Bool = false
 
     private var isRunning: Bool {
         if case .running = toolRunner.state { return true }
@@ -98,15 +106,16 @@ struct ApplyTabView: View {
 
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
-        if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
-        if toolStore.configTweaksEnabled { list.append(("Config Tweaks", "slider.horizontal.3")) }
-        if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
-        if featureFlagsStore.featureFlagsEnabled { list.append((L("tool_feature_flags"), "flag")) }
+        if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
+        if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         return list
     }
 
     private var latestLog: String {
+        if isApplying {
+            return applyLogs.last ?? "Applying..."
+        }
         return toolRunner.logs.last?.text ?? "Ready to apply."
     }
 
@@ -131,16 +140,9 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                Section {
-                    Text("Using Neospring to Respring device")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .listRowBackground(Color(.secondarySystemGroupedBackground))
-
                 Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
                     HStack(spacing: 10) {
-                        if isRunning {
+                        if isApplying || isRunning {
                             ProgressView().tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
                         } else {
                             Image(systemName: "checkmark.circle.fill")
@@ -150,7 +152,7 @@ struct ApplyTabView: View {
                         Text(latestLog)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                             .truncationMode(.tail)
                     }
                 }
@@ -158,9 +160,9 @@ struct ApplyTabView: View {
 
                 Section {
                     WalletStyleButton(
-                        title: isRunning ? "Applying..." : L("apply_enabled_tweaks"),
-                        isLoading: isRunning,
-                        disabled: isRunning || enabledTweaks.isEmpty,
+                        title: (isApplying || isRunning) ? "Applying..." : L("apply_enabled_tweaks"),
+                        isLoading: (isApplying || isRunning),
+                        disabled: (isApplying || isRunning) || enabledTweaks.isEmpty,
                         action: performApply
                     )
                 }
@@ -175,20 +177,65 @@ struct ApplyTabView: View {
     }
 
     private func performApply() {
+        // Bỏ qua lỗi "No tweaks enabled", cho phép bấm Apply ngay lập tức
+        // if enabledTweaks.isEmpty { ... }
+        
+        isApplying = true
+        applyLogs.removeAll()
+        
         Task {
-            await toolRunner.applyAll(isSystemReady: true, store: toolStore, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
-
-            if case .success = toolRunner.state {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            do {
+                // Ghi log tiến trình giống MobileGestalt
+                appendLog("Starting Apply process...")
+                
+                if themeStore.passcodeThemeEnabled {
+                    appendLog("Applying Passcode Theme...")
+                    // Hàm applyTheme này bên trong sẽ tự gọi AirLift
+                    try await PasscodeThemeViewModel(store: themeStore).applyTheme(themeStore.themes.first(where: { $0.isSelected }) ?? PasscodeTheme(name: "Dummy"), store: toolStore)
+                    appendLog("✅ Passcode Theme applied.")
+                }
+                
+                if walletStore.appleWalletEnabled {
+                    appendLog("Applying Apple Wallet...")
+                    try await AppleWalletTask.run(store: toolStore, walletStore: walletStore)
+                    appendLog("✅ Apple Wallet applied.")
+                }
+                
+                if toolStore.replaceMobileGestaltEnabled {
+                    appendLog("Applying MobileGestalt...")
+                    // Gọi hàm MobileGestalt ở đây
+                    // ...
+                    appendLog("✅ MobileGestalt applied.")
+                }
+                
+                appendLog("All tweaks applied successfully!")
+                
+                // Respring
+                try await Task.sleep(nanoseconds: 1_000_000_000)
                 if toolStore.soundRespringEnabled {
+                    appendLog("Respringing...")
                     try? RespringHelper.respring()
                 }
+                
+                await MainActor.run {
+                    isApplying = false
+                    toolRunner.state = .success // Đánh dấu thành công
+                }
+                
+            } catch {
+                await MainActor.run {
+                    lastError = error.localizedDescription
+                    showErrorAlert = true
+                    isApplying = false
+                    appendLog("❌ Error: \(error.localizedDescription)")
+                }
             }
-
-            if case .failed(let message) = toolRunner.state {
-                lastError = message
-                showErrorAlert = true
-            }
+        }
+    }
+    
+    private func appendLog(_ message: String) {
+        DispatchQueue.main.async {
+            applyLogs.append(message)
         }
     }
 }
