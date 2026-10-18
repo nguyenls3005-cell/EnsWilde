@@ -8,12 +8,12 @@ struct SettingsView: View {
 @ObservedObject var toolStore: ToolStore 
 @ObservedObject private var localizationManager = LocalizationManager.shared 
 @AppStorage("PairingFile") private var pairingFile: String? 
-@State private var showPairingFileImporter = false 
+@State private var showPairingPicker = false 
+@State private var showBackupPicker = false 
 @State private var vpnActive: Bool = false 
 @State private var monitor: NWPathMonitor?
 
 @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
-@State private var showBackupImporter = false
 @State private var hasBackup: Bool = false
 @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
 @State private var isCheckingAirLift = false
@@ -27,18 +27,6 @@ private let tintOptions: [(name: String, hex: String)] = [
 
 var body: some View {
     Form {
-        Section(header: Text(L("system_status"))) {
-            HStack(spacing: 12) {
-                if pairingFile != nil && vpnActive {
-                    Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
-                    Text(L("status_ready")).font(.body)
-                } else {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
-                    Text(L("status_not_ready")).font(.body)
-                }
-            }.padding(.vertical, 4)
-        }
-
         Section(header: Text(L("connection_status"))) {
             statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
             statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
@@ -80,36 +68,39 @@ var body: some View {
                     Label(L("button_reset_pairing"), systemImage: "trash")
                 }
             } else {
-                Button { showPairingFileImporter = true } label: {
+                Button { showPairingPicker = true } label: {
                     Label(L("button_select_pairing"), systemImage: "doc.badge.plus")
                 }
             }
         }
 
-        Section(header: Text(L("backup_title"))) {
-            if hasBackup, let info = backupInfo {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
-                        Text(L("backup_available")).font(.subheadline.bold())
-                        Spacer()
-                    }
-                    Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                    Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
-                }.padding(.vertical, 4)
-            } else {
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L("backup_none")).font(.subheadline.bold())
-                        Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
-                    }
-                }.padding(.vertical, 4)
-            }
-            Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
-            Button { showBackupImporter = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
-            if hasBackup {
-                Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
+        if !isAirLiftMode {
+            Section(header: Text(L("backup_title"))) {
+                if hasBackup, let info = backupInfo {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
+                            Text(L("backup_available")).font(.subheadline.bold())
+                            Spacer()
+                        }
+                        Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+                        Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
+                    }.padding(.vertical, 4)
+                } else {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("backup_none")).font(.subheadline.bold())
+                            Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }.padding(.vertical, 4)
+                }
+
+                Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
+                Button { showBackupPicker = true } label: { Label(L("backup_import"), systemImage: "square.and.arrow.down") }
+                if hasBackup {
+                    Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") }
+                }
             }
         }
 
@@ -142,16 +133,16 @@ var body: some View {
         refreshBackupInfo()
     }
     .onDisappear { monitor?.cancel() }
-    .fileImporter(
-        isPresented: $showPairingFileImporter,
-        allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data, .item],
-        allowsMultipleSelection: false
-    ) { handlePairingImport($0) }
-    .fileImporter(
-        isPresented: $showBackupImporter,
-        allowedContentTypes: [.item, .data, .content, .archive, .propertyList],
-        allowsMultipleSelection: false
-    ) { handleBackupImport($0) }
+    .sheet(isPresented: $showPairingPicker) {
+        DocumentPickerView(contentTypes: [.propertyList, .data, .item]) { url in
+            handlePairingImport(url)
+        }
+    }
+    .sheet(isPresented: $showBackupPicker) {
+        DocumentPickerView(contentTypes: [.propertyList, .data, .item, .content, .archive]) { url in
+            handleBackupImport(url)
+        }
+    }
 }
 
 @ViewBuilder
@@ -227,20 +218,23 @@ private func checkAirLift() {
     }
 }
 
-private func handlePairingImport(_ result: Result<[URL], Error>) {
-    switch result {
-    case .success(let urls):
-        guard let url = urls.first else { return }
-        let ext = url.pathExtension.lowercased()
-        if !ext.isEmpty && ext != "plist" && ext != "mobiledevicepairing" { return }
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? Data(contentsOf: url) {
-            try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
-            pairingFile = url.lastPathComponent
-        }
-    case .failure:
-        break
+private func handlePairingImport(_ url: URL) {
+    let ext = url.pathExtension.lowercased()
+    if !ext.isEmpty && ext != "plist" && ext != "mobiledevicepairing" { return }
+    let didAccess = url.startAccessingSecurityScopedResource()
+    defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+    if let data = try? Data(contentsOf: url) {
+        try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
+        pairingFile = url.lastPathComponent
+    }
+}
+
+private func handleBackupImport(_ url: URL) {
+    let didAccess = url.startAccessingSecurityScopedResource()
+    defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+    if let data = try? Data(contentsOf: url) {
+        try? MobileGestaltBackupManager.shared.importBackup(from: data)
+        refreshBackupInfo()
     }
 }
 
@@ -256,21 +250,6 @@ private func createBackupNow() {
         let _ = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
         refreshBackupInfo()
     } catch { print("Backup failed") }
-}
-
-private func handleBackupImport(_ result: Result<[URL], Error>) {
-    switch result {
-    case .success(let urls):
-        guard let url = urls.first else { return }
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? Data(contentsOf: url) {
-            try? MobileGestaltBackupManager.shared.importBackup(from: data)
-            refreshBackupInfo()
-        }
-    case .failure:
-        break
-    }
 }
 
 private func deleteBackup() {
@@ -299,6 +278,34 @@ private func settingsDeviceModelName() -> String {
         return id + String(UnicodeScalar(UInt8(value)))
     }
     return "\(UIDevice.current.model) (\(identifier))"
+}
+}
+
+struct DocumentPickerView: UIViewControllerRepresentable { 
+let contentTypes: [UTType] 
+let onPick: (URL) -> Void
+
+func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+    let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: true)
+    picker.delegate = context.coordinator
+    picker.allowsMultipleSelection = false
+    return picker
+}
+
+func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+func makeCoordinator() -> Coordinator {
+    Coordinator(onPick: onPick)
+}
+
+class Coordinator: NSObject, UIDocumentPickerDelegate {
+    let onPick: (URL) -> Void
+    init(onPick: @escaping (URL) -> Void) { self.onPick = onPick }
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard let url = urls.first else { return }
+        onPick(url)
+    }
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
 }
 }
 
