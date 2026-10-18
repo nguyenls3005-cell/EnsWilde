@@ -4,12 +4,18 @@ import Network
 import UIKit
 
 enum AppleWalletTask {
+    
     static func run(store: ToolStore, walletStore: AppleWalletStore, onLogUpdate: @escaping (String) -> Void) async throws {
         let enabledCards = walletStore.enabledCards()
-        guard !enabledCards.isEmpty else { throw ToolTaskError.generic("No enabled wallet cards") }
+        guard !enabledCards.isEmpty else {
+            throw ToolTaskError.generic("No enabled wallet cards to apply")
+        }
         
         onLogUpdate("Preparing AirLift for Wallet...")
-        guard let pairingPath = getPairingPath() else { throw ToolTaskError.generic("Missing Pairing File") }
+        
+        guard let pairingPath = getPairingPath() else {
+            throw ToolTaskError.generic("Không tìm thấy Pairing File.")
+        }
         
         _ = al_set_target_host("127.0.0.1")
         
@@ -22,31 +28,35 @@ enum AppleWalletTask {
             try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("pkpass"), withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("cache"), withIntermediateDirectories: true)
             
-            if let data = card.backgroundImageData { try data.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent(card.cardBackgroundFileName)) }
-            if let data = card.frontFaceImageData { try data.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("FrontFace")) }
-            if let data = card.placeHolderImageData { try data.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("PlaceHolder")) }
-            if let data = card.previewImageData { try data.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("Preview")) }
-            if let passJSON = card.loadPassJSON() { try passJSON.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent("pass.json")) }
+            if let bgData = card.backgroundImageData {
+                try bgData.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent(card.cardBackgroundFileName))
+            }
+            if let frontFaceData = card.frontFaceImageData {
+                try frontFaceData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("FrontFace"))
+            }
+            if let placeHolderData = card.placeHolderImageData {
+                try placeHolderData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("PlaceHolder"))
+            }
+            if let previewData = card.previewImageData {
+                try previewData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("Preview"))
+            }
+            if let passJSON = card.loadPassJSON() {
+                try passJSON.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent("pass.json"))
+            }
         }
         
         onLogUpdate("Pushing files via AirTraffic...")
-        
-        let bgTask = await UIApplication.shared.beginBackgroundTask(withName: "AirliftApplyWallet") {
-            onLogUpdate("⚠️ Hết thời gian chạy ngầm.")
-        }
-        defer { UIApplication.shared.endBackgroundTask(bgTask) }
         
         var errorCString: UnsafeMutablePointer<CChar>? = nil
         let targetSystemPath = "/var/mobile/Library/Passes/Cards"
         
         let result = al_exploit_write_dir(
-            pairingPath, tempDir.path + "/Passes/Cards", targetSystemPath,
-            { _, msg in
-                guard let msg = msg else { return }
-                let line = String(cString: msg)
-                DispatchQueue.main.async { onLogUpdate(line) }
-            },
-            nil, &errorCString
+            pairingPath,
+            tempDir.path + "/Passes/Cards",
+            targetSystemPath,
+            nil,
+            nil,
+            &errorCString
         )
         
         if result != 0 {
@@ -54,6 +64,7 @@ enum AppleWalletTask {
             if let err = errorCString { al_string_free(err) }
             throw ToolTaskError.generic("AirLift Error: \(errorMsg)")
         }
+        
         onLogUpdate("✅ Wallet applied via AirLift.")
     }
     
