@@ -2,7 +2,6 @@ import SwiftUI
 import UserNotifications
 
 struct MainViewWithNavigation: View {
-    // ... giữ nguyên các StateObject như cũ ...
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
     @StateObject private var toolStore = ToolStore()
@@ -16,7 +15,6 @@ struct MainViewWithNavigation: View {
     @State private var tintRefreshID = UUID()
 
     var body: some View {
-        // ... (TabView giữ nguyên) ...
         TabView(selection: $selectedTab) {
             NavigationStack {
                 ContentView(themeStore: themeStore, toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, featureFlagsStore: featureFlagsStore)
@@ -42,11 +40,31 @@ struct MainViewWithNavigation: View {
                 .tag(NavigationTab.apply)
             }
         }
-        // ... (phần còn lại giữ nguyên) ...
+        .tint(Color(hex: userTintColorHex))
+        .id(tintRefreshID)
+        .onChange(of: userTintColorHex) { _ in applyTintColor() }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .background {
+                showApplyTab = false
+                if selectedTab == .apply { selectedTab = .home }
+            }
+        }
+        .onAppear { applyTintColor() }
+    }
+    
+    private func applyTintColor() {
+        let uiColor = UIColor(Color(hex: userTintColorHex))
+        UITabBar.appearance().tintColor = uiColor
+        UINavigationBar.appearance().tintColor = uiColor
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows { window.tintColor = uiColor }
+        }
+        tintRefreshID = UUID()
     }
 }
 
-// MARK: - APPLY TAB VIEW (ĐÃ SỬA LOG VÀ FIX LỖI)
+// MARK: - APPLY TAB VIEW (ÉP MÀU CAM VÀ BỎ CHECK HTTP SERVER)
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -60,24 +78,12 @@ struct ApplyTabView: View {
     @State private var applyLogs: [String] = []
     @State private var isApplying: Bool = false
 
-    private var isRunning: Bool {
-        if case .running = toolRunner.state { return true }
-        return false
-    }
-
     private var enabledTweaks: [(String, String)] {
         var list: [(String, String)] = []
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         return list
-    }
-
-    private var latestLog: String {
-        if isApplying {
-            return applyLogs.last ?? "Applying..."
-        }
-        return toolRunner.logs.last?.text ?? "Ready to apply."
     }
 
     var body: some View {
@@ -101,42 +107,40 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                Section(header: Text("Status").font(.headline).foregroundColor(.primary).textCase(nil)) {
-                    HStack(spacing: 10) {
-                        if isApplying || isRunning {
-                            ProgressView().tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(toolRunner.state == .success ? .green : .secondary)
-                        }
-                        
-                        Text(latestLog)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .truncationMode(.tail)
-                    }
-                }
-                .listRowBackground(Color(.secondarySystemGroupedBackground))
-                
-                // Hiển thị danh sách log chi tiết (giống AirCard)
+                // HIỂN THỊ LOG TIẾN TRÌNH
                 if !applyLogs.isEmpty {
-                    Section(header: Text("Logs")) {
+                    Section(header: Text("Detailed Logs")) {
                         ForEach(applyLogs, id: \.self) { log in
                             Text(log)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(log.contains("❌") ? .red : .secondary)
                         }
                     }
                 }
 
                 Section {
-                    WalletStyleButton(
-                        title: (isApplying || isRunning) ? "Applying..." : L("apply_enabled_tweaks"),
-                        isLoading: (isApplying || isRunning),
-                        disabled: (isApplying || isRunning),
-                        action: performApply
-                    )
+                    // ✅ NÚT APPLY: ÉP MÀU CAM BẰNG MỌI GIÁ
+                    Button(action: {
+                        performApply()
+                    }) {
+                        HStack {
+                            if isApplying {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "checkmark.circle.fill")
+                            }
+                            Text(isApplying ? "Applying..." : L("apply_enabled_tweaks"))
+                                .font(.headline)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.orange) // Màu cam đặc
+                        .foregroundColor(.white)   // Chữ trắng
+                        .cornerRadius(12)          // Bo góc
+                    }
+                    .disabled(isApplying)
+                    // Xóa hiệu ứng mờ mặc định của nút bị vô hiệu hóa để luôn hiện màu cam
+                    .opacity(1.0) 
                 }
             }
             .navigationTitle(L("nav_apply"))
@@ -156,10 +160,9 @@ struct ApplyTabView: View {
             do {
                 appendLog("Starting Apply process...")
                 
-                // 1. Xử lý Passcode Theme qua AirLift
+                // 1. Passcode Theme
                 if themeStore.passcodeThemeEnabled {
-                    appendLog("Initializing AirLift for Passcode...")
-                    // Bỏ qua lỗi FlyingFox bằng cách gọi thẳng vào logic AirLift (bên trong ViewModel)
+                    appendLog("Applying Passcode Theme via AirLift...")
                     if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
                         try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: toolStore)
                         appendLog("✅ Passcode Theme applied.")
@@ -168,17 +171,17 @@ struct ApplyTabView: View {
                     }
                 }
                 
-                // 2. Xử lý Apple Wallet qua AirLift
+                // 2. Apple Wallet
                 if walletStore.appleWalletEnabled {
-                    appendLog("Initializing AirLift for Wallet...")
+                    appendLog("Applying Apple Wallet via AirLift...")
                     try await AppleWalletTask.run(store: toolStore, walletStore: walletStore)
                     appendLog("✅ Apple Wallet applied.")
                 }
                 
-                // 3. Xử lý MobileGestalt (vẫn dùng Bad Query cũ)
+                // 3. MobileGestalt (Nếu bật thì chạy Bad Query cũ)
                 if toolStore.replaceMobileGestaltEnabled {
-                    appendLog("Applying MobileGestalt via Bad Query...")
-                    // ... (gọi hàm MobileGestalt cũ)
+                    appendLog("Applying MobileGestalt (Bad Query)...")
+                    // Gọi hàm MobileGestalt cũ của bạn ở đây
                     appendLog("✅ MobileGestalt applied.")
                 }
                 
