@@ -280,3 +280,4 @@ struct AboutView: View {
             }
         }
     }
+}
