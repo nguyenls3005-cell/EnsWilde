@@ -9,6 +9,8 @@ struct MainViewWithNavigation: View {
     @StateObject private var walletStore = AppleWalletStore()
     @StateObject private var featureFlagsStore = FeatureFlagsStore()
     
+    @Environment(\.scenePhase) private var scenePhase
+    
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var tintRefreshID = UUID()
@@ -34,7 +36,6 @@ struct MainViewWithNavigation: View {
             .tag(NavigationTab.about)
             
             // CHỈ HIỆN KHI showApplyTab == true (do bấm Save/Reset)
-            // Bỏ điều kiện isAnyTweakEnabled để tránh việc bật tweak khác tự động hiện tab
             if showApplyTab {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
                 .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }
@@ -55,6 +56,13 @@ struct MainViewWithNavigation: View {
             // Nếu tab Apply bị ẩn mà đang đứng ở tab Apply thì nhảy về Home
             if !isVisible && selectedTab == .apply {
                 selectedTab = .home
+            }
+        }
+        .onChange(of: scenePhase) { newPhase in
+            // Khi app bị đẩy xuống background (thoát ra ngoài) -> Ẩn tab Apply
+            if newPhase == .background {
+                showApplyTab = false
+                if selectedTab == .apply { selectedTab = .home }
             }
         }
         .onAppear { applyTintColor() }
