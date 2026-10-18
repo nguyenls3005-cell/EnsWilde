@@ -119,11 +119,16 @@ struct SettingsView: View {
                 UTType(filenameExtension: "mobiledevicepairing") ?? .data
             ],
             allowsMultipleSelection: false
-        ) { handlePairingImport($0) }
+        ) { result in
+            handlePairingImport(result)
+        }
         .fileImporter(
             isPresented: $showBackupImporter, 
-            allowedContentTypes: [.propertyList]
-        ) { handleBackupImport($0) }
+            allowedContentTypes: [.propertyList],
+            allowsMultipleSelection: false
+        ) { result in
+            handleBackupImport(result)
+        }
     }
 
     @ViewBuilder
@@ -152,8 +157,11 @@ struct SettingsView: View {
             }
     }
 
-    private func handlePairingImport(_ result: Result<URL, Error>) {
-        if case .success(let url) = result {
+    // ✅ SỬA: Nhận Result<[URL], Error> thay vì Result<URL, Error>
+    private func handlePairingImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             
@@ -165,6 +173,8 @@ struct SettingsView: View {
             } catch {
                 print("Lỗi khi import Pairing File: \(error.localizedDescription)")
             }
+        case .failure(let error):
+            print("Lỗi chọn file: \(error.localizedDescription)")
         }
     }
 
@@ -182,14 +192,19 @@ struct SettingsView: View {
         } catch { print("Backup failed") }
     }
 
-    private func handleBackupImport(_ result: Result<URL, Error>) {
-        if case .success(let url) = result {
+    // ✅ SỬA: Nhận Result<[URL], Error>
+    private func handleBackupImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
                 try? MobileGestaltBackupManager.shared.importBackup(from: data)
                 refreshBackupInfo()
             }
+        case .failure(let error):
+            print("Lỗi chọn file backup: \(error.localizedDescription)")
         }
     }
 
