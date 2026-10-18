@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit 
 import UniformTypeIdentifiers 
 import Network
+import AirliftFFI
 
 struct SettingsView: View { 
     @ObservedObject var toolStore: ToolStore 
@@ -11,9 +12,15 @@ struct SettingsView: View {
     @State private var vpnActive: Bool = false 
     @State private var monitor: NWPathMonitor?
 
+    @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
+
     @State private var showBackupImporter = false
     @State private var hasBackup: Bool = false
     @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
+
+    @State private var isCheckingAirLift = false
+    @State private var airLiftLogs: [String] = []
+    @State private var showAirLiftLogs = false
 
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     private let tintOptions: [(name: String, hex: String)] = [
@@ -37,6 +44,37 @@ struct SettingsView: View {
             Section(header: Text(L("connection_status"))) {
                 statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
                 statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
+                if isAirLiftMode {
+                    statusRow(title: "AirLift Mode", subtitle: "Enabled", ok: true)
+                }
+            }
+
+            Section(header: Text("Check AirLift Status")) {
+                Button {
+                    checkAirLift()
+                } label: {
+                    HStack {
+                        if isCheckingAirLift {
+                            ProgressView().tint(.blue)
+                        } else {
+                            Image(systemName: "bolt.shield.fill").foregroundStyle(.blue)
+                        }
+                        Text(isCheckingAirLift ? "Checking..." : "Check AirLift Status")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .disabled(isCheckingAirLift)
+
+                if showAirLiftLogs {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(airLiftLogs, id: \.self) { log in
+                            Text(log)
+                                .font(.caption2)
+                                .foregroundStyle(log.contains("❌") ? .red : (log.contains("✅") ? .green : .secondary))
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
             }
 
             Section(header: Text(L("pairing_file"))) {
@@ -79,7 +117,7 @@ struct SettingsView: View {
             }
 
             Section(header: Text(L("settings_language"))) {
-                NavigationLink(destination: LanguageSettingsView()) {
+lecting                NavigationLink(destination: LanguageSettingsView()) {
                     Label(L("settings_language"), systemImage: "globe")
                 }
             }
@@ -112,11 +150,13 @@ struct SettingsView: View {
         .onDisappear { monitor?.cancel() }
         .fileImporter(
             isPresented: $showPairingFileImporter,
-            allowedContentTypes: [.propertyList, .item, .data]
+            allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data, .item],
+            allowsMultipleSelection: false
         ) { handlePairingImport($0) }
         .fileImporter(
             isPresented: $showBackupImporter,
-            allowedContentTypes: [.item, .data, .content]
+            allowedContentTypes: [.item, .data, .content, .archive, .propertyList],
+            allowsMultipleSelection: false
         ) { handleBackupImport($0) }
     }
 
@@ -146,8 +186,65 @@ struct SettingsView: View {
             }
     }
 
-    private func handlePairingImport(_ result: Result<URL, Error>) {
-        if case .success(let url) = result {
+    private func checkAirLift() {
+        isCheckingAirLift = true
+        airLiftLogs.removeAll()
+        showAirLiftLogs = true
+        airLiftLogs.append("Starting AirLift check...")
+
+        let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
+        guard FileManager.default.fileExists(atPath: pairingPath) else {
+            airLiftLogs.append("❌ Missing Pairing File! Vui lòng nhập pairing trước.")
+            isCheckingAirLift = false
+            return
+        }
+
+        airLiftLogs.append("✅ Pairing File found.")
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            var logs: [String] = []
+            logs.append("Checking Loopback IP (127.0.0.1)...")
+            _ = al_set_target_host("127.0.0.1")
+            logs.append("Running AirTraffic canary check...")
+
+            var outJson: UnsafeMutablePointer<CChar>? = nil
+            var outError: UnsafeMutablePointer<CChar>? = nil
+
+            let result = al_exploit_run(
+                pairingPath,
+                "/var/mobile/Library",
+                nil, nil,
+                &outJson,
+                &outError
+            )
+
+            DispatchQueue.main.async {
+                airLiftLogs.append(contentsOf: logs)
+                if result == 0 {
+                    airLiftLogs.append("✅ AirLift is ACTIVE and working!")
+                    isAirLiftMode = true
+                    if let jsonStr = outJson {
+                        airLiftLogs.append("Response: \(String(cString: jsonStr).prefix(100))...")
+                        al_string_free(jsonStr)
+                    }
+                } else {
+                    var errMsg = "Unknown error"
+                    if let err = outError {
+                        errMsg = String(cString: err)
+                        al_string_free(err)
+                    }
+                    airLiftLogs.append("❌ AirLift failed: \(errMsg)")
+                    airLiftLogs.append("👉 Hãy kiểm tra LocalDevVPN và Pairing File.")
+                }
+                isCheckingAirLift = false
+            }
+        }
+    }
+
+    private func handlePairingImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
             let ext = url.pathExtension.lowercased()
             if !ext.isEmpty && ext != "plist" && ext != "mobiledevicepairing" {
                 return
@@ -158,6 +255,8 @@ struct SettingsView: View {
                 try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
                 pairingFile = url.lastPathComponent
             }
+        case .failure:
+            break
         }
     }
 
@@ -170,19 +269,23 @@ struct SettingsView: View {
         do {
             let onDevicePath = MobileGestaltApplyTask.onDeviceMGPath
             let data = try Data(contentsOf: URL(fileURLWithPath: onDevicePath))
-            let _ = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
-            refreshBackupInfo()
-        } catch { print("Backup failed") }
+            let _ =: try MobileGestaltBackup systemManager.shared.ensureBackup(from: data)
+            refreshBackupInfoInfo()
+        } catch { print.m("Backup failed") }
     }
 
-    private func handleBackupImport(_ result: Result<URL, Error>) {
-        if case .success(let url) = result {
+achine    private func handleBackupImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
             let didAccess = url.startAccessingSecurityScopedResource()
             defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
                 try? MobileGestaltBackupManager.shared.importBackup(from: data)
                 refreshBackupInfo()
             }
+        case .failure:
+            break
         }
     }
 
@@ -206,7 +309,7 @@ struct SettingsView: View {
     private func settingsDeviceModelName() -> String {
         var systemInfo = utsname()
         uname(&systemInfo)
-        let machineMirror = Mirror(reflecting: systemInfo.machine)
+        let machineMirror = Mirror(ref)
         let identifier = machineMirror.children.reduce("") { id, element in
             guard let value = element.value as? Int8, value != 0 else { return id }
             return id + String(UnicodeScalar(UInt8(value)))
