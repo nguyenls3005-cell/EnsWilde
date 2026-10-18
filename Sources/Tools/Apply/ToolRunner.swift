@@ -13,7 +13,6 @@ final class ToolRunner: ObservableObject {
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        // Tăng nhẹ thời gian để log kịp hiển thị lên UI
         try? await Task.sleep(nanoseconds: 150_000_000) 
     }
 
@@ -33,7 +32,6 @@ final class ToolRunner: ObservableObject {
         state = .running(toolName: "Initializing")
         await log("Starting Apply process...")
         
-        // 1. KHỞI TẠO IP AIRLIFT (NẾU CẦN)
         if hasPasscode || hasWallet {
             await log("Checking Pairing File...")
             let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
@@ -43,14 +41,26 @@ final class ToolRunner: ObservableObject {
                 return
             }
             await log("✅ Pairing File found.")
-            
-            await log("Setting up Loopback IP...")
-            _ = al_set_target_host("127.0.0.1")
-            await log("✅ Loopback IP set to 127.0.0.1")
+        }
+        
+        // Hàm helper để chạy với Timeout 15s
+        func runWithTimeout<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+            try await withThrowingTaskGroup(of: T.self) { group in
+                group.addTask {
+                    try await operation()
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: 15_000_000_000) // 15s
+                    throw NSError(domain: "Timeout", code: -1, userInfo: [NSLocalizedDescriptionKey: "Quá thời gian 15 giây. Vui lòng kiểm tra lại LocalDevVPN."])
+                }
+                let result = try await group.next()!
+                group.cancelAll()
+                return result
+            }
         }
         
         // ==========================================
-        // 2. PASSCODE THEME (AIRLIFT)
+        // 1. PASSCODE
         // ==========================================
         if hasPasscode {
             state = .running(toolName: "Passcode Theme")
@@ -59,22 +69,12 @@ final class ToolRunner: ObservableObject {
             if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
                 do {
                     await log("Preparing images...")
-                    let vm = PasscodeThemeViewModel(store: themeStore)
+                    _ = al_set_target_host("127.0.0.1")
                     
-                    // Chạy hàm apply trên background thread để không đơ UI
-                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                        DispatchQueue.global(qos: .userInitiated).async {
-                            Task {
-                                do {
-                                    try await vm.applyTheme(selectedTheme, store: store) { msg in
-                                        // Log ra liên tục
-                                        Task { await self.log(msg) }
-                                    }
-                                    continuation.resume()
-                                } catch {
-                                    continuation.resume(throwing: error)
-                                }
-                            }
+                    let vm = PasscodeThemeViewModel(store: themeStore)
+                    try await runWithTimeout {
+                        try await vm.applyTheme(selectedTheme, store: store) { msg in
+                            Task { await self.log(msg) }
                         }
                     }
                     await log("✅ Passcode applied successfully.")
@@ -82,30 +82,23 @@ final class ToolRunner: ObservableObject {
                     await log("❌ Passcode failed: \(error.localizedDescription)")
                 }
             } else {
-                await log("⚠️ No passcode theme selected in library.")
+                await log("⚠️ No passcode theme selected.")
             }
         }
 
         // ==========================================
-        // 3. WALLET (AIRLIFT)
+        // 2. WALLET
         // ==========================================
         if hasWallet {
             state = .running(toolName: "Apple Wallet")
             await log("--- Apple Wallet (AirLift) ---")
             do {
                 await log("Preparing wallet cards...")
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        Task {
-                            do {
-                                try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
-                                    Task { await self.log(msg) }
-                                }
-                                continuation.resume()
-                            } catch {
-                                continuation.resume(throwing: error)
-                            }
-                        }
+                _ = al_set_target_host("127.0.0.1")
+                
+                try await runWithTimeout {
+                    try await AppleWalletTask.run(store: store, walletStore: walletStore) { msg in
+                        Task { await self.log(msg) }
                     }
                 }
                 await log("✅ Wallet applied successfully.")
@@ -115,7 +108,7 @@ final class ToolRunner: ObservableObject {
         }
 
         // ==========================================
-        // 4. MOBILEGESTALT (BAD QUERY)
+        // 3. MOBILEGESTALT
         // ==========================================
         if hasMobileGestalt {
             state = .running(toolName: "MobileGestalt")
@@ -129,42 +122,29 @@ final class ToolRunner: ObservableObject {
                 }
                 let mgData = try Data(contentsOf: modMGURL)
                 
-                await log("Writing MobileGestalt (Đang xử lý)...")
-                // Chạy BadQuery trên background thread
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        do {
-                            try BadQueryWrapper.writeFile(at: MobileGestaltApplyTask.onDeviceMGPath, data: mgData)
-                            continuation.resume()
-                        } catch {
-                            continuation.resume(throwing: error)
-                        }
-                    }
+                await log("Writing MobileGestalt...")
+                try await runWithTimeout {
+                    try BadQueryWrapper.writeFile(at: MobileGestaltApplyTask.onDeviceMGPath, data: mgData)
                 }
                 await log("✅ MobileGestalt written.")
             } catch {
                 await log("❌ MobileGestalt failed: \(error.localizedDescription)")
-                await log("⚠️ Lưu ý: Bad Query có thể bị chặn trên iOS 27.")
             }
         }
 
         // ==========================================
-        // 5. CONFIG TWEAKS (BAD QUERY)
+        // 4. CONFIG TWEAKS
         // ==========================================
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
             await log("--- Config Tweaks (Bad Query) ---")
             do {
-                await log("Granting access to Configuration Profiles...")
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    DispatchQueue.global(qos: .userInitiated).async {
-                        let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
-                        let access = BadQuery().grantAccess(atPath: configDir)
-                        if access.0 {
-                            continuation.resume()
-                        } else {
-                            continuation.resume(throwing: NSError(domain: "ToolRunner", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to grant access."]))
-                        }
+                await log("Granting access...")
+                try await runWithTimeout {
+                    let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
+                    let access = BadQuery().grantAccess(atPath: configDir)
+                    if !access.0 {
+                        throw NSError(domain: "ToolRunner", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to grant access."])
                     }
                 }
                 await log("✅ Config Tweaks granted.")
@@ -173,7 +153,6 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // KẾT THÚC
         state = .success
         await log("✅ Apply process finished.")
     }
