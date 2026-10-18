@@ -28,6 +28,25 @@ struct SettingsView: View {
         ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
     ]
 
+    // Mở khoá tối đa cho MỌI picker
+    private var allContentTypes: [UTType] {
+        var types: [UTType] = [
+            .data, .item, .content,
+            .archive, .text, .image, .movie, .audio, .directory,
+            .sourceCode, .script, .database, .json, .xml, .propertyList,
+            .spreadsheet, .presentation, .pdf, .rtf, .html, .plainText,
+            .zip, .gzip, .bz2, .appleArchive, .diskImage, .executable, .unixExecutable
+        ]
+        for ext in [
+            "plist", "mobiledevicepairing", "zip", "tar", "gz", "tgz", "7z", "rar",
+            "sqlite", "sqlitedb", "db", "bin", "ipa", "deb", "dylib", "framework",
+            "mobileprovision", "mobileconfig", "cer", "p12", "pem", "key", "crt"
+        ] {
+            if let t = UTType(filenameExtension: ext) { types.append(t) }
+        }
+        return types
+    }
+
     var body: some View {
         Form {
             // 1. CONNECTION STATUS
@@ -153,14 +172,14 @@ struct SettingsView: View {
         .onDisappear { monitor?.cancel() }
         .fileImporter(
             isPresented: $showPairingFileImporter,
-            allowedContentTypes: [.item],
+            allowedContentTypes: allContentTypes,
             allowsMultipleSelection: false
         ) { result in
             handlePairingImport(result)
         }
         .fileImporter(
             isPresented: $showBackupImporter,
-            allowedContentTypes: [.item],
+            allowedContentTypes: allContentTypes,
             allowsMultipleSelection: false
         ) { result in
             handleBackupImport(result)
@@ -249,14 +268,16 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - HANDLE PAIRING IMPORT
+    // MARK: - HANDLE PAIRING IMPORT (picker mở full, nhưng chỉ nhận plist + mobiledevicepairing)
     private func handlePairingImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
 
             let ext = url.pathExtension.lowercased()
-            if ext != "plist" && ext != "mobiledevicepairing" {
+            // Nếu ext rỗng thì vẫn cho qua (một số file copy qua sandbox mất đuôi),
+            // còn nếu có ext thì bắt buộc đúng 2 đuôi
+            if !ext.isEmpty && ext != "plist" && ext != "mobiledevicepairing" {
                 airLiftLogs.append("❌ File không hợp lệ. Chỉ nhận .plist hoặc .mobiledevicepairing")
                 showAirLiftLogs = true
                 return
@@ -273,14 +294,16 @@ struct SettingsView: View {
                 airLiftLogs.append("✅ Pairing File imported: \(url.lastPathComponent)")
                 showAirLiftLogs = true
             } catch {
-                print("Lỗi khi import Pairing File: \(error.localizedDescription)")
+                airLiftLogs.append("❌ Lỗi đọc file: \(error.localizedDescription)")
+                showAirLiftLogs = true
             }
         case .failure(let error):
-            print("Lỗi chọn file: \(error.localizedDescription)")
+            airLiftLogs.append("❌ Lỗi chọn file: \(error.localizedDescription)")
+            showAirLiftLogs = true
         }
     }
 
-    // MARK: - HANDLE BACKUP IMPORT
+    // MARK: - HANDLE BACKUP IMPORT (nhận mọi file)
     private func handleBackupImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
