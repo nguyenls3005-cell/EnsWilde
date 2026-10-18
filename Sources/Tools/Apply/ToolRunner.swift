@@ -24,7 +24,7 @@ final class ToolRunner: ObservableObject {
 
         if !hasMobileGestalt && !hasConfigTweaks && !hasPasscode && !hasWallet {
             state = .failed(message: "No tweaks enabled.")
-            await log("❌ No tweaks enabled.")
+            await log("No tweaks enabled.")
             return
         }
 
@@ -36,10 +36,10 @@ final class ToolRunner: ObservableObject {
             let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
             if !FileManager.default.fileExists(atPath: pairingPath) {
                 state = .failed(message: "Missing Pairing File!")
-                await log("❌ Missing Pairing File!")
+                await log("Missing Pairing File!")
                 return
             }
-            await log("✅ Pairing File found.")
+            await log("Pairing File found.")
             _ = al_set_target_host("10.7.0.1") // Set cứng IP
         }
         
@@ -63,10 +63,10 @@ final class ToolRunner: ObservableObject {
                         group.cancelAll()
                     }
                 } catch {
-                    await log("❌ Passcode failed: \(error.localizedDescription)")
+                    await log("Passcode failed: \(error.localizedDescription)")
                 }
             } else {
-                await log("⚠️ No passcode theme selected.")
+                await log("No passcode theme selected.")
             }
         }
 
@@ -88,7 +88,7 @@ final class ToolRunner: ObservableObject {
                     group.cancelAll()
                 }
             } catch {
-                await log("❌ Wallet failed: \(error.localizedDescription)")
+                await log("Wallet failed: \(error.localizedDescription)")
             }
         }
 
@@ -101,6 +101,6 @@ final class ToolRunner: ObservableObject {
         }
 
         state = .success
-        await log("✅ All tweaks applied successfully.")
+        await log("All tweaks applied successfully.")
     }
 }
