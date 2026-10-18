@@ -12,7 +12,8 @@ final class ToolRunner: ObservableObject {
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        try? await Task.sleep(nanoseconds: 300_000_000)
+        // Tăng thời gian chờ lên 0.5s để bạn kịp đọc log
+        try? await Task.sleep(nanoseconds: 500_000_000) 
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -25,27 +26,28 @@ final class ToolRunner: ObservableObject {
 
         if !hasMobileGestalt && !hasConfigTweaks && !hasPasscode && !hasWallet {
             state = .failed(message: "No tweaks enabled.")
+            await log("❌ No tweaks enabled.")
             return
         }
 
         resetLogs()
         state = .running(toolName: "Initializing")
         
-        await log("Starting Apply process...")
+        await log("Initializing Apply process...")
         
         do {
             // ==========================================
             // 1. CHẠY AIRLIFT (PASSCODE & WALLET)
             // ==========================================
             if isAirLiftMode {
-                await log("AirLift mode active. Skipping BadQuery.")
+                await log("AirLift mode detected.")
                 
                 if hasPasscode {
                     state = .running(toolName: "Passcode Theme")
-                    await log("Applying Passcode Theme via AirLift...")
+                    await log("Applying Passcode Theme...")
                     if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
                         try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store)
-                        await log("✓ Passcode Theme applied.")
+                        await log("✅ Passcode Theme applied.")
                     } else {
                         await log("⚠️ No passcode theme selected.")
                     }
@@ -53,20 +55,19 @@ final class ToolRunner: ObservableObject {
                 
                 if hasWallet {
                     state = .running(toolName: "Apple Wallet")
-                    await log("Applying Apple Wallet via AirLift...")
+                    await log("Applying Apple Wallet...")
                     try await AppleWalletTask.run(store: store, walletStore: walletStore)
-                    await log("✓ Apple Wallet applied.")
+                    await log("✅ Apple Wallet applied.")
                 }
             }
 
             // ==========================================
             // 2. CHẠY BAD QUERY (MOBILEGESTALT & CONFIG)
-            // CHỈ CHẠY KHI KHÔNG PHẢI AIRLIFT
             // ==========================================
             if !isAirLiftMode {
                 if hasMobileGestalt {
                     state = .running(toolName: "MobileGestalt")
-                    await log("Initializing Bad_Query exploit...")
+                    await log("Initializing Bad_Query...")
                     await log("Locating ModifiedMobileGestalt.plist...")
                     let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                     let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
@@ -78,7 +79,7 @@ final class ToolRunner: ObservableObject {
                     let targetPath = MobileGestaltApplyTask.onDeviceMGPath
                     await log("Writing MobileGestalt via bad_query...")
                     try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
-                    await log("✓ MobileGestalt written.")
+                    await log("✅ MobileGestalt written.")
                 }
 
                 if hasConfigTweaks {
@@ -111,15 +112,15 @@ final class ToolRunner: ObservableObject {
                     await log("Writing CloudConfigurationDetails.plist...")
                     let ccData = try PropertyListSerialization.data(fromPropertyList: ccDict, format: .binary, options: 0)
                     try ccData.write(to: URL(fileURLWithPath: cloudConfigPath))
-                    await log("✓ Config Tweaks applied.")
+                    await log("✅ Config Tweaks applied.")
                 }
             }
 
             state = .success
-            await log("✓ All tweaks applied successfully.")
+            await log("✅ All tweaks applied successfully.")
         } catch {
             state = .failed(message: "\(error)")
-            await log("✗ Failed: \(error.localizedDescription)")
+            await log("❌ Failed: \(error.localizedDescription)")
         }
     }
 }
