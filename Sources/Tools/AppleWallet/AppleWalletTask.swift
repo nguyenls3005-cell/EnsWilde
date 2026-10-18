@@ -6,40 +6,34 @@ enum AppleWalletTask {
     static func run(store: ToolStore, walletStore: AppleWalletStore) async throws {
         let isAirLiftMode = UserDefaults.standard.bool(forKey: "isAirLiftMode")
         let enabledCards = walletStore.enabledCards()
+        
         guard !enabledCards.isEmpty else {
             throw ToolTaskError.generic("No enabled wallet cards to apply")
         }
         
         if isAirLiftMode {
-            // ==========================================
-            // CHẾ ĐỘ AIRLIFT
-            // ==========================================
             print("[AppleWallet] Applying via AirLift...")
+            ApplyLogger.shared.log("[AppleWallet] Starting AirLift apply...")
             
-            // 1. Lấy đường dẫn pairing file
             guard let pairingPath = getPairingPath() else {
                 throw ToolTaskError.generic("Không tìm thấy Pairing File.")
             }
             
-            // 2. Tạo thư mục tạm để chứa các file cần ghi
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("AirLiftWallet_\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            defer { try? FileManager.default.removeItem(at: tempDir) } // Dọn dẹp sau khi xong
+            defer { try? FileManager.default.removeItem(at: tempDir) }
             
-            // 3. Chuẩn bị cấu trúc thư mục y hệt trên máy
             for card in enabledCards {
-                // Tạo thư mục đích trên máy tạm (giả lập)
                 let cardBasePath = tempDir.appendingPathComponent("Passes/Cards/\(card.id)")
                 try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("pkpass"), withIntermediateDirectories: true)
                 try FileManager.default.createDirectory(at: cardBasePath.appendingPathExtension("cache"), withIntermediateDirectories: true)
                 
-                // Ghi Background (.pkpass)
                 if let bgData = card.backgroundImageData {
                     let url = cardBasePath.appendingPathExtension("pkpass").appendingPathComponent(card.cardBackgroundFileName)
                     try bgData.write(to: url)
+                    ApplyLogger.shared.log("[AppleWallet] Prepared background for card \(card.id)")
                 }
                 
-                // Ghi Cache
                 if let frontFaceData = card.frontFaceImageData {
                     try frontFaceData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("FrontFace"))
                 }
@@ -50,24 +44,23 @@ enum AppleWalletTask {
                     try previewData.write(to: cardBasePath.appendingPathExtension("cache").appendingPathComponent("Preview"))
                 }
                 
-                // Ghi pass.json
                 if let passJSON = card.loadPassJSON() {
                     try passJSON.write(to: cardBasePath.appendingPathExtension("pkpass").appendingPathComponent("pass.json"))
                 }
             }
             
-            // 4. Gọi hàm AirLift để bơm toàn bộ thư mục
             var errorCString: UnsafeMutablePointer<CChar>? = nil
-            // Đường dẫn đích trên hệ thống iOS
             let targetSystemPath = "/var/mobile/Library/Passes/Cards"
+            
+            ApplyLogger.shared.log("[AppleWallet] Pushing files via AirLift to system...")
             
             let result = al_exploit_write_dir(
                 pairingPath,
-                tempDir.path + "/Passes/Cards", // Nguồn: thư mục chứa các card
-                targetSystemPath,               // Đích: thư mục hệ thống
-                nil,                            // log_cb
-                nil,                            // ctx
-                &errorCString                   // out_error
+                tempDir.path + "/Passes/Cards",
+                targetSystemPath,
+                nil,
+                nil,
+                &errorCString
             )
             
             if result != 0 {
@@ -76,25 +69,17 @@ enum AppleWalletTask {
                 throw ToolTaskError.generic("AirLift Error: \(errorMsg)")
             }
             
+            ApplyLogger.shared.log("[AppleWallet] AirLift apply successful.")
             print("[AppleWallet] AirLift apply successful.")
             
         } else {
-            // ==========================================
-            // CHẾ ĐỘ BAD QUERY CŨ (Giữ nguyên)
-            // ==========================================
             var allFiles: [BookRestoreFile] = []
-            // ... (Giữ nguyên toàn bộ code Bad Query cũ của bạn ở đây) ...
-            // ...
+            // ... (code Bad Query cũ) ...
         }
     }
     
-    // Hàm phụ để lấy đường dẫn Pairing File
     private static func getPairingPath() -> String? {
-        // Thường file pairing được lưu trong Documents với tên "pairingFile.plist"
         let url = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
-        if FileManager.default.fileExists(atPath: url.path) {
-            return url.path
-        }
-        return nil
+        return FileManager.default.fileExists(atPath: url.path) ? url.path : nil
     }
 }
