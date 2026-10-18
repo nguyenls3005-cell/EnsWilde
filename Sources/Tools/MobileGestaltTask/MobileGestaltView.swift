@@ -42,6 +42,9 @@ struct MobileGestaltView: View {
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            // Đồng bộ store với file hiện tại để Toggle iPadOS đọc đúng trạng thái
+            store.loadFromPlist(url: modMGURL)
+            
             if initError != nil {
                 lastError = initError
                 initError = nil
@@ -211,8 +214,29 @@ struct MobileGestaltView: View {
                         try? MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
                     }
 
+                    // 1. Lưu các key thông thường (từ local state)
                     saveProductType()
+                    
+                    // 2. ĐỒNG BỘ: Lấy các key iPadOS (và cả CacheData) từ store đè vào local mobileGestalt
+                    if let storeCacheExtra = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary,
+                       let localCacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
+                        for key in MGKey.ipadosCacheEx {
+                            if let value = storeCacheExtra[key] {
+                                localCacheExtra[key] = value
+                            } else {
+                                localCacheExtra.removeObject(forKey: key)
+                            }
+                        }
+                    }
+                    if let storeCacheData = store.mgCurrentDict["CacheData"] {
+                        mobileGestalt["CacheData"] = storeCacheData
+                    }
+
+                    // 3. Ghi xuống file
                     try mobileGestalt.write(to: modMGURL)
+                    
+                    // 4. Cập nhật lại store cho đồng bộ
+                    store.loadFromPlist(url: modMGURL)
 
                     UserDefaults.standard.set(true, forKey: "ShowApplyTab")
 
@@ -236,6 +260,9 @@ struct MobileGestaltView: View {
                     try pristineData.write(to: modMGURL)
 
                     mobileGestalt = try NSMutableDictionary(contentsOf: modMGURL, error: ())
+                    // Đồng bộ lại store sau khi reset
+                    store.loadFromPlist(url: modMGURL)
+                    
                     toolStore.replaceMobileGestaltEnabled = true
 
                     UserDefaults.standard.set(true, forKey: "ShowApplyTab")
