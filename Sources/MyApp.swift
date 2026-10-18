@@ -22,32 +22,26 @@ struct MyApp: App {
         let version = UIDevice.current.systemVersion
         guard version.hasPrefix("27.") || version == "27" else { return false }
         
-        let build = getBuildNumber()
+        // ✅ Lấy Build Number bằng ProcessInfo (Chuẩn xác 100%)
+        let buildString = ProcessInfo.processInfo.operatingSystemVersionString
         
-        // ✅ Danh sách các bản ĐƯỢC HỖ TRỢ (Dev Beta 1-4 / Public 1-2)
+        // Danh sách các bản ĐƯỢC HỖ TRỢ
         let supportedBuilds = [
             "24A5355q", // 27.0 beta 1
-            "24A5370h", // 27.0 beta 2 (Public Beta 1)
-            "24A5380h", // 27.0 beta 3 (Public Beta 2)
+            "24A5370h", // 27.0 beta 2
+            "24A5380h", // 27.0 beta 3
             "24A5390f"  // 27.0 beta 4
         ]
         
-        if supportedBuilds.contains(build) {
-            return false
+        // Kiểm tra xem chuỗi buildString có chứa mã build hỗ trợ nào không
+        // (Vì operatingSystemVersionString có dạng "Version 27.0 (Build 24A5390f)")
+        for supported in supportedBuilds {
+            if buildString.contains(supported) {
+                return false // Có chứa mã hỗ trợ -> Không block
+            }
         }
         
-        // ❌ Các bản khác (Beta 5 trở đi, RC, chính thức, 27.2...) đều bị block
-        return true
-    }
-    
-    private func getBuildNumber() -> String {
-        var systemInfo = utsname()
-        uname(&systemInfo)
-        let machineMirror = Mirror(reflecting: systemInfo.version)
-        return machineMirror.children.reduce("") { identifier, element in
-            guard let value = element.value as? Int8, value != 0 else { return identifier }
-            return identifier + String(UnicodeScalar(UInt8(value)))
-        }
+        return true // Không tìm thấy mã hỗ trợ -> Block
     }
 }
 
@@ -109,7 +103,6 @@ struct VersionBlockedView: View {
                     
                     Divider().background(Color.gray)
                     
-                    // NÚT AIRLIFT
                     Button(action: {
                         withAnimation {
                             isAirLiftMode = true
