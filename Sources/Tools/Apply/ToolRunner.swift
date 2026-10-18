@@ -12,7 +12,7 @@ final class ToolRunner: ObservableObject {
     func log(_ s: String) async {
         logs.append(.init(text: s))
         print("[APPLY] \(s)")
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s delay
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
@@ -23,6 +23,7 @@ final class ToolRunner: ObservableObject {
         let hasPasscode = themeStore.passcodeThemeEnabled
         let hasWallet = walletStore.appleWalletEnabled
 
+        // Check xem có bật cái gì không
         if !hasMobileGestalt && !hasConfigTweaks && !hasPasscode && !hasWallet {
             state = .failed(message: "No tweaks enabled.")
             await log("❌ No tweaks enabled.")
@@ -36,54 +37,57 @@ final class ToolRunner: ObservableObject {
         
         do {
             // ==========================================
-            // CHẾ ĐỘ AIRLIFT
+            // 1. AIRLIFT MODE (PASSCODE & WALLET)
             // ==========================================
             if isAirLiftMode {
                 await log("AirLift mode active.")
                 
                 if hasPasscode {
                     state = .running(toolName: "Passcode Theme")
-                    await log("Applying Passcode Theme...")
+                    await log("--- Passcode Theme ---")
                     if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
-                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store)
-                        await log("✅ Passcode Theme applied.")
+                        // Gọi HÀM THẬT và đợi nó chạy xong
+                        try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { logMsg in
+                            Task { await self.log(logMsg) }
+                        }
                     } else {
-                        await log("⚠️ No passcode theme selected.")
+                        await log("⚠️ No passcode theme selected in library.")
                     }
                 }
                 
                 if hasWallet {
                     state = .running(toolName: "Apple Wallet")
-                    await log("Applying Apple Wallet...")
-                    try await AppleWalletTask.run(store: store, walletStore: walletStore)
-                    await log("✅ Apple Wallet applied.")
+                    await log("--- Apple Wallet ---")
+                    // Gọi HÀM THẬT và đợi nó chạy xong
+                    try await AppleWalletTask.run(store: store, walletStore: walletStore) { logMsg in
+                        Task { await self.log(logMsg) }
+                    }
                 }
             }
 
             // ==========================================
-            // CHẾ ĐỘ BAD QUERY (Chỉ khi không phải AirLift)
+            // 2. BAD QUERY MODE (MOBILEGESTALT & CONFIG)
             // ==========================================
             if !isAirLiftMode {
                 if hasMobileGestalt {
                     state = .running(toolName: "MobileGestalt")
+                    await log("--- MobileGestalt ---")
                     await log("Initializing Bad_Query...")
-                    await log("Locating ModifiedMobileGestalt.plist...")
                     let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                     let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
                     guard FileManager.default.fileExists(atPath: modMGURL.path) else {
                         throw NSError(domain: "ToolRunner", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing ModifiedMobileGestalt.plist."])
                     }
-                    await log("Reading plist data...")
                     let mgData = try Data(contentsOf: modMGURL)
                     let targetPath = MobileGestaltApplyTask.onDeviceMGPath
-                    await log("Writing MobileGestalt via bad_query...")
+                    await log("Writing MobileGestalt...")
                     try BadQueryWrapper.writeFile(at: targetPath, data: mgData)
                     await log("✅ MobileGestalt written.")
                 }
 
                 if hasConfigTweaks {
                     state = .running(toolName: "Config Tweaks")
-                    await log("Preparing Config Tweaks...")
+                    await log("--- Config Tweaks ---")
                     let footnote = store.configFootnoteText
                     let supervised = UserDefaults.standard.bool(forKey: "ConfigSupervised")
                     let orgName = UserDefaults.standard.string(forKey: "ConfigOrgName") ?? ""
@@ -99,7 +103,6 @@ final class ToolRunner: ObservableObject {
 
                     let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
                     let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
-                    await log("Writing SharedDeviceConfiguration.plist...")
                     try ftData.write(to: URL(fileURLWithPath: sharedDevConfigPath))
 
                     var ccDict: NSMutableDictionary = [:]
@@ -108,7 +111,6 @@ final class ToolRunner: ObservableObject {
                     if supervised && !orgName.isEmpty { ccDict["OrganizationName"] = orgName }
                     else { ccDict.removeObject(forKey: "OrganizationName") }
                     
-                    await log("Writing CloudConfigurationDetails.plist...")
                     let ccData = try PropertyListSerialization.data(fromPropertyList: ccDict, format: .binary, options: 0)
                     try ccData.write(to: URL(fileURLWithPath: cloudConfigPath))
                     await log("✅ Config Tweaks applied.")
@@ -118,8 +120,8 @@ final class ToolRunner: ObservableObject {
             state = .success
             await log("✅ All tweaks applied successfully.")
         } catch {
-            state = .failed(message: "\(error)")
-            await log("❌ Failed: \(error.localizedDescription)")
+            state = .failed(message: "\(error.localizedDescription)")
+            await log("❌ Error: \(error.localizedDescription)")
         }
     }
 }
