@@ -8,9 +8,9 @@ struct MyApp: App {
         UserDefaults.standard.set(false, forKey: "ShowApplyTab")
     }
     
-   Air var body: some Scene {
+    var body: some Scene {
         WindowGroup {
-            if isVersionBlocked() && !isLiftMode {
+            if isVersionBlocked() && !isAirLiftMode {
                 VersionBlockedView()
             } else {
                 MainViewWithNavigation()
@@ -20,6 +20,7 @@ struct MyApp: App {
     
     private func isVersionBlocked() -> Bool {
         let version = UIDevice.current.systemVersion
+        // Nếu là iOS 27.0 thì bị chặn (bỏ check mã build để test)
         if version.hasPrefix("27.0") {
             return true
         }
@@ -27,6 +28,7 @@ struct MyApp: App {
     }
 }
 
+// MARK: - MÀN HÌNH CHẶN PHIÊN BẢN (Giao diện nút AirLift màu cam)
 struct VersionBlockedView: View {
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
     
@@ -84,7 +86,7 @@ struct VersionBlockedView: View {
                     
                     Divider().background(Color.gray)
                     
-                    // NÚT AIRLIFT MỚI: Màu cam, khung tròn, chữ nhỏ lại
+                    // NÚT AIRLIFT MÀU CAM, BO TRÒN
                     Button(action: {
                         withAnimation {
                             isAirLiftMode = true
