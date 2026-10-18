@@ -214,7 +214,6 @@ struct SettingsView: View {
     }
 
     private func respringClean() {
-        // Gọi hàm NeoSpring có sẵn của dự án, thêm try? để tránh lỗi
         try? RespringHelper.respring()
     }
 
