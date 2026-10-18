@@ -161,12 +161,7 @@ struct MobileGestaltView: View {
             
             // Become iPadOS
             Toggle(isOn: store.mgTrollPadBinding()) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Enable iPadOS UI")
-                    Text("⚠️ Sẽ gây lỗi giao diện hoặc treo máy nếu tắt 'Show Dock'. Hãy backup trước.")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
+                Text("Become iPadOS")
             }
         }
     }
