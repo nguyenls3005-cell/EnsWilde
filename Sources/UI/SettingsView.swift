@@ -22,49 +22,9 @@ struct SettingsView: View {
         ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
     ]
 
-    private var isSystemReady: Bool {
-        pairingFile != nil && vpnActive
-    }
-
     var body: some View {
         Form {
-            Section(header: Text(L("system_status"))) {
-                HStack(spacing: 12) {
-                    if isSystemReady {
-                        Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("system_status")).font(.body)
-                            Text("Ready").font(.footnote).foregroundStyle(.green)
-                        }
-                    } else {
-                        Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(.red)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("system_status")).font(.body)
-                            Text("Not Ready").font(.footnote).foregroundStyle(.red)
-                        }
-                    }
-                }.padding(.vertical, 4)
-                
-                if !isSystemReady {
-                    if pairingFile == nil {
-                        HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Missing pairing file").font(.subheadline.bold())
-                                Text("Please import a pairing file to continue").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }.padding(.vertical, 4)
-                    } else if !vpnActive {
-                        HStack(spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Heartbeat not running").font(.subheadline.bold())
-                                Text("Enable LocalDevVPN or StikDebug and reopen app").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }.padding(.vertical, 4)
-                    }
-                }
-            }
+            // Đã xóa phần System Status ở đây
 
             Section(header: Text(L("connection_status"))) {
                 statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
@@ -90,7 +50,7 @@ struct SettingsView: View {
                     if hasBackup, let info = backupInfo {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
+                                Image(systemName: "checkforegroundStyle(.green)
                                 Text(L("backup_available")).font(.subheadline.bold())
                                 Spacer()
                             }
@@ -254,7 +214,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - ABOUT VIEW 
+// AboutView (giữ nguyên như cũ)
 struct AboutView: View { 
     @ObservedObject private var languageManager = LanguageManager.shared
 
