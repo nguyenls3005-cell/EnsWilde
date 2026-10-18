@@ -112,7 +112,7 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                // HIỂN THỊ LOG CHI TIẾT (Lấy trực tiếp từ ToolRunner)
+                // Hiển thị log chi tiết
                 if !toolRunner.logs.isEmpty {
                     Section(header: Text("Apply Logs").font(.headline).textCase(nil)) {
                         ForEach(toolRunner.logs, id: \.id) { log in
@@ -144,7 +144,7 @@ struct ApplyTabView: View {
 
     private func performApply() {
         Task {
-            // Gọi ToolRunner (ToolRunner tự động log ra màn hình)
+            // 1. GỌI HÀM APPLY DUY NHẤT (Không qua HTTP check)
             await toolRunner.applyAll(
                 isSystemReady: true,
                 store: toolStore,
@@ -153,7 +153,7 @@ struct ApplyTabView: View {
                 featureFlagsStore: featureFlagsStore
             )
             
-            // Xử lý khi xong
+            // 2. Hiển thị lỗi nếu có
             await MainActor.run {
                 if case .failed(let msg) = toolRunner.state {
                     lastError = msg
@@ -161,9 +161,9 @@ struct ApplyTabView: View {
                 }
             }
             
-            // Respring sau khi xong hoàn toàn
+            // 3. Respring
             if toolStore.soundRespringEnabled && toolRunner.state == .success {
-                try? await Task.sleep(nanoseconds: 1_500_000_000) // Đợi 1.5s
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
                 try? RespringHelper.respring()
             }
         }
