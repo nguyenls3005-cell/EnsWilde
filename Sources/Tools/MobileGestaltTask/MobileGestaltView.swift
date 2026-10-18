@@ -99,8 +99,6 @@ struct MobileGestaltView: View {
         }
     }
 
-    // MARK: - Body Sections
-
     @ViewBuilder
     private var enableSection: some View {
         Section(header: Text(L("tool_mobile_gestalt"))) {
@@ -153,7 +151,6 @@ struct MobileGestaltView: View {
     @ViewBuilder
     private var displayAndUISection: some View {
         Section(header: Text(L("section_display_and_ui"))) {
-            // ❌ Đã bỏ Disable Parallax
             Toggle(L("mg_stage_manager"), isOn: store.mgByteBinding(key: MGKey.stageMgr))
             Toggle(L("mg_aod"), isOn: store.mgByteBinding(key: MGKey.AOD))
                 .disabled(Utils.requiresVersion(18))
@@ -183,12 +180,10 @@ struct MobileGestaltView: View {
         Section(header: Text(L("section_internal_features"))) {
             Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
             
-            // ✅ Internal Stuff giờ hoạt động độc lập, không cần Metal HUD
-            Toggle(L("mg_internal_stuff"), isOn: bindingForInternalStuff())
+            // ✅ Internal Stuff giờ dùng mgByteBinding chuẩn, không bị khóa
+            Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
             
             Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
-            
-            // ❌ Đã bỏ Metal HUD (mg_metal_hud)
             
             Toggle(L("mg_apple_intelligence"), isOn: bindingForAppleIntelligence())
                 .disabled(Utils.requiresVersion(18))
@@ -322,26 +317,6 @@ struct MobileGestaltView: View {
         )
     }
 
-    // ✅ Internal Stuff giờ độc lập: chỉ sửa byte trong CacheData, không liên quan Metal HUD
-    func bindingForInternalStuff() -> Binding<Bool> {
-        guard let cacheData = mobileGestalt["CacheData"] as? NSMutableData else {
-            return State(initialValue: false).projectedValue
-        }
-        
-        guard let off_appleInternalInstall = store.FindCacheDataOffset(MGKey.intInstall),
-              let off_InternalBuild = store.FindCacheDataOffset(MGKey.intBuild) else {
-            return State(initialValue: false).projectedValue
-        }
-
-        return Binding(
-            get: { cacheData.bytes.load(fromByteOffset: off_appleInternalInstall, as: Int.self) == 1 },
-            set: { enabled in
-                cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_appleInternalInstall, as: Int.self)
-                cacheData.mutableBytes.storeBytes(of: enabled ? 1 : 0, toByteOffset: off_InternalBuild, as: Int.self)
-            }
-        )
-    }
-
     func bindingForMGKeys<T: Equatable>(_ keys: [String], type: T.Type = Int.self, defaultValue: T? = 0, enableValue: T? = 1) -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else {
             return State(initialValue: false).projectedValue
@@ -361,8 +336,6 @@ struct MobileGestaltView: View {
             }
         )
     }
-
-    // MARK: - Helpers
 
     static func machineName() -> String {
         var systemInfo = utsname()
