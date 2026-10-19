@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import Network
 import AirliftFFI
 
+// KHAI BÁO DUY NHẤT 1 LẦN Ở ĐÂY
 struct DocumentPickerView: UIViewControllerRepresentable {
     var allowedContentTypes: [UTType] = [.data, .item]
     let onPick: (URL) -> Void
@@ -46,6 +47,7 @@ struct SettingsView: View {
     @State private var airLiftLogs: [String] = []
     @State private var showAirLiftLogs = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
+    @State private var showImportBackupPicker = false
     
     private let tintOptions: [(name: String, hex: String)] = [
         ("Orange", "#ef9f76"), ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
@@ -59,24 +61,7 @@ struct SettingsView: View {
                 if isAirLiftMode { statusRow(title: "AirLift Mode", subtitle: "Enabled", ok: true) }
             }
 
-            Section(header: Text("Check AirLift Status")) {
-                Button { checkAirLift() } label: {
-                    HStack {
-                        if isCheckingAirLift { ProgressView().tint(.blue) }
-                        else { Text("Check AirLift Status").fontWeight(.semibold) }
-                        Spacer()
-                    }
-                }.disabled(isCheckingAirLift)
-
-                if showAirLiftLogs {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(airLiftLogs, id: \.self) { log in
-                            Text(log).font(.caption2).foregroundStyle(log.contains("❌") ? .red : (log.contains("✅") ? .green : .secondary))
-                        }
-                    }.padding(.vertical, 4)
-                }
-            }
-
+            // NÚT IMPORT PAIRING FILE
             Section(header: Text(L("pairing_file"))) {
                 if pairingFile != nil {
                     Button(role: .destructive) {
@@ -84,33 +69,48 @@ struct SettingsView: View {
                         try? FileManager.default.removeItem(at: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
                     } label: { Label(L("button_reset_pairing"), systemImage: "trash") }
                 } else {
-                    Button { showPairingPicker = true } label: { Label(L("button_select_pairing"), systemImage: "doc.badge.plus") }
+                    Button { showPairingPicker = true } label: { Label("Import Pairing", systemImage: "doc.badge.plus") }
                 }
             }
 
+            // BACKUP MANAGER - KHÔI PHỤC 100% NHƯ ẢNH
             if !isAirLiftMode {
-                Section(header: Text(L("backup_title"))) {
+                Section(header: Text("MobileGestalt Backup")) {
                     if hasBackup, let info = backupInfo {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
-                                Text(L("backup_available")).font(.subheadline.bold())
+                                Text("Backup available").font(.subheadline.bold())
                                 Spacer()
                             }
-                            Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                            Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
+                            Text("Date: \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+                            Text("Size: \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
                         }.padding(.vertical, 4)
                     } else {
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(L("backup_none")).font(.subheadline.bold())
-                                Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
+                                Text("No backup available").font(.subheadline.bold())
+                                Text("Create a backup to restore your settings later.").font(.caption).foregroundStyle(.secondary)
                             }
                         }.padding(.vertical, 4)
                     }
-                    Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
-                    if hasBackup { Button(role: .destructive) { deleteBackup() } label: { Label(L("backup_delete"), systemImage: "trash") } }
+                    
+                    Button { createBackupNow() } label: {
+                        Label("Backup now", systemImage: "square.and.arrow.down")
+                            .foregroundStyle(.primary)
+                    }
+                    
+                    Button { showImportBackupPicker = true } label: {
+                        Label("Import backup", systemImage: "square.and.arrow.down")
+                            .foregroundStyle(.primary)
+                    }
+                    
+                    if hasBackup {
+                        Button(role: .destructive) { deleteBackup() } label: {
+                            Label("Delete backup", systemImage: "trash")
+                        }
+                    }
                 }
             }
 
@@ -120,7 +120,8 @@ struct SettingsView: View {
                 }
             }
             
-            Section(header: Text(L("settings_accent_color"))) {
+            // ACCENT COLOR ĐÃ CÓ TEXT Ở DƯỚI VÀ ĐÚNG MÀU CAM
+            Section(header: Text("Accent Color")) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
                         ForEach(tintOptions, id: \.hex) { option in
@@ -132,21 +133,9 @@ struct SettingsView: View {
             }
             
             Section(header: Text(L("settings_app_info"))) {
-                HStack {
-                    Label("EnsWilde", systemImage: "sparkles")
-                    Spacer()
-                    Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary)
-                }
-                HStack {
-                    Label(L("app_ios"), systemImage: "iphone")
-                    Spacer()
-                    Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary)
-                }
-                HStack {
-                    Label(L("app_device"), systemImage: "apps.iphone")
-                    Spacer()
-                    Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary)
-                }
+                HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary) }
+                HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
+                HStack { Label(L("app_device"), systemImage: "apps.iphone"); Spacer(); Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary) }
                 Text(L("app_info_footer")).font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
             }
         }
@@ -154,23 +143,18 @@ struct SettingsView: View {
         .onAppear { startMonitoringVPN(); refreshBackupInfo() }
         .onDisappear { monitor?.cancel() }
         .sheet(isPresented: $showPairingPicker) {
-            DocumentPickerView(allowedContentTypes: [.data, .item]) { url in
-                handlePairingImport(url)
-            }
+            DocumentPickerView(allowedContentTypes: [.data, .item]) { url in handlePairingImport(url) }
+        }
+        .sheet(isPresented: $showImportBackupPicker) {
+            DocumentPickerView(allowedContentTypes: [.data, .item]) { url in handleBackupImport(url) }
         }
     }
 
-    @ViewBuilder
-    private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
-        HStack {
-            Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red)
-            Spacer()
-            Text(subtitle).font(.caption).foregroundStyle(ok ? .green : .red)
-        }
+    @ViewBuilder private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
+        HStack { Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red); Spacer(); Text(subtitle).font(.caption).foregroundStyle(ok ? .green : .red) }
     }
 
-    @ViewBuilder
-    private func colorOptionView(option: (name: String, hex: String)) -> some View {
+    @ViewBuilder private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
         VStack(spacing: 6) {
@@ -191,46 +175,6 @@ struct SettingsView: View {
         }
     }
 
-    private func checkAirLift() {
-        isCheckingAirLift = true
-        airLiftLogs.removeAll()
-        showAirLiftLogs = true
-        airLiftLogs.append("Starting AirLift check...")
-
-        let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
-        guard FileManager.default.fileExists(atPath: pairingPath) else {
-            airLiftLogs.append("❌ Missing Pairing File! Vui lòng nhập pairing trước.")
-            isCheckingAirLift = false
-            return
-        }
-        airLiftLogs.append("✅ Pairing File found.")
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            var outJson: UnsafeMutablePointer<CChar>? = nil
-            var outError: UnsafeMutablePointer<CChar>? = nil
-            let result = al_exploit_run(pairingPath, "/var/mobile/Library", nil, nil, &outJson, &outError)
-
-            DispatchQueue.main.async {
-                if result == 0 {
-                    airLiftLogs.append("✅ AirLift is ACTIVE and working!")
-                    isAirLiftMode = true
-                    if let jsonStr = outJson {
-                        airLiftLogs.append("Response: \(String(cString: jsonStr).prefix(100))...")
-                        al_string_free(jsonStr)
-                    }
-                } else {
-                    var errMsg = "Unknown error"
-                    if let err = outError {
-                        errMsg = String(cString: err)
-                        al_string_free(err)
-                    }
-                    airLiftLogs.append("❌ AirLift failed: \(errMsg)")
-                }
-                isCheckingAirLift = false
-            }
-        }
-    }
-
     private func handlePairingImport(_ url: URL) {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
@@ -239,6 +183,19 @@ struct SettingsView: View {
             pairingFile = url.lastPathComponent
             airLiftLogs.append("✅ Imported: \(url.lastPathComponent) (\(data.count) bytes)")
             showAirLiftLogs = true
+        }
+    }
+    
+    private func handleBackupImport(_ url: URL) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        if let data = try? Data(contentsOf: url) {
+            do {
+                try MobileGestaltBackupManager.shared.importBackup(from: data)
+                refreshBackupInfo()
+            } catch {
+                print("Failed to import backup: \(error)")
+            }
         }
     }
 
@@ -280,76 +237,5 @@ struct SettingsView: View {
             return id + String(UnicodeScalar(UInt8(value)))
         }
         return "\(UIDevice.current.model) (\(identifier))"
-    }
-}
-
-struct AboutView: View {
-    @ObservedObject private var languageManager = LanguageManager.shared
-    var body: some View {
-        Form {
-            Section {
-                VStack(spacing: 12) {
-                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
-                    Text(L("about_desc")).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Button {
-                        if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
-                    } label: {
-                        Text(L("button_donate"))
-                            .font(.headline.bold())
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(AppTheme.accent)
-                            .foregroundColor(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            Section {
-                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_group_yang"), systemImage: "safari")
-                }
-                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_group_ls"), systemImage: "safari")
-                }
-                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
-                    Label(L("about_contact"), systemImage: "paperplane.fill")
-                }
-            }
-            Section(header: Text(L("settings_thanks_to"))) {
-                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
-                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
-                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
-                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
-                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
-                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
-                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
-                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
-            }
-            Section(header: Text(L("settings_translators"))) {
-                ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
-                    creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
-                }
-            }
-        }
-        .navigationTitle(L("nav_about"))
-        .onAppear {
-            if languageManager.availableLanguages.isEmpty {
-                Task { await languageManager.fetchAvailableLanguages() }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func creditRow(name: String, desc: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.circle.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(.secondary.opacity(0.5))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.subheadline).fontWeight(.semibold)
-                Text(desc).font(.caption).foregroundStyle(.secondary)
-            }
-        }
     }
 }
