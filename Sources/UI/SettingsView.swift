@@ -47,8 +47,15 @@ struct SettingsView: View {
     @State private var airLiftLogs: [String] = []
     @State private var showAirLiftLogs = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
+    
+    // Cập nhật danh sách màu: Thêm Cam lên đầu, bỏ hình ảnh (chỉ còn màu)
     private let tintOptions: [(name: String, hex: String)] = [
-        ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
+        ("Orange", "#ef9f76"),
+        ("Pink", "#f4b8e4"),
+        ("Mauve", "#ca9ee6"),
+        ("Red", "#e78284"),
+        ("Green", "#a6d189"),
+        ("Blue", "#8caaee")
     ]
 
     var body: some View {
@@ -63,8 +70,8 @@ struct SettingsView: View {
                 Button { checkAirLift() } label: {
                     HStack {
                         if isCheckingAirLift { ProgressView().tint(.blue) }
-                        else { Image(systemName: "bolt.shield.fill").foregroundStyle(.blue) }
-                        Text(isCheckingAirLift ? "Checking..." : "Check AirLift Status").fontWeight(.semibold)
+                        else { Text("Check AirLift Status").fontWeight(.semibold) } // Bỏ icon logo phía trước
+                        Spacer()
                     }
                 }.disabled(isCheckingAirLift)
 
@@ -117,11 +124,16 @@ struct SettingsView: View {
             Section(header: Text(L("settings_language"))) {
                 NavigationLink(destination: LanguageSettingsView()) { Label(L("settings_language"), systemImage: "globe") }
             }
+            
             Section(header: Text(L("settings_accent_color"))) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) { ForEach(tintOptions, id: \.hex) { option in colorOptionView(option: option) } }
+                    HStack(spacing: 16) { // Tăng khoảng cách để chữ không bị dính
+                        ForEach(tintOptions, id: \.hex) { option in colorOptionView(option: option) }
+                    }
+                    .padding(.vertical, 8)
                 }
             }
+            
             Section(header: Text(L("settings_app_info"))) {
                 HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary) }
                 HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
@@ -148,21 +160,30 @@ struct SettingsView: View {
         }
     }
 
+    // SỬA LẠI PHẦN MÀU: Có chữ ở dưới, bỏ logo
     @ViewBuilder
     private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
-        Circle()
-            .fill(color)
-            .frame(width: 36, height: 36)
-            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
-            .overlay(Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundColor(.white).opacity(isSelected ? 1 : 0))
-            .onTapGesture {
-                userTintColorHex = option.hex
-                let uiColor = UIColor(Color(hex: option.hex))
-                UITabBar.appearance().tintColor = uiColor
-                UINavigationBar.appearance().tintColor = uiColor
-            }
+        
+        VStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 36, height: 36)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
+                .overlay(Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundColor(.white).opacity(isSelected ? 1 : 0))
+            
+            // Thêm text tên màu
+            Text(option.name)
+                .font(.caption)
+                .foregroundColor(isSelected ? .primary : .secondary)
+        }
+        .onTapGesture {
+            userTintColorHex = option.hex
+            let uiColor = UIColor(Color(hex: option.hex))
+            UITabBar.appearance().tintColor = uiColor
+            UINavigationBar.appearance().tintColor = uiColor
+        }
     }
 
     private func checkAirLift() {
@@ -180,7 +201,9 @@ struct SettingsView: View {
         airLiftLogs.append("✅ Pairing File found.")
 
         DispatchQueue.global(qos: .userInitiated).async {
-            _ = al_set_target_host("127.0.0.1")
+            // XÓA 127.0.0.1 VÌ NÓ SẼ LÀM HỎNG TUNNEL
+            // _ = al_set_target_host("127.0.0.1") 
+            
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
             
