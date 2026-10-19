@@ -130,16 +130,6 @@ class PasscodeThemeViewModel: ObservableObject {
         let targetPath = globalTelephony.cachePath
         let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
         
-        onLogUpdate("Ensuring target directory exists...")
-        // Đảm bảo thư mục cha tồn tại bằng BadQuery
-        let parentDir = (cleanTargetPath as NSString).deletingLastPathComponent
-        let folderName = (cleanTargetPath as NSString).lastPathComponent
-        _ = BadQuery().grantAccess(atPath: parentDir)
-        
-        // Tạo một file placeholder qua BadQuery để chắc chắn thư mục đích tồn tại trước khi Airlift ghi vào
-        let placeholderPath = cleanTargetPath + "/.placeholder"
-        try? Data().write(to: URL(fileURLWithPath: placeholderPath))
-        
         onLogUpdate("Đang dò tunnel IP...")
         guard let _ = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else { 
             throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy RSD tunnel."]) 
@@ -150,15 +140,15 @@ class PasscodeThemeViewModel: ObservableObject {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
         
-        onLogUpdate("Đang ghi qua AirTraffic (Sử dụng Inject Folder)...")
+        onLogUpdate("Đang ghi qua AirTraffic...")
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // Dùng inject_folder (an toàn và không bị deadlock)
+        // GỌI HÀM WRITE_DIR GỐC CỦA AIRCARD TRÊN THREAD RIÊNG
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
-                let res = al_exploit_inject_folder(pairingPath, srcDir, parentDir, folderName, nil, nil, &errPtr)
+                let res = al_exploit_write_dir(pairingPath, srcDir, cleanTargetPath, nil, nil, &errPtr)
                 
                 if res != 0 {
                     let msg = errPtr != nil ? String(cString: errPtr!) : "Unknown Error"
@@ -169,9 +159,6 @@ class PasscodeThemeViewModel: ObservableObject {
                 }
             }
         }
-        
-        // Xoá placeholder nếu có
-        try? FileManager.default.removeItem(atPath: placeholderPath)
         
         onLogUpdate("✅ Passcode applied successfully.")
     }
