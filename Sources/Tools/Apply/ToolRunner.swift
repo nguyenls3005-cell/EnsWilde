@@ -16,7 +16,6 @@ final class ToolRunner: ObservableObject {
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
-        // Đồng bộ đọc từ UserDefaults
         let hasMobileGestalt = UserDefaults.standard.bool(forKey: "ReplaceMobileGestaltEnabled")
         let hasConfigTweaks = UserDefaults.standard.bool(forKey: "ConfigTweaksEnabled")
         let hasPasscode = UserDefaults.standard.bool(forKey: "PasscodeThemeEnabled")
