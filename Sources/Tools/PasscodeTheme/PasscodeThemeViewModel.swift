@@ -129,12 +129,16 @@ class PasscodeThemeViewModel: ObservableObject {
         
         let targetPath = globalTelephony.cachePath
         let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
-        let parentDir = (cleanTargetPath as NSString).deletingLastPathComponent
-        let folderName = (cleanTargetPath as NSString).lastPathComponent
         
         onLogUpdate("Ensuring target directory exists...")
+        // Đảm bảo thư mục cha tồn tại bằng BadQuery
+        let parentDir = (cleanTargetPath as NSString).deletingLastPathComponent
+        let folderName = (cleanTargetPath as NSString).lastPathComponent
         _ = BadQuery().grantAccess(atPath: parentDir)
-        if !FileManager.default.fileExists(atPath: cleanTargetPath) { try? FileManager.default.createDirectory(atPath: cleanTargetPath, withIntermediateDirectories: true) }
+        
+        // Tạo một file placeholder qua BadQuery để chắc chắn thư mục đích tồn tại trước khi Airlift ghi vào
+        let placeholderPath = cleanTargetPath + "/.placeholder"
+        try? Data().write(to: URL(fileURLWithPath: placeholderPath))
         
         onLogUpdate("Đang dò tunnel IP...")
         guard let _ = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else { 
@@ -150,7 +154,7 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // SỬ DỤNG INJECT FOLDER
+        // Dùng inject_folder (an toàn và không bị deadlock)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
@@ -165,6 +169,9 @@ class PasscodeThemeViewModel: ObservableObject {
                 }
             }
         }
+        
+        // Xoá placeholder nếu có
+        try? FileManager.default.removeItem(atPath: placeholderPath)
         
         onLogUpdate("✅ Passcode applied successfully.")
     }
