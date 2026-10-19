@@ -16,7 +16,6 @@ final class ToolRunner: ObservableObject {
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
-        // ĐỒNG BỘ KEY CHUẨN XÁC
         let hasMobileGestalt = store.replaceMobileGestaltEnabled
         let hasConfigTweaks = store.configTweaksEnabled
         let hasPasscode = themeStore.passcodeThemeEnabled
@@ -47,7 +46,6 @@ final class ToolRunner: ObservableObject {
             await log("✅ Pairing & VPN OK.")
         }
 
-        // 1. MOBILEGESTALT (BAD QUERY)
         if hasMobileGestalt {
             state = .running(toolName: "MobileGestalt")
             await log("--- MobileGestalt (Bad Query) ---")
@@ -66,7 +64,6 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // 2. CONFIG TWEAKS (BAD QUERY)
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
             await log("--- Config Tweaks (Bad Query) ---")
@@ -82,7 +79,6 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // 3. PASSCODE (AIRLIFT)
         if hasPasscode {
             state = .running(toolName: "Passcode (Airlift)")
             if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
@@ -99,7 +95,6 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // 4. WALLET (AIRLIFT)
         if hasWallet {
             state = .running(toolName: "Wallet (Airlift)")
             do {
