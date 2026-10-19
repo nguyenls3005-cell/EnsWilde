@@ -134,7 +134,7 @@ class PasscodeThemeViewModel: ObservableObject {
         // Code cũ của bạn
     }
     
-    // Hàm Apply Theme
+    // Hàm Apply Theme - FULL FIX
     func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
         let globalPrefix = self.store.globalCustomPrefix
         let globalTelephony = self.store.globalTelephonyVersion
@@ -161,7 +161,7 @@ class PasscodeThemeViewModel: ObservableObject {
         }
         onLogUpdate("Wrote \(processedFiles.count) file(s) to temp.")
         
-        // TỰ ĐỘNG TẠO THƯ MỤC ĐÍCH NẾU CHƯA CÓ (Dùng BadQuery)
+        // Đảm bảo thư mục đích tồn tại
         let targetPath = globalTelephony.cachePath
         let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
         
@@ -174,7 +174,7 @@ class PasscodeThemeViewModel: ObservableObject {
         
         onLogUpdate("Đang dò tunnel IP...")
         guard let host = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else {
-            throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy RSD tunnel. Kiểm tra: (1) VPN đang bật, (2) Developer Mode đã bật, (3) Apple Books đã cài & mở ít nhất 1 lần."])
+            throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy RSD tunnel. Kiểm tra lại VPN."])
         }
         onLogUpdate("✅ Tunnel: \(host)")
         
@@ -185,29 +185,36 @@ class PasscodeThemeViewModel: ObservableObject {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
         
-        onLogUpdate("Đang ghi qua AirTraffic (có thể mất 10-20s)...")
+        onLogUpdate("Đang ghi qua AirTraffic...")
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // CHỐNG TREO: Chạy trên Thread riêng + Timeout 60s
+        // CHỐNG TREO: Chạy trên Thread riêng + Timeout 45s
         let result = try await withThrowingTaskGroup(of: Int32.self) { group -> Int32 in
             group.addTask {
                 return await withCheckedContinuation { continuation in
                     let thread = Thread {
                         var errorCString: UnsafeMutablePointer<CChar>? = nil
+                        // Gọi hàm Airlift
                         let res = al_exploit_write_dir(pairingPath, srcDir, cleanTargetPath, nil, nil, &errorCString)
-                        if let err = errorCString { al_string_free(err) }
+                        
+                        // Giải phóng bộ nhớ lỗi nếu có
+                        if let err = errorCString { 
+                            let msg = String(cString: err)
+                            onLogUpdate("[Airlift Error] \(msg)")
+                            al_string_free(err) 
+                        }
                         continuation.resume(returning: res)
                     }
                     thread.name = "AirliftWorker"
-                    thread.stackSize = 4 * 1024 * 1024 // 4MB stack
+                    thread.stackSize = 4 * 1024 * 1024
                     thread.start()
                 }
             }
             
             group.addTask {
-                try await Task.sleep(nanoseconds: 60_000_000_000)
-                throw NSError(domain: "AirLift", code: -99, userInfo: [NSLocalizedDescriptionKey: "Airlift bị treo quá 60 giây. Vui lòng kiểm tra lại VPN và Apple Books."])
+                try await Task.sleep(nanoseconds: 45_000_000_000)
+                throw NSError(domain: "AirLift", code: -99, userInfo: [NSLocalizedDescriptionKey: "Airlift bị treo quá 45 giây. Vui lòng kiểm tra lại kết nối VPN."])
             }
             
             let firstResult = try await group.next()!
@@ -216,7 +223,7 @@ class PasscodeThemeViewModel: ObservableObject {
         }
         
         if result != 0 {
-            throw NSError(domain: "AirLift", code: Int(result), userInfo: [NSLocalizedDescriptionKey: "AirLift Error: Mã lỗi \(result). (Kiểm tra kết nối VPN)"])
+            throw NSError(domain: "AirLift", code: Int(result), userInfo: [NSLocalizedDescriptionKey: "AirLift Error: Mã lỗi \(result). (Xem log phía trên)"])
         }
         
         onLogUpdate("✅ Passcode applied successfully.")
