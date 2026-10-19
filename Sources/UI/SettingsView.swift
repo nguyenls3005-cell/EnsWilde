@@ -92,14 +92,21 @@ struct SettingsView: View {
                 Section(header: Text(L("backup_title"))) {
                     if hasBackup, let info = backupInfo {
                         VStack(alignment: .leading, spacing: 6) {
-                            HStack { Image(systemName: "checkmark.shield.fill").foregroundStyle(.green); Text(L("backup_available")).font(.subheadline.bold()); Spacer() }
+                            HStack {
+                                Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
+                                Text(L("backup_available")).font(.subheadline.bold())
+                                Spacer()
+                            }
                             Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
                             Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
                         }.padding(.vertical, 4)
                     } else {
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 2) { Text(L("backup_none")).font(.subheadline.bold()); Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary) }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L("backup_none")).font(.subheadline.bold())
+                                Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
+                            }
                         }.padding(.vertical, 4)
                     }
                     Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
@@ -108,39 +115,75 @@ struct SettingsView: View {
             }
 
             Section(header: Text(L("settings_language"))) {
-                NavigationLink(destination: LanguageSettingsView()) { Label(L("settings_language"), systemImage: "globe") }
+                NavigationLink(destination: LanguageSettingsView()) {
+                    Label(L("settings_language"), systemImage: "globe")
+                }
             }
             
             Section(header: Text(L("settings_accent_color"))) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) { ForEach(tintOptions, id: \.hex) { option in colorOptionView(option: option) } }.padding(.vertical, 8)
+                    HStack(spacing: 16) {
+                        ForEach(tintOptions, id: \.hex) { option in
+                            colorOptionView(option: option)
+                        }
+                    }
+                    .padding(.vertical, 8)
                 }
             }
             
             Section(header: Text(L("settings_app_info"))) {
-                HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary) }
-                HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
-                HStack { Label(L("app_device"), systemImage: "apps.iphone"); Spacer(); Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary) }
+                HStack {
+                    Label("EnsWilde", systemImage: "sparkles")
+                    Spacer()
+                    Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Label(L("app_ios"), systemImage: "iphone")
+                    Spacer()
+                    Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary)
+                }
+                HStack {
+                    Label(L("app_device"), systemImage: "apps.iphone")
+                    Spacer()
+                    Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary)
+                }
                 Text(L("app_info_footer")).font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
             }
         }
         .navigationTitle(L("nav_settings"))
         .onAppear { startMonitoringVPN(); refreshBackupInfo() }
         .onDisappear { monitor?.cancel() }
-        .sheet(isPresented: $showPairingPicker) { DocumentPickerView(allowedContentTypes: [.data, .item]) { url in handlePairingImport(url) } }
+        .sheet(isPresented: $showPairingPicker) {
+            DocumentPickerView(allowedContentTypes: [.data, .item]) { url in
+                handlePairingImport(url)
+            }
+        }
     }
 
-    @ViewBuilder private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
-        HStack { Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red); Spacer(); Text(subtitle).font(.caption).foregroundStyle(ok ? .green : .red) }
+    @ViewBuilder
+    private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
+        HStack {
+            Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red)
+            Spacer()
+            Text(subtitle).font(.caption).foregroundStyle(ok ? .green : .red)
+        }
     }
 
-    @ViewBuilder private func colorOptionView(option: (name: String, hex: String)) -> some View {
+    @ViewBuilder
+    private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
         VStack(spacing: 6) {
-            Circle().fill(color).frame(width: 36, height: 36).overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)).overlay(Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundColor(.white).opacity(isSelected ? 1 : 0))
-            Text(option.name).font(.caption).foregroundColor(isSelected ? .primary : .secondary)
-        }.onTapGesture {
+            Circle()
+                .fill(color)
+                .frame(width: 36, height: 36)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
+                .overlay(Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundColor(.white).opacity(isSelected ? 1 : 0))
+            Text(option.name)
+                .font(.caption)
+                .foregroundColor(isSelected ? .primary : .secondary)
+        }
+        .onTapGesture {
             userTintColorHex = option.hex
             let uiColor = UIColor(Color(hex: option.hex))
             UITabBar.appearance().tintColor = uiColor
@@ -171,10 +214,16 @@ struct SettingsView: View {
                 if result == 0 {
                     airLiftLogs.append("✅ AirLift is ACTIVE and working!")
                     isAirLiftMode = true
-                    if let jsonStr = outJson { airLiftLogs.append("Response: \(String(cString: jsonStr).prefix(100))..."); al_string_free(jsonStr) }
+                    if let jsonStr = outJson {
+                        airLiftLogs.append("Response: \(String(cString: jsonStr).prefix(100))...")
+                        al_string_free(jsonStr)
+                    }
                 } else {
                     var errMsg = "Unknown error"
-                    if let err = outError { errMsg = String(cString: err); al_string_free(err) }
+                    if let err = outError {
+                        errMsg = String(cString: err)
+                        al_string_free(err)
+                    }
                     airLiftLogs.append("❌ AirLift failed: \(errMsg)")
                 }
                 isCheckingAirLift = false
@@ -242,21 +291,36 @@ struct AboutView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
                     Text(L("about_desc")).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Button { if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) } } label: {
-                        Text(L("button_donate")).font(.headline.bold()).frame(maxWidth: .infinity).frame(height: 50).background(AppTheme.accent).foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }.buttonStyle(.plain)
+                    Button {
+                        if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
+                    } label: {
+                        Text(L("button_donate"))
+                            .font(.headline.bold())
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(AppTheme.accent)
+                            .foregroundColor(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             Section {
-                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) { Label(L("about_group_yang"), systemImage: "safari") }
-                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) { Label(L("about_group_ls"), systemImage: "safari") }
-                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) { Label(L("about_contact"), systemImage: "paperplane.fill") }
+                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_group_yang"), systemImage: "safari")
+                }
+                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_group_ls"), systemImage: "safari")
+                }
+                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) {
+                    Label(L("about_contact"), systemImage: "paperplane.fill")
+                }
             }
-            Section               (header: Text(L credit("settings_thanks_to"Row))) {
-                creditRow(name(name: "@YangJiii", desc: "Developed: EnsWilde")
-                creditRow(name "@: "@LSNguyen", desc: "Rebuild EnsWilde")
+            Section(header: Text(L("settings_thanks_to"))) {
+                creditRow(name: "@YangJiii", desc: "Developed EnsWilde")
+                creditRow(name: "@LSNguyen", desc: "Rebuild EnsWilde")
                 creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
-Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+                creditRow(name: "@Sidestore team", desc: "Get Pairing File on iOS: StikPair")
                 creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
                 creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
                 creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
@@ -269,13 +333,23 @@ Sidestore team", desc: "Get Pairing File on iOS: StikPair")
             }
         }
         .navigationTitle(L("nav_about"))
-        .onAppear { if languageManager.availableLanguages.isEmpty { Task { await languageManager.fetchAvailableLanguages() } } }
+        .onAppear {
+            if languageManager.availableLanguages.isEmpty {
+                Task { await languageManager.fetchAvailableLanguages() }
+            }
+        }
     }
 
-    @ViewBuilder private func creditRow(name: String, desc: String) -> some View {
+    @ViewBuilder
+    private func creditRow(name: String, desc: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
-            VStack(alignment: .leading, spacing: 2) { Text(name).font(.subheadline).fontWeight(.semibold); Text(desc).font(.caption).foregroundStyle(.secondary) }
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.subheadline).fontWeight(.semibold)
+                Text(desc).font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 }
