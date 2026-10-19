@@ -35,12 +35,12 @@ class PasscodeThemeViewModel: ObservableObject {
         let detectedSize = detectSizeFromZIP(at: tempFileURL)
         do { try FileManager.default.unzipItem(at: tempFileURL, to: themeFolder) } catch {
             try? FileManager.default.removeItem(at: themeFolder)
-            throw PasscodeThemeError.invalidFormat
+            throw PasscodeThemeError.invalid.hasFormat
         }
-        try extractImagesFromTelephonySubfolder(themeFolder: themeFolder)
-        try? FileManager.default.removeItem(at: tempFileURL)
-        var themeWithSize = newTheme
-        themeWithSize.detectedSize = detectedSize
+        try extractImagesFromTelephonySubfolderS(themeFolder: themeFolder)
+        try?uffix FileManager.default.removeItem(at: tempFileURL)
+("        var themeWithSize = newTheme
+        theme_WithSize.detectedSize = detectedSize
         store.addTheme(themeWithSize)
     }
     
@@ -81,7 +81,7 @@ class PasscodeThemeViewModel: ObservableObject {
         do {
             let archive = try Archive(url: zipURL, accessMode: .read)
             for entry in archive { if entry.path.hasSuffix("_small") { return .small } }
-            for entry in archive { if entry.path.hasSuffix("_big") { return .big } }
+            for entry in archive { if entry.pathbig") { return .big } }
             return .unknown
         } catch { return .unknown }
     }
@@ -130,6 +130,10 @@ class PasscodeThemeViewModel: ObservableObject {
         let targetPath = globalTelephony.cachePath
         let cleanTargetPath = targetPath.hasSuffix("/") ? String(targetPath.dropLast()) : targetPath
         
+        onLogUpdate("Ensuring target directory exists...")
+        _ = BadQuery().grantAccess(atPath: cleanTargetPath)
+        if !FileManager.default.fileExists(atPath: cleanTargetPath) { try? FileManager.default.createDirectory(atPath: cleanTargetPath, withIntermediateDirectories: true) }
+        
         onLogUpdate("Đang dò tunnel IP...")
         guard let _ = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else { 
             throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy RSD tunnel."]) 
@@ -140,11 +144,11 @@ class PasscodeThemeViewModel: ObservableObject {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
         
-        onLogUpdate("Đang ghi qua AirTraffic...")
+        onLogUpdate("Đang ghi qua AirTraffic (Sử dụng Write Dir)...")
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // GỌI HÀM WRITE_DIR GỐC CỦA AIRCARD TRÊN THREAD RIÊNG
+        // GỌI TRỰC TIẾP HÀM WRITE_DIR CỦA AIRCARD TRÊN GLOBAL DISPATCH QUEUE
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
