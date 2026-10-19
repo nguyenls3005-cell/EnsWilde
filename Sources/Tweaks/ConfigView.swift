@@ -30,7 +30,8 @@ struct ConfigView: View {
                     showSavedAlert = true
                 } label: {
                     HStack { Image(systemName: "square.and.arrow.down"); Text("Apply Save Changes").font(.headline) }.frame(maxWidth: .infinity).padding(.vertical, 4)
-                }.disabled(!toolStore.configTweaksEnabled)
+                }
+                // BỎ .disabled() ĐỂ KHÔNG BỊ MỜ NỮA
                 
                 Button(role: .destructive) {
                     toolStore.configTweaksEnabled = false
