@@ -143,35 +143,25 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // CHẠY CÔ LẬP TRONG THREAD ĐỂ KHÔNG BỊ DEADLOCK
-        let resultCode: Int32 = try await withThrowingTaskGroup(of: Int32.self) { group in
-            group.addTask {
-                return await withCheckedContinuation { continuation in
-                    let worker = Thread {
-                        var errPtr: UnsafeMutablePointer<CChar>? = nil
-                        let res = al_exploit_inject_folder(pairingPath, srcDir, parentDir, folderName, nil, nil, &errPtr)
-                        if let e = errPtr {
-                            let msg = String(cString: e)
-                            onLogUpdate("[Airlift Error] \(msg)")
-                            al_string_free(e)
-                        }
-                        continuation.resume(returning: res)
-                    }
-                    worker.name = "AirliftInjectWorker"
-                    worker.stackSize = 8 * 1024 * 1024 
-                    worker.start()
+        // CHẠY CÔ LẬP TRONG THREAD, KHÔNG DÙNG TASKGROUP
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let worker = Thread {
+                var errPtr: UnsafeMutablePointer<CChar>? = nil
+                let res = al_exploit_inject_folder(pairingPath, srcDir, parentDir, folderName, nil, nil, &errPtr)
+                
+                if res != 0 {
+                    let msg = errPtr != nil ? String(cString: errPtr!) : "Unknown Error"
+                    if let e = errPtr { al_string_free(e) }
+                    continuation.resume(throwing: NSError(domain: "AirLift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg]))
+                } else {
+                    continuation.resume()
                 }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 60_000_000_000) 
-                throw NSError(domain: "AirLift", code: -99, userInfo: [NSLocalizedDescriptionKey: "Quá thời gian 60s. Airlift bị treo."])
-            }
-            let res = try await group.next()!
-            group.cancelAll()
-            return res
+            worker.name = "AirliftWorker"
+            worker.stackSize = 8 * 1024 * 1024,
+            worker.start()
         }
         
-        if resultCode != 0 { throw NSError(domain: "AirLift", code: Int(resultCode), userInfo: [NSLocalizedDescriptionKey: "AirLift thất bại với mã lỗi \(resultCode)."]) }
         onLogUpdate("✅ Passcode applied successfully.")
     }
 }
