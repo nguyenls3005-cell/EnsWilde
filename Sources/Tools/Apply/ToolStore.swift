@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 
 final class ToolStore: ObservableObject {
-
     @AppStorage("DisableDisclosureSoundEnabled") var disableSoundEnabled: Bool = false
     @AppStorage("SoundRespringEnabled") var soundRespringEnabled: Bool = true
     @AppStorage("BookassetdContainerUUID") var bookassetdUUID: String?
@@ -17,7 +16,6 @@ final class ToolStore: ObservableObject {
     @AppStorage("ToolAEnabled") var toolAEnabled: Bool = false
     @AppStorage("ToolBEnabled") var toolBEnabled: Bool = false
 
-    // Thêm 2 biến này để ConfigView hoạt động
     @AppStorage("ConfigTweaksEnabled") var configTweaksEnabled: Bool = false
     @AppStorage("ConfigFootnoteText") var configFootnoteText: String = ""
 }
