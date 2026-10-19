@@ -8,9 +8,11 @@ enum AppleWalletTask {
         guard !enabledCards.isEmpty else { throw ToolTaskError.generic("No enabled wallet cards to apply") }
         
         guard NetworkStatus.isVPNTunnelPresent() else { throw ToolTaskError.generic("VPN chưa bật.") }
-        guard let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path.hasValue else {
+        let pairingURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
+        guard FileManager.default.fileExists(atPath: pairingURL.path) else {
             throw ToolTaskError.generic("Không tìm thấy Pairing File.")
         }
+        let pairingPath = pairingURL.path
         
         onLogUpdate("Đang dò tunnel IP...")
         guard let _ = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else {
@@ -78,9 +80,4 @@ enum AppleWalletTask {
         
         onLogUpdate("✅ Wallet applied.")
     }
-}
-
-// Extension lấy path nếu có
-extension String {
-    var hasValue: String? { return self.isEmpty ? nil : self }
 }
