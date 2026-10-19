@@ -165,4 +165,117 @@ struct SettingsView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
-            let result =
+            let result = al_exploit_run(pairingPath, "/var/mobile/Library", nil, nil, &outJson, &outError)
+
+            DispatchQueue.main.async {
+                if result == 0 {
+                    airLiftLogs.append("✅ AirLift is ACTIVE and working!")
+                    isAirLiftMode = true
+                    if let jsonStr = outJson { airLiftLogs.append("Response: \(String(cString: jsonStr).prefix(100))..."); al_string_free(jsonStr) }
+                } else {
+                    var errMsg = "Unknown error"
+                    if let err = outError { errMsg = String(cString: err); al_string_free(err) }
+                    airLiftLogs.append("❌ AirLift failed: \(errMsg)")
+                }
+                isCheckingAirLift = false
+            }
+        }
+    }
+
+    private func handlePairingImport(_ url: URL) {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        if let data = try? Data(contentsOf: url) {
+            try? data.write(to: URL.documentsDirectory.appendingPathComponent("pairingFile.plist"))
+            pairingFile = url.lastPathComponent
+            airLiftLogs.append("✅ Imported: \(url.lastPathComponent) (\(data.count) bytes)")
+            showAirLiftLogs = true
+        }
+    }
+
+    private func refreshBackupInfo() {
+        hasBackup = MobileGestaltBackupManager.shared.hasBackup
+        backupInfo = MobileGestaltBackupManager.shared.info
+    }
+
+    private func createBackupNow() {
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
+            _ = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
+            refreshBackupInfo()
+        } catch { print("Backup failed") }
+    }
+
+    private func deleteBackup() {
+        try? MobileGestaltBackupManager.shared.clearBackup()
+        refreshBackupInfo()
+    }
+
+    private func startMonitoringVPN() {
+        monitor = NWPathMonitor()
+        monitor?.pathUpdateHandler = { path in
+            DispatchQueue.main.async {
+                self.vpnActive = path.availableInterfaces.contains { $0.type == .other || $0.name.hasPrefix("utun") || $0.name.hasPrefix("ipsec") }
+            }
+        }
+        monitor?.start(queue: DispatchQueue(label: "VPNMonitor"))
+    }
+
+    private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    private func settingsDeviceModelName() -> String {
+        var systemInfo = utsname()
+        uname(&systemInfo)
+        let machineMirror = Mirror(reflecting: systemInfo.machine)
+        let identifier = machineMirror.children.reduce("") { id, element in
+            guard let value = element.value as? Int8, value != 0 else { return id }
+            return id + String(UnicodeScalar(UInt8(value)))
+        }
+        return "\(UIDevice.current.model) (\(identifier))"
+    }
+}
+
+struct AboutView: View {
+    @ObservedObject private var languageManager = LanguageManager.shared
+    var body: some View {
+        Form {
+            Section {
+                VStack(spacing: 12) {
+                    Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
+                    Text(L("about_desc")).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button { if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) } } label: {
+                        Text(L("button_donate")).font(.headline.bold()).frame(maxWidth: .infinity).frame(height: 50).background(AppTheme.accent).foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }.buttonStyle(.plain)
+                }
+            }
+            Section {
+                Button(action: { if let url = URL(string: "https://t.me/yangjiiidibo") { UIApplication.shared.open(url) } }) { Label(L("about_group_yang"), systemImage: "safari") }
+                Button(action: { if let url = URL(string: "https://t.me/lsnguyengr") { UIApplication.shared.open(url) } }) { Label(L("about_group_ls"), systemImage: "safari") }
+                Button(action: { if let url = URL(string: "https://t.me/duongduong0908") { UIApplication.shared.open(url) } }) { Label(L("about_contact"), systemImage: "paperplane.fill") }
+            }
+            Section               (header: Text(L credit("settings_thanks_to"Row))) {
+                creditRow(name(name: "@YangJiii", desc: "Developed: EnsWilde")
+                creditRow(name "@: "@LSNguyen", desc: "Rebuild EnsWilde")
+                creditRow(name: "@skadz108 & @rooootdev", desc: "NeoSpring method")
+Sidestore team", desc: "Get Pairing File on iOS: StikPair")
+                creditRow(name: "@0xjohnnydev", desc: "Developed the AirLift sandbox escape")
+                creditRow(name: "@forcequit", desc: "Developed the bad_query sandbox escape")
+                creditRow(name: "@jailbreakdotparty", desc: "Source for changing MobileGestalt logic, config file")
+                creditRow(name: "@mak5er", desc: "Dev App AirCard. Method for AirLift Gappa")
+            }
+            Section(header: Text(L("settings_translators"))) {
+                ForEach(languageManager.availableLanguages.filter { $0.translator != nil && !($0.translator?.isEmpty ?? true) }) { langInfo in
+                    creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
+                }
+            }
+        }
+        .navigationTitle(L("nav_about"))
+        .onAppear { if languageManager.availableLanguages.isEmpty { Task { await languageManager.fetchAvailableLanguages() } } }
+    }
+
+    @ViewBuilder private func creditRow(name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.circle.fill").font(.system(size: 32)).foregroundStyle(.secondary.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) { Text(name).font(.subheadline).fontWeight(.semibold); Text(desc).font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+}
