@@ -143,7 +143,7 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // CHẠY CÔ LẬP TRONG THREAD, KHÔNG DÙNG TASKGROUP
+        // SỬA LỖI Ở ĐÂY: DÙNG DẤU CHẤM PHẨY ';' THAY VÌ DẤU PHẨY ','
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let worker = Thread {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
@@ -158,7 +158,7 @@ class PasscodeThemeViewModel: ObservableObject {
                 }
             }
             worker.name = "AirliftWorker"
-            worker.stackSize = 8 * 1024 * 1024,
+            worker.stackSize = 8 * 1024 * 1024 // <--- DẤU CHẤM PHẨY Ở ĐÂY
             worker.start()
         }
         
