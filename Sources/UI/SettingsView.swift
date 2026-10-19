@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 import Network
 import AirliftFFI
 
-// KHAI BÁO DUY NHẤT 1 LẦN Ở ĐÂY
 struct DocumentPickerView: UIViewControllerRepresentable {
     var allowedContentTypes: [UTType] = [.data, .item]
     let onPick: (URL) -> Void
@@ -48,14 +47,8 @@ struct SettingsView: View {
     @State private var showAirLiftLogs = false
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     
-    // Cập nhật danh sách màu: Thêm Cam lên đầu, bỏ hình ảnh (chỉ còn màu)
     private let tintOptions: [(name: String, hex: String)] = [
-        ("Orange", "#ef9f76"),
-        ("Pink", "#f4b8e4"),
-        ("Mauve", "#ca9ee6"),
-        ("Red", "#e78284"),
-        ("Green", "#a6d189"),
-        ("Blue", "#8caaee")
+        ("Orange", "#ef9f76"), ("Pink", "#f4b8e4"), ("Mauve", "#ca9ee6"), ("Red", "#e78284"), ("Green", "#a6d189"), ("Blue", "#8caaee")
     ]
 
     var body: some View {
@@ -70,7 +63,7 @@ struct SettingsView: View {
                 Button { checkAirLift() } label: {
                     HStack {
                         if isCheckingAirLift { ProgressView().tint(.blue) }
-                        else { Text("Check AirLift Status").fontWeight(.semibold) } // Bỏ icon logo phía trước
+                        else { Text("Check AirLift Status").fontWeight(.semibold) }
                         Spacer()
                     }
                 }.disabled(isCheckingAirLift)
@@ -99,21 +92,14 @@ struct SettingsView: View {
                 Section(header: Text(L("backup_title"))) {
                     if hasBackup, let info = backupInfo {
                         VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
-                                Text(L("backup_available")).font(.subheadline.bold())
-                                Spacer()
-                            }
+                            HStack { Image(systemName: "checkmark.shield.fill").foregroundStyle(.green); Text(L("backup_available")).font(.subheadline.bold()); Spacer() }
                             Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
                             Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
                         }.padding(.vertical, 4)
                     } else {
                         HStack(spacing: 10) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(L("backup_none")).font(.subheadline.bold())
-                                Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
-                            }
+                            VStack(alignment: .leading, spacing: 2) { Text(L("backup_none")).font(.subheadline.bold()); Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary) }
                         }.padding(.vertical, 4)
                     }
                     Button { createBackupNow() } label: { Label(L("backup_now"), systemImage: "square.and.arrow.down.on.square") }
@@ -127,10 +113,7 @@ struct SettingsView: View {
             
             Section(header: Text(L("settings_accent_color"))) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 16) { // Tăng khoảng cách để chữ không bị dính
-                        ForEach(tintOptions, id: \.hex) { option in colorOptionView(option: option) }
-                    }
-                    .padding(.vertical, 8)
+                    HStack(spacing: 16) { ForEach(tintOptions, id: \.hex) { option in colorOptionView(option: option) } }.padding(.vertical, 8)
                 }
             }
             
@@ -144,41 +127,20 @@ struct SettingsView: View {
         .navigationTitle(L("nav_settings"))
         .onAppear { startMonitoringVPN(); refreshBackupInfo() }
         .onDisappear { monitor?.cancel() }
-        .sheet(isPresented: $showPairingPicker) {
-            DocumentPickerView(allowedContentTypes: [.data, .item]) { url in
-                handlePairingImport(url)
-            }
-        }
+        .sheet(isPresented: $showPairingPicker) { DocumentPickerView(allowedContentTypes: [.data, .item]) { url in handlePairingImport(url) } }
     }
 
-    @ViewBuilder
-    private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
-        HStack {
-            Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red)
-            Spacer()
-            Text(subtitle).font(.caption).foregroundStyle(ok ? .green : .red)
-        }
+    @ViewBuilder private func statusRow(title: String, subtitle: String, ok: Bool) -> some View {
+        HStack { Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(ok ? .green : .red); Spacer(); Text(subtitle).font(.caption).foregroundStyle(ok ? .green : .red) }
     }
 
-    // SỬA LẠI PHẦN MÀU: Có chữ ở dưới, bỏ logo
-    @ViewBuilder
-    private func colorOptionView(option: (name: String, hex: String)) -> some View {
+    @ViewBuilder private func colorOptionView(option: (name: String, hex: String)) -> some View {
         let color = Color(hex: option.hex)
         let isSelected = userTintColorHex.lowercased() == option.hex.lowercased()
-        
         VStack(spacing: 6) {
-            Circle()
-                .fill(color)
-                .frame(width: 36, height: 36)
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
-                .overlay(Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundColor(.white).opacity(isSelected ? 1 : 0))
-            
-            // Thêm text tên màu
-            Text(option.name)
-                .font(.caption)
-                .foregroundColor(isSelected ? .primary : .secondary)
-        }
-        .onTapGesture {
+            Circle().fill(color).frame(width: 36, height: 36).overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1)).overlay(Image(systemName: "checkmark").font(.system(size: 14, weight: .bold)).foregroundColor(.white).opacity(isSelected ? 1 : 0))
+            Text(option.name).font(.caption).foregroundColor(isSelected ? .primary : .secondary)
+        }.onTapGesture {
             userTintColorHex = option.hex
             let uiColor = UIColor(Color(hex: option.hex))
             UITabBar.appearance().tintColor = uiColor
@@ -201,28 +163,18 @@ struct SettingsView: View {
         airLiftLogs.append("✅ Pairing File found.")
 
         DispatchQueue.global(qos: .userInitiated).async {
-            // XÓA 127.0.0.1 VÌ NÓ SẼ LÀM HỎNG TUNNEL
-            // _ = al_set_target_host("127.0.0.1") 
-            
             var outJson: UnsafeMutablePointer<CChar>? = nil
             var outError: UnsafeMutablePointer<CChar>? = nil
-            
             let result = al_exploit_run(pairingPath, "/var/mobile/Library", nil, nil, &outJson, &outError)
 
             DispatchQueue.main.async {
                 if result == 0 {
                     airLiftLogs.append("✅ AirLift is ACTIVE and working!")
                     isAirLiftMode = true
-                    if let jsonStr = outJson {
-                        airLiftLogs.append("Response: \(String(cString: jsonStr).prefix(100))...")
-                        al_string_free(jsonStr)
-                    }
+                    if let jsonStr = outJson { airLiftLogs.append("Response: \(String(cString: jsonStr).prefix(100))..."); al_string_free(jsonStr) }
                 } else {
                     var errMsg = "Unknown error"
-                    if let err = outError {
-                        errMsg = String(cString: err)
-                        al_string_free(err)
-                    }
+                    if let err = outError { errMsg = String(cString: err); al_string_free(err) }
                     airLiftLogs.append("❌ AirLift failed: \(errMsg)")
                 }
                 isCheckingAirLift = false
@@ -290,9 +242,7 @@ struct AboutView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "heart.fill").font(.system(size: 32)).foregroundStyle(.pink)
                     Text(L("about_desc")).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Button {
-                        if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) }
-                    } label: {
+                    Button { if let url = URL(string: "https://dangdi.dev/donate") { UIApplication.shared.open(url) } } label: {
                         Text(L("button_donate")).font(.headline.bold()).frame(maxWidth: .infinity).frame(height: 50).background(AppTheme.accent).foregroundColor(.white).clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }.buttonStyle(.plain)
                 }
