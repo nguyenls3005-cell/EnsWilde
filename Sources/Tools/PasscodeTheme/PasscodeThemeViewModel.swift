@@ -109,13 +109,9 @@ class PasscodeThemeViewModel: ObservableObject {
         let processedFiles = try processThemeFiles(theme: theme, globalPrefix: self.store.globalCustomPrefix)
         guard !processedFiles.isEmpty else { throw PasscodeThemeError.noImagesProcessed }
         
-        guard NetworkStatus.isVPNTunnelPresent() else {
-            throw NSError(domain: "AirLift", code: -10, userInfo: [NSLocalizedDescriptionKey: "VPN chưa bật."])
-        }
+        guard NetworkStatus.isVPNTunnelPresent() else { throw NSError(domain: "AirLift", code: -10, userInfo: [NSLocalizedDescriptionKey: "VPN chưa bật."]) }
         let pairingURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
-        guard FileManager.default.fileExists(atPath: pairingURL.path) else {
-            throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy Pairing File."])
-        }
+        guard FileManager.default.fileExists(atPath: pairingURL.path) else { throw NSError(domain: "AirLift", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy Pairing File."]) }
         
         let tempFolderName = "AirLiftPayload_\(UUID().uuidString)"
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(tempFolderName)
@@ -133,14 +129,10 @@ class PasscodeThemeViewModel: ObservableObject {
         
         onLogUpdate("Ensuring target directory exists...")
         _ = BadQuery().grantAccess(atPath: parentDir)
-        if !FileManager.default.fileExists(atPath: cleanTargetPath) {
-            try? FileManager.default.createDirectory(atPath: cleanTargetPath, withIntermediateDirectories: true)
-        }
+        if !FileManager.default.fileExists(atPath: cleanTargetPath) { try? FileManager.default.createDirectory(atPath: cleanTargetPath, withIntermediateDirectories: true) }
         
         onLogUpdate("Đang dò tunnel IP...")
-        guard let _ = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else {
-            throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy RSD tunnel."])
-        }
+        guard let _ = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else { throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy RSD tunnel."]) }
         
         let observer = NotificationCenter.default.addObserver(forName: .airliftLog, object: nil, queue: .main) { note in
             if let line = note.userInfo?["line"] as? String { onLogUpdate("[Airlift] \(line)") }
@@ -151,6 +143,7 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
+        // CHẠY CÔ LẬP TRONG THREAD ĐỂ KHÔNG BỊ DEADLOCK
         let resultCode: Int32 = try await withThrowingTaskGroup(of: Int32.self) { group in
             group.addTask {
                 return await withCheckedContinuation { continuation in
@@ -178,10 +171,7 @@ class PasscodeThemeViewModel: ObservableObject {
             return res
         }
         
-        if resultCode != 0 {
-            throw NSError(domain: "AirLift", code: Int(resultCode), userInfo: [NSLocalizedDescriptionKey: "AirLift thất bại với mã lỗi \(resultCode)."])
-        }
-        
+        if resultCode != 0 { throw NSError(domain: "AirLift", code: Int(resultCode), userInfo: [NSLocalizedDescriptionKey: "AirLift thất bại với mã lỗi \(resultCode)."]) }
         onLogUpdate("✅ Passcode applied successfully.")
     }
 }
