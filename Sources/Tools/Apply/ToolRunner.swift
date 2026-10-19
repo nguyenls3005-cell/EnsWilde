@@ -16,10 +16,11 @@ final class ToolRunner: ObservableObject {
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
-        let hasMobileGestalt = store.replaceMobileGestaltEnabled
-        let hasConfigTweaks = store.configTweaksEnabled
-        let hasPasscode = themeStore.passcodeThemeEnabled
-        let hasWallet = walletStore.appleWalletEnabled
+        // ĐỌC TRỰC TIẾP TỪ USERDEFAULTS ĐỂ TRÁNH LỆCH KEY
+        let hasMobileGestalt = UserDefaults.standard.bool(forKey: "ReplaceMobileGestaltEnabled")
+        let hasConfigTweaks = UserDefaults.standard.bool(forKey: "ConfigTweaksEnabled")
+        let hasPasscode = UserDefaults.standard.bool(forKey: "PasscodeThemeEnabled")
+        let hasWallet = UserDefaults.standard.bool(forKey: "AppleWalletEnabled")
 
         if !hasMobileGestalt && !hasConfigTweaks && !hasPasscode && !hasWallet {
             state = .failed(message: "No tweaks enabled.")
