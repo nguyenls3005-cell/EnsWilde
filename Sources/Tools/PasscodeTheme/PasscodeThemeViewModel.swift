@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import UIKit
 import ZIPFoundation
-import AirliftFFI
 import Network
 
 @MainActor
@@ -144,25 +143,14 @@ class PasscodeThemeViewModel: ObservableObject {
         }
         defer { NotificationCenter.default.removeObserver(observer) }
         
-        onLogUpdate("Đang ghi qua AirTraffic (Sử dụng Write Dir)...")
-        let pairingPath = pairingURL.path
-        let srcDir = tempDir.path
+        onLogUpdate("Đang ghi qua AirTraffic...")
         
-        // GỌI HÀM WRITE_DIR CHUẨN CỦA AIRCARD TRÊN DISPATCH QUEUE
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                var errPtr: UnsafeMutablePointer<CChar>? = nil
-                let res = al_exploit_write_dir(pairingPath, srcDir, cleanTargetPath, nil, nil, &errPtr)
-                
-                if res != 0 {
-                    let msg = errPtr != nil ? String(cString: errPtr!) : "Unknown Error"
-                    if let e = errPtr { al_string_free(e) }
-                    continuation.resume(throwing: NSError(domain: "AirLift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg]))
-                } else {
-                    continuation.resume()
-                }
-            }
-        }
+        // GỌI QUA BRIDGE
+        try await AirliftBridge.writeDirectory(
+            pairingPath: pairingURL.path,
+            srcDir: tempDir.path,
+            targetPath: cleanTargetPath
+        )
         
         onLogUpdate("✅ Passcode applied successfully.")
     }
