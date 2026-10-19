@@ -4,7 +4,6 @@ import AirliftFFI
 
 @MainActor
 final class ToolRunner: ObservableObject {
-
     @Published var state: ToolRunState = .idle
     @Published var logs: [ToolRunLogLine] = []
 
@@ -17,6 +16,7 @@ final class ToolRunner: ObservableObject {
     }
 
     func applyAll(isSystemReady: Bool, store: ToolStore, walletStore: AppleWalletStore, themeStore: PasscodeThemeStore, featureFlagsStore: FeatureFlagsStore) async {
+        // ĐỒNG BỘ KEY CHUẨN XÁC
         let hasMobileGestalt = store.replaceMobileGestaltEnabled
         let hasConfigTweaks = store.configTweaksEnabled
         let hasPasscode = themeStore.passcodeThemeEnabled
@@ -32,7 +32,6 @@ final class ToolRunner: ObservableObject {
         state = .running(toolName: "Initializing")
         await log("Starting Apply Process...")
         
-        // 1. KIỂM TRA ĐIỀU KIỆN CHUNG CHO AIRLIFT
         if hasPasscode || hasWallet {
             let pairingPath = URL.documentsDirectory.appendingPathComponent("pairingFile.plist").path
             if !FileManager.default.fileExists(atPath: pairingPath) {
@@ -48,14 +47,12 @@ final class ToolRunner: ObservableObject {
             await log("✅ Pairing & VPN OK.")
         }
 
-        // 2. CHẠY MOBILEGESTALT (BAD QUERY) TRƯỚC
+        // 1. MOBILEGESTALT (BAD QUERY)
         if hasMobileGestalt {
             state = .running(toolName: "MobileGestalt")
             await log("--- MobileGestalt (Bad Query) ---")
             do {
                 try BadQueryManager.ensureMobileGestaltAccess()
-                await log("✅ Granted BadQuery access.")
-                
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
                 guard FileManager.default.fileExists(atPath: modMGURL.path) else {
@@ -69,7 +66,7 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // 3. CHẠY CONFIG TWEAKS (BAD QUERY)
+        // 2. CONFIG TWEAKS (BAD QUERY)
         if hasConfigTweaks {
             state = .running(toolName: "Config Tweaks")
             await log("--- Config Tweaks (Bad Query) ---")
@@ -85,7 +82,7 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // 4. CHẠY PASSCODE (AIRLIFT) SAU CÙNG
+        // 3. PASSCODE (AIRLIFT)
         if hasPasscode {
             state = .running(toolName: "Passcode (Airlift)")
             if let selectedTheme = themeStore.themes.first(where: { $0.isSelected }) {
@@ -102,7 +99,7 @@ final class ToolRunner: ObservableObject {
             }
         }
 
-        // 5. CHẠY WALLET (AIRLIFT) SAU CÙNG
+        // 4. WALLET (AIRLIFT)
         if hasWallet {
             state = .running(toolName: "Wallet (Airlift)")
             do {
