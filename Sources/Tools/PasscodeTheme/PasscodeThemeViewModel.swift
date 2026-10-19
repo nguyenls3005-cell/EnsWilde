@@ -35,12 +35,12 @@ class PasscodeThemeViewModel: ObservableObject {
         let detectedSize = detectSizeFromZIP(at: tempFileURL)
         do { try FileManager.default.unzipItem(at: tempFileURL, to: themeFolder) } catch {
             try? FileManager.default.removeItem(at: themeFolder)
-            throw PasscodeThemeError.invalid.hasFormat
+            throw PasscodeThemeError.invalidFormat
         }
-        try extractImagesFromTelephonySubfolderS(themeFolder: themeFolder)
-        try?uffix FileManager.default.removeItem(at: tempFileURL)
-("        var themeWithSize = newTheme
-        theme_WithSize.detectedSize = detectedSize
+        try extractImagesFromTelephonySubfolder(themeFolder: themeFolder)
+        try? FileManager.default.removeItem(at: tempFileURL)
+        var themeWithSize = newTheme
+        themeWithSize.detectedSize = detectedSize
         store.addTheme(themeWithSize)
     }
     
@@ -81,7 +81,7 @@ class PasscodeThemeViewModel: ObservableObject {
         do {
             let archive = try Archive(url: zipURL, accessMode: .read)
             for entry in archive { if entry.path.hasSuffix("_small") { return .small } }
-            for entry in archive { if entry.pathbig") { return .big } }
+            for entry in archive { if entry.path.hasSuffix("_big") { return .big } }
             return .unknown
         } catch { return .unknown }
     }
@@ -148,7 +148,7 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // GỌI TRỰC TIẾP HÀM WRITE_DIR CỦA AIRCARD TRÊN GLOBAL DISPATCH QUEUE
+        // GỌI HÀM WRITE_DIR CHUẨN CỦA AIRCARD TRÊN DISPATCH QUEUE
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
