@@ -39,26 +39,77 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 # =============================================================================
-# BẮT ĐẦU PHẦN TÍCH HỢP AIRLIFT
+# BẮT ĐẦU PHẦN TÍCH HỢP AIRLIFT (BUILD TỪ SOURCE)
 # =============================================================================
-echo "==> Downloading AirliftFFI from Mak5er's repo..."
-curl -L -o AirliftFFI.xcframework.zip https://github.com/Mak5er/AirCard-iOS/archive/refs/heads/main.zip
-unzip -q AirliftFFI.xcframework.zip
-mv AirCard-iOS-main/AirliftFFI.xcframework ./AirliftFFI.xcframework
-rm -rf AirCard-iOS-main AirliftFFI.xcframework.zip
+echo "==> Building AirliftFFI from vendored source in AirCardCore..."
+
+# Cài đặt Rust iOS target nếu chưa có
+if ! rustup target list --installed | grep -q "aarch64-apple-ios"; then
+  echo "    Installing aarch64-apple-ios Rust target..."
+  rustup target add aarch64-apple-ios
+fi
+
+# Build Rust static library
+cd AirCardCore
+cargo build --release --target aarch64-apple-ios
+cd ..
+
+# Tạo framework bundle
+FRAMEWORK_DIR="Frameworks/AirliftFFI.framework"
+rm -rf "$FRAMEWORK_DIR"
+mkdir -p "$FRAMEWORK_DIR/Headers"
+mkdir -p "$FRAMEWORK_DIR/Modules"
+
+# Copy static lib
+cp AirCardCore/target/aarch64-apple-ios/release/libairlift_ffi.a "$FRAMEWORK_DIR/AirliftFFI"
+
+# Copy headers
+cp AirCardCore/airlift.h "$FRAMEWORK_DIR/Headers/airlift.h"
+cp AirCardCore/GrappaHelper.h "$FRAMEWORK_DIR/Headers/GrappaHelper.h"
+
+# Tạo modulemap
+cat > "$FRAMEWORK_DIR/Modules/module.modulemap" <<EOF
+framework module AirliftFFI {
+    umbrella header "airlift.h"
+    export *
+    module * { export * }
+}
+EOF
+
+# Tạo Info.plist
+cat > "$FRAMEWORK_DIR/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>AirliftFFI</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.enswilde.AirliftFFI</string>
+    <key>CFBundleName</key>
+    <string>AirliftFFI</string>
+    <key>CFBundlePackageType</key>
+    <string>FMWK</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+</dict>
+</plist>
+EOF
+
+echo "✅ Built AirliftFFI framework from vendored source!"
 
 echo "==> Injecting AirliftFFI into Xcode project..."
 gem install xcodeproj --no-document
 ruby -e '
   require "xcodeproj"
   project_path = "EnsWilde.xcodeproj"
-  framework_path = "AirliftFFI.xcframework"
+  framework_path = "Frameworks/AirliftFFI.framework"
   
   project = Xcodeproj::Project.open(project_path)
   target = project.targets.find { |t| t.name == "EnsWilde" }
   
   unless target.nil?
-    # Thêm file vào project
+    # Thêm file vào project (framework path)
     file_ref = project.new_file(framework_path)
     
     # Thêm vào Frameworks Build Phase
@@ -72,6 +123,12 @@ ruby -e '
     end
     build_file = embed_phase.add_file_reference(file_ref)
     build_file.settings = { "ATTRIBUTES" => ["CodeSignOnCopy", "RemoveHeadersOnCopy"] }
+    
+    # Thêm đường dẫn framework vào Framework Search Paths
+    target.build_configurations.each do |config|
+      config.build_settings["FRAMEWORK_SEARCH_PATHS"] ||= ["$(inherited)"]
+      config.build_settings["FRAMEWORK_SEARCH_PATHS"] << "$(PROJECT_DIR)/Frameworks"
+    end
     
     project.save
     puts "✅ Thành công: Đã nhúng AirliftFFI vào project!"
