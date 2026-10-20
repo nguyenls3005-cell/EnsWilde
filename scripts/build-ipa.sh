@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-#
-# build-ipa.sh — the only supported build path for EnsWilde.
-#
 set -euo pipefail
 
 CONFIG="${1:-Release}"
@@ -12,47 +9,23 @@ ARCHIVE_PATH="$BUILD_DIR/EnsWilde.xcarchive"
 APP_NAME="EnsWilde"
 IPA_PATH="$BUILD_DIR/${APP_NAME}.ipa"
 
-if [[ ! -d "$PROJECT" ]]; then
-  echo "error: $PROJECT not found in $(pwd)" >&2
-  exit 1
-fi
-
 echo "==> Building $APP_NAME ($CONFIG)"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-# =============================================================================
-# BẮT ĐẦU PHẦN VENDOR & BUILD AIRLIFT (TỪ SOURCE CODE)
-# =============================================================================
-echo "==> Preparing AirliftFFI dependencies..."
+echo "==> Building AirliftFFI from local source in AirCardCore..."
 
-# 1. Tự động clone idevice-ffi nếu chưa có
-if [ ! -d "vendor/idevice-ffi" ]; then
-  echo "==> Cloning idevice-ffi..."
-  mkdir -p vendor
-  git clone https://github.com/jkcoxson/idevice-ffi.git vendor/idevice-ffi
-fi
-
-# 2. Tự động clone idevice nếu chưa có
-if [ ! -d "vendor/idevice" ]; then
-  echo "==> Cloning idevice..."
-  mkdir -p vendor
-  git clone https://github.com/jkcoxson/idevice.git vendor/idevice
-  cd vendor/idevice
-  git checkout 7bd551c16c6dd2e058740d85a2d9399a51a776e9
-  cd ../..
-fi
-
-# 3. Build Rust static lib
-echo "==> Building AirliftFFI from vendored source..."
+# Cài đặt Rust target nếu chưa có
 if ! rustup target list --installed | grep -q "aarch64-apple-ios"; then
   rustup target add aarch64-apple-ios
 fi
+
+# Build Rust static lib trực tiếp (không tải mạng)
 cd AirCardCore
 cargo build --release --target aarch64-apple-ios
 cd ..
 
-# 4. Tạo framework bundle
+# Tạo framework bundle
 FRAMEWORK_DIR="Frameworks/AirliftFFI.framework"
 rm -rf "$FRAMEWORK_DIR"
 mkdir -p "$FRAMEWORK_DIR/Headers"
@@ -89,9 +62,8 @@ cat > "$FRAMEWORK_DIR/Info.plist" <<EOF
 </plist>
 EOF
 
-echo "✅ Built AirliftFFI framework from vendored source!"
+echo "✅ Built AirliftFFI framework!"
 
-# 5. Inject vào Xcode
 echo "==> Injecting AirliftFFI into Xcode project..."
 gem install xcodeproj --no-document
 ruby -e '
@@ -126,7 +98,6 @@ ruby -e '
     exit 1
   end
 '
-# =============================================================================
 
 # Archive
 XCB_ARGS=(
