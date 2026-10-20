@@ -13,14 +13,15 @@ echo "==> Building $APP_NAME ($CONFIG)"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
+# =============================================================================
+# BUILD AIRLIFT TỪ SOURCE CODE TRONG REPO
+# =============================================================================
 echo "==> Building AirliftFFI from local source in AirCardCore..."
 
-# Cài đặt Rust target nếu chưa có
 if ! rustup target list --installed | grep -q "aarch64-apple-ios"; then
   rustup target add aarch64-apple-ios
 fi
 
-# Build Rust static lib trực tiếp (không tải mạng)
 cd AirCardCore
 cargo build --release --target aarch64-apple-ios
 cd ..
@@ -32,8 +33,23 @@ mkdir -p "$FRAMEWORK_DIR/Headers"
 mkdir -p "$FRAMEWORK_DIR/Modules"
 
 cp AirCardCore/target/aarch64-apple-ios/release/libairlift_ffi.a "$FRAMEWORK_DIR/AirliftFFI"
-cp AirCardCore/airlift.h "$FRAMEWORK_DIR/Headers/airlift.h"
-cp AirCardCore/GrappaHelper.h "$FRAMEWORK_DIR/Headers/GrappaHelper.h"
+
+# Tự động dò tìm và copy header (dù nó nằm ở đâu trong AirCardCore)
+AIRLIFT_H=$(find AirCardCore -name "airlift.h" | head -n 1)
+GRAPPA_H=$(find AirCardCore -name "GrappaHelper.h" | head -n 1)
+
+if [ -n "$AIRLIFT_H" ]; then
+  cp "$AIRLIFT_H" "$FRAMEWORK_DIR/Headers/airlift.h"
+else
+  echo "ERROR: Cannot find airlift.h in AirCardCore!"
+  exit 1
+fi
+
+if [ -n "$GRAPPA_H" ]; then
+  cp "$GRAPPA_H" "$FRAMEWORK_DIR/Headers/GrappaHelper.h"
+else
+  echo "WARNING: Cannot find GrappaHelper.h in AirCardCore!"
+fi
 
 cat > "$FRAMEWORK_DIR/Modules/module.modulemap" <<EOF
 framework module AirliftFFI {
@@ -64,6 +80,9 @@ EOF
 
 echo "✅ Built AirliftFFI framework!"
 
+# =============================================================================
+# INJECT VÀO XCODE
+# =============================================================================
 echo "==> Injecting AirliftFFI into Xcode project..."
 gem install xcodeproj --no-document
 ruby -e '
@@ -99,7 +118,9 @@ ruby -e '
   end
 '
 
-# Archive
+# =============================================================================
+# ARCHIVE VÀ ĐÓNG GÓI IPA
+# =============================================================================
 XCB_ARGS=(
   -project "$PROJECT"
   -scheme "$SCHEME"
@@ -122,7 +143,6 @@ else
   xcodebuild archive "${XCB_ARGS[@]}"
 fi
 
-# Đóng gói IPA
 APP_PATH="$(find "$ARCHIVE_PATH/Products/Applications" -maxdepth 1 -name '*.app' | head -n 1)"
 if [[ -z "$APP_PATH" ]]; then
   echo "error: no .app found" >&2
