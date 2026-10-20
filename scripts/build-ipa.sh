@@ -43,28 +43,7 @@ if [ ! -d "vendor/idevice" ]; then
   cd ../..
 fi
 
-# 3. Tạo file airlift.h và build.rs nếu m chưa có
-if [ ! -f "AirCardCore/airlift.h" ]; then
-  echo "==> Warning: AirCardCore/airlift.h is missing! Please add it."
-fi
-if [ ! -f "AirCardCore/build.rs" ]; then
-  echo "==> Creating default build.rs..."
-  cat > AirCardCore/build.rs <<'EOF'
-use std::env;
-use std::path::PathBuf;
-fn main() {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    cc::Build::new()
-        .file("GrappaHelper.m")
-        .flag("-fobjc-arc")
-        .compile("GrappaHelper");
-    std::fs::copy("airlift.h", out_dir.join("airlift.h")).unwrap();
-    std::fs::copy("GrappaHelper.h", out_dir.join("GrappaHelper.h")).unwrap();
-}
-EOF
-fi
-
-# 4. Build Rust static lib
+# 3. Build Rust static lib
 echo "==> Building AirliftFFI from vendored source..."
 if ! rustup target list --installed | grep -q "aarch64-apple-ios"; then
   rustup target add aarch64-apple-ios
@@ -73,7 +52,7 @@ cd AirCardCore
 cargo build --release --target aarch64-apple-ios
 cd ..
 
-# 5. Tạo framework bundle
+# 4. Tạo framework bundle
 FRAMEWORK_DIR="Frameworks/AirliftFFI.framework"
 rm -rf "$FRAMEWORK_DIR"
 mkdir -p "$FRAMEWORK_DIR/Headers"
@@ -112,7 +91,7 @@ EOF
 
 echo "✅ Built AirliftFFI framework from vendored source!"
 
-# 6. Inject vào Xcode
+# 5. Inject vào Xcode
 echo "==> Injecting AirliftFFI into Xcode project..."
 gem install xcodeproj --no-document
 ruby -e '
