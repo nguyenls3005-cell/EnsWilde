@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import UIKit
 import ZIPFoundation
+import AirliftFFI
 import Network
 
 @MainActor
@@ -109,7 +110,7 @@ class PasscodeThemeViewModel: ObservableObject {
         guard !processedFiles.isEmpty else { throw PasscodeThemeError.noImagesProcessed }
         
         guard NetworkStatus.isVPNTunnelPresent() else { 
-            throw NSError(domain: "AirLift", code: -10, userInfo: [NSLocalizedDescriptionKey: "VPN chưa bật (LocalDevVPN đang Not Ready). Hãy bật VPN và thử lại."]) 
+            throw NSError(domain: "AirLift", code: -10, userInfo: [NSLocalizedDescriptionKey: "VPN chưa bật."]) 
         }
         
         let pairingURL = URL.documentsDirectory.appendingPathComponent("pairingFile.plist")
@@ -145,12 +146,21 @@ class PasscodeThemeViewModel: ObservableObject {
         
         onLogUpdate("Đang ghi qua AirTraffic...")
         
-        // GỌI QUA BRIDGE
-        try await AirliftBridge.writeDirectory(
-            pairingPath: pairingURL.path,
-            srcDir: tempDir.path,
-            targetPath: cleanTargetPath
-        )
+        // GỌI THẲNG C-FFI, KHÔNG QUA BRIDGE
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var errPtr: UnsafeMutablePointer<CChar>? = nil
+                let res = al_exploit_write_dir(pairingURL.path, tempDir.path, cleanTargetPath, nil, nil, &errPtr)
+                
+                if res != 0 {
+                    let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error (Code: \(res))"
+                    if let e = errPtr { al_string_free(e) }
+                    continuation.resume(throwing: NSError(domain: "AirLift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg]))
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
         
         onLogUpdate("✅ Passcode applied successfully.")
     }
