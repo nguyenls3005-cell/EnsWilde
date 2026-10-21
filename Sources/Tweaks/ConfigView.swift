@@ -47,7 +47,7 @@ struct ConfigView: View {
         .alert("Saved", isPresented: $showSavedAlert) {
             Button("OK") {}
         } message: {
-            Text("Tab Apply đã được mở. Chuyển sang tab Apply để áp dụng.")
+            Text("Đã lưu. Chuyển sang tab Apply.")
         }
     }
 }
