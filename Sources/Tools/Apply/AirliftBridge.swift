@@ -19,7 +19,6 @@ enum AirliftBridge {
             throw NSError(domain: "Airlift", code: -12, userInfo: [NSLocalizedDescriptionKey: "Pairing File không phải RPPairing."])
         }
 
-        // Chạy hàm C-FFI trực tiếp trong Thread của Swift
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let semaphore = DispatchSemaphore(value: 0)
             var threadError: Error? = nil
@@ -36,10 +35,9 @@ enum AirliftBridge {
                 semaphore.signal()
             }
             thread.name = "AirliftWorker"
-            thread.stackSize = 8 * 1024 * 1024 // Cấp 8MB bộ nhớ cho luồng
+            thread.stackSize = 8 * 1024 * 1024
             thread.start()
             
-            // Đợi tối đa 60 giây
             let timeout = DispatchTime.now() + .seconds(60)
             if semaphore.wait(timeout: timeout) == .timedOut {
                 continuation.resume(throwing: NSError(domain: "Airlift", code: -99, userInfo: [NSLocalizedDescriptionKey: "Airlift bị treo quá 60 giây."]))
