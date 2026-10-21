@@ -5,46 +5,39 @@ import Network
 enum AirliftBridge {
     
     static func writeDirectory(pairingPath: String, srcDir: String, targetPath: String) async throws {
+        // 1. Kiểm tra VPN
         guard NetworkStatus.isVPNTunnelPresent() else {
-            throw NSError(domain: "Airlift", code: -10, userInfo: [NSLocalizedDescriptionKey: "LocalDevVPN đang Not Ready. Hãy bật VPN và thử lại."])
+            throw NSError(domain: "Airlift", code: -10, userInfo: [NSLocalizedDescriptionKey: "LocalDevVPN chưa bật. Hãy bật VPN."])
         }
         
-        guard FileManager.default.fileExists(atPath: pairingPath) else {
-            throw NSError(domain: "Airlift", code: -11, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy Pairing File."])
-        }
-        
+        // 2. Kiểm tra Pairing
         let pairingData = try Data(contentsOf: URL(fileURLWithPath: pairingPath))
         let pairingStr = String(data: pairingData, encoding: .utf8) ?? ""
         guard pairingStr.contains("public_key") && pairingStr.contains("alt_irk") else {
-            throw NSError(domain: "Airlift", code: -12, userInfo: [NSLocalizedDescriptionKey: "Pairing File không phải RPPairing."])
+            throw NSError(domain: "Airlift", code: -12, userInfo: [NSLocalizedDescriptionKey: "Sai Pairing File."])
         }
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let semaphore = DispatchSemaphore(value: 0)
-            var threadError: Error? = nil
-            
-            let thread = Thread {
+            DispatchQueue.global(qos: .userInitiated).async {
+                
+                // BƯỚC QUAN TRỌNG: Warm-up Runtime bằng al_exploit_run
+                var outJson: UnsafeMutablePointer<CChar>? = nil
+                var warmupErr: UnsafeMutablePointer<CChar>? = nil
+                _ = al_exploit_run(pairingPath, "/var/mobile/Library", nil, nil, &outJson, &warmupErr)
+                if let j = outJson { al_string_free(j) }
+                if let e = warmupErr { al_string_free(e) }
+                
+                // Sau khi warm-up, gọi write_dir
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
                 let res = al_exploit_write_dir(pairingPath, srcDir, targetPath, nil, nil, &errPtr)
                 
                 if res != 0 {
-                    let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error (Code: \(res))"
+                    let msg = errPtr != nil ? String(cString: errPtr!) : "Lỗi Airlift (\(res))"
                     if let e = errPtr { al_string_free(e) }
-                    threadError = NSError(domain: "Airlift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg])
+                    continuation.resume(throwing: NSError(domain: "Airlift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg]))
+                } else {
+                    continuation.resume()
                 }
-                semaphore.signal()
-            }
-            thread.name = "AirliftWorker"
-            thread.stackSize = 8 * 1024 * 1024
-            thread.start()
-            
-            let timeout = DispatchTime.now() + .seconds(60)
-            if semaphore.wait(timeout: timeout) == .timedOut {
-                continuation.resume(throwing: NSError(domain: "Airlift", code: -99, userInfo: [NSLocalizedDescriptionKey: "Airlift bị treo quá 60 giây."]))
-            } else if let error = threadError {
-                continuation.resume(throwing: error)
-            } else {
-                continuation.resume()
             }
         }
     }
