@@ -38,6 +38,8 @@ struct ContentView: View {
             Form {
                 statusSection
                 tweaksSection
+                respringSection
+                applySection
             }
             .headerProminence(.increased)
             .navigationTitle("EnsWilde")
@@ -54,7 +56,6 @@ struct ContentView: View {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L("system_status")).font(.body)
-                    // ĐÃ SỬA: Màu xanh lá
                     Text("Ready - Bad_query")
                         .font(.footnote)
                         .foregroundStyle(.green)
@@ -71,6 +72,62 @@ struct ContentView: View {
             toolNavigationLink(value: "PasscodeTheme", title: L("tool_passcode_theme"), subtitle: L("tool_passcode_theme_desc"), icon: "lock.rectangle", isEnabled: themeStore.passcodeThemeEnabled)
             toolNavigationLink(value: "AppleWallet", title: L("tool_apple_wallet"), subtitle: L("tool_apple_wallet_desc"), icon: "wallet.pass", isEnabled: walletStore.appleWalletEnabled)
         }.listRowBackground(Color(.secondarySystemGroupedBackground))
+    }
+
+    @ViewBuilder
+    private var respringSection: some View {
+        Section {
+            Toggle("Respring after apply", isOn: .constant(true))
+            
+            Text("Using Neospring to Respring device")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 16)
+        }
+    }
+
+    @ViewBuilder
+    private var applySection: some View {
+        Section {
+            Button {
+                Task {
+                    await toolRunner.applyAll(
+                        isSystemReady: true,
+                        store: toolStore,
+                        walletStore: walletStore,
+                        themeStore: themeStore,
+                        featureFlagsStore: featureFlagsStore
+                    )
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("Apply Enabled Tweaks")
+                        .font(.headline)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(AppTheme.accent)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+            }
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            
+            if case .running(let toolName) = toolRunner.state {
+                HStack {
+                    ProgressView()
+                    Text("Applying: \(toolName)")
+                }
+            } else if case .failed(let message) = toolRunner.state {
+                Text(message)
+                    .foregroundColor(.red)
+            } else if case .success = toolRunner.state {
+                Text("✅ Applied successfully!")
+                    .foregroundColor(.green)
+            }
+        }
     }
 
     @ViewBuilder
