@@ -12,7 +12,6 @@ enum AppleWalletTask {
         guard FileManager.default.fileExists(atPath: pairingURL.path) else {
             throw ToolTaskError.generic("Không tìm thấy Pairing File.")
         }
-        let pairingPath = pairingURL.path
         
         onLogUpdate("Đang dò tunnel IP...")
         guard let _ = await AirliftHostResolver.bestAvailable(log: onLogUpdate) else {
@@ -47,35 +46,20 @@ enum AppleWalletTask {
         
         _ = BadQuery().grantAccess(atPath: targetParentDir)
         
-        let resultCode: Int32 = try await withThrowingTaskGroup(of: Int32.self) { group in
-            group.addTask {
-                return await withCheckedContinuation { continuation in
-                    let worker = Thread {
-                        var errPtr: UnsafeMutablePointer<CChar>? = nil
-                        let res = al_exploit_inject_folder(pairingPath, srcDir, targetParentDir, "Cards", nil, nil, &errPtr)
-                        if let e = errPtr {
-                            let msg = String(cString: e)
-                            onLogUpdate("[Airlift Error] \(msg)")
-                            al_string_free(e)
-                        }
-                        continuation.resume(returning: res)
-                    }
-                    worker.name = "AirliftWalletWorker"
-                    worker.stackSize = 8 * 1024 * 1024
-                    worker.start()
+        // GỌI THẲNG C-FFI, KHÔNG QUA BRIDGE
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                var errPtr: UnsafeMutablePointer<CChar>? = nil
+                let res = al_exploit_write_dir(pairingURL.path, srcDir, targetParentDir + "/Cards", nil, nil, &errPtr)
+                
+                if res != 0 {
+                    let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error (Code: \(res))"
+                    if let e = errPtr { al_string_free(e) }
+                    continuation.resume(throwing: ToolTaskError.generic("AirLift Error: \(msg)"))
+                } else {
+                    continuation.resume()
                 }
             }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 60_000_000_000)
-                throw NSError(domain: "AirLift", code: -99, userInfo: [NSLocalizedDescriptionKey: "Quá thời gian 60s."])
-            }
-            let res = try await group.next()!
-            group.cancelAll()
-            return res
-        }
-        
-        if resultCode != 0 {
-            throw NSError(domain: "AirLift", code: Int(resultCode), userInfo: [NSLocalizedDescriptionKey: "AirLift thất bại mã \(resultCode)."])
         }
         
         onLogUpdate("✅ Wallet applied.")
