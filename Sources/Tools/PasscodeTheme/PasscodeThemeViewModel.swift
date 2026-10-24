@@ -143,7 +143,6 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
-        // Gán sink TRƯỚC khi vào background queue — closure C sẽ gọi qua đây
         airliftLogSink = { message in
             DispatchQueue.main.async { onLogUpdate(message) }
         }
@@ -152,7 +151,6 @@ class PasscodeThemeViewModel: ObservableObject {
             DispatchQueue.global(qos: .userInitiated).async {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
                 
-                // Closure C KHÔNG capture context — chỉ đọc msgPtr, gọi qua global sink
                 let logCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?) -> Void = { _, msgPtr in
                     guard let msgPtr else { return }
                     airliftLogSink?(String(cString: msgPtr))
@@ -170,6 +168,7 @@ class PasscodeThemeViewModel: ObservableObject {
                 if res != 0 {
                     let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error (Code: \(res))"
                     if let e = errPtr { al_string_free(e) }
+                    // FIX: Ném lỗi để ToolRunner bắt được và hiển thị
                     continuation.resume(throwing: NSError(domain: "AirLift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg]))
                 } else {
                     continuation.resume()
