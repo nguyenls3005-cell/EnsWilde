@@ -2,6 +2,10 @@ import Foundation
 import Network
 import AirliftFFI
 
+// MARK: - Log sink (fix lỗi @convention(c) capture context)
+// Closure C không được capture biến bên ngoài, nên ta dùng global để chứa handler.
+private var airliftLogSink: ((String) -> Void)?
+
 enum AirliftHostResolver {
     
     /// Danh sách candidate — KHÔNG BAO GIỜ chứa 127.0.0.1
@@ -50,6 +54,11 @@ enum AirliftHostResolver {
     
     /// Tìm host khả dụng nhất bằng TCP probe port RSD (49152).
     static func bestAvailable(log: @escaping (String) -> Void) async -> String? {
+        // Gán handler log vào global sink — closure C sẽ gọi qua đây
+        airliftLogSink = { message in
+            log(message)
+        }
+        
         let hosts = candidates()
         log("[Airlift] Probing hosts: \(hosts.joined(separator: ", "))")
         
