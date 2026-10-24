@@ -26,96 +26,96 @@ cd AirCardCore
 cargo build --release --target aarch64-apple-ios
 cd ..
 
-# Tạo framework bundle
-FRAMEWORK_DIR="Frameworks/AirliftFFI.framework"
-rm -rf "$FRAMEWORK_DIR"
-mkdir -p "$FRAMEWORK_DIR/Headers"
-mkdir -p "$FRAMEWORK_DIR/Modules"
+LIB_PATH="AirCardCore/target/aarch64-apple-ios/release/libairlift_ffi.a"
 
-cp AirCardCore/target/aarch64-apple-ios/release/libairlift_ffi.a "$FRAMEWORK_DIR/AirliftFFI"
+if [ ! -f "$LIB_PATH" ]; then
+  echo "ERROR: Cannot find $LIB_PATH"
+  exit 1
+fi
 
-# Tự động dò tìm và copy header (dù nó nằm ở đâu trong AirCardCore)
+# Copy header ra thư mục include để Swift/ObjC import được
+INCLUDE_DIR="Frameworks/AirliftFFI"
+rm -rf "$INCLUDE_DIR"
+mkdir -p "$INCLUDE_DIR"
+
 AIRLIFT_H=$(find AirCardCore -name "airlift.h" | head -n 1)
 GRAPPA_H=$(find AirCardCore -name "GrappaHelper.h" | head -n 1)
 
 if [ -n "$AIRLIFT_H" ]; then
-  cp "$AIRLIFT_H" "$FRAMEWORK_DIR/Headers/airlift.h"
+  cp "$AIRLIFT_H" "$INCLUDE_DIR/airlift.h"
 else
   echo "ERROR: Cannot find airlift.h in AirCardCore!"
   exit 1
 fi
 
 if [ -n "$GRAPPA_H" ]; then
-  cp "$GRAPPA_H" "$FRAMEWORK_DIR/Headers/GrappaHelper.h"
+  cp "$GRAPPA_H" "$INCLUDE_DIR/GrappaHelper.h"
 else
   echo "WARNING: Cannot find GrappaHelper.h in AirCardCore!"
 fi
 
-cat > "$FRAMEWORK_DIR/Modules/module.modulemap" <<EOF
-framework module AirliftFFI {
-    umbrella header "airlift.h"
-    export *
-    module * { export * }
-}
-EOF
-
-cat > "$FRAMEWORK_DIR/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>AirliftFFI</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.enswilde.AirliftFFI</string>
-    <key>CFBundleName</key>
-    <string>AirliftFFI</string>
-    <key>CFBundlePackageType</key>
-    <string>FMWK</string>
-    <key>CFBundleVersion</key>
-    <string>1.0</string>
-</dict>
-</plist>
-EOF
-
-echo "✅ Built AirliftFFI framework!"
+echo "✅ Built libairlift_ffi.a!"
 
 # =============================================================================
-# INJECT VÀO XCODE
+# INJECT VÀO XCODE (link trực tiếp file .a)
 # =============================================================================
 echo "==> Injecting AirliftFFI into Xcode project..."
 gem install xcodeproj --no-document
 ruby -e '
   require "xcodeproj"
   project_path = "EnsWilde.xcodeproj"
-  framework_path = "Frameworks/AirliftFFI.framework"
-  
+  lib_path = "AirCardCore/target/aarch64-apple-ios/release/libairlift_ffi.a"
+  include_dir = "Frameworks/AirliftFFI"
+
   project = Xcodeproj::Project.open(project_path)
   target = project.targets.find { |t| t.name == "EnsWilde" }
-  
-  unless target.nil?
-    file_ref = project.new_file(framework_path)
-    target.frameworks_build_phase.add_file_reference(file_ref)
-    
-    embed_phase = target.copy_files_build_phases.find { |p| p.name == "Embed Frameworks" } 
-    if embed_phase.nil?
-      embed_phase = target.new_copy_files_build_phase("Embed Frameworks")
-      embed_phase.dst_subfolder_spec = "10"
-    end
-    build_file = embed_phase.add_file_reference(file_ref)
-    build_file.settings = { "ATTRIBUTES" => ["CodeSignOnCopy", "RemoveHeadersOnCopy"] }
-    
-    target.build_configurations.each do |config|
-      config.build_settings["FRAMEWORK_SEARCH_PATHS"] ||= ["$(inherited)"]
-      config.build_settings["FRAMEWORK_SEARCH_PATHS"] << "$(PROJECT_DIR)/Frameworks"
-    end
-    
-    project.save
-    puts "✅ Thành công: Đã nhúng AirliftFFI vào project!"
-  else
+
+  if target.nil?
     puts "❌ Lỗi: Không tìm thấy target EnsWilde"
     exit 1
   end
+
+  # Tránh thêm trùng nếu chạy lại
+  existing = target.frameworks_build_phase.files.find do |f|
+    f.file_ref && f.file_ref.path && f.file_ref.path.end_with?("libairlift_ffi.a")
+  end
+
+  unless existing
+    file_ref = project.new_file(lib_path)
+    target.frameworks_build_phase.add_file_reference(file_ref)
+  end
+
+  # Đảm bảo group Frameworks/AirliftFFI có trong project để header path hợp lệ
+  unless project.files.any? { |f| f.path && f.path.end_with?("AirliftFFI/airlift.h") }
+    project.new_file("#{include_dir}/airlift.h")
+  end
+
+  target.build_configurations.each do |config|
+    config.build_settings["LIBRARY_SEARCH_PATHS"] ||= ["$(inherited)"]
+    lib_search = config.build_settings["LIBRARY_SEARCH_PATHS"]
+    lib_search = [lib_search] if lib_search.is_a?(String)
+    unless lib_search.include?("$(PROJECT_DIR)/AirCardCore/target/aarch64-apple-ios/release")
+      lib_search << "$(PROJECT_DIR)/AirCardCore/target/aarch64-apple-ios/release"
+    end
+    config.build_settings["LIBRARY_SEARCH_PATHS"] = lib_search
+
+    config.build_settings["HEADER_SEARCH_PATHS"] ||= ["$(inherited)"]
+    hdr = config.build_settings["HEADER_SEARCH_PATHS"]
+    hdr = [hdr] if hdr.is_a?(String)
+    unless hdr.include?("$(PROJECT_DIR)/Frameworks/AirliftFFI")
+      hdr << "$(PROJECT_DIR)/Frameworks/AirliftFFI"
+    end
+    config.build_settings["HEADER_SEARCH_PATHS"] = hdr
+
+    config.build_settings["OTHER_LDFLAGS"] ||= ["$(inherited)"]
+    ldf = config.build_settings["OTHER_LDFLAGS"]
+    ldf = [ldf] if ldf.is_a?(String)
+    ldf << "-lc++" unless ldf.include?("-lc++")
+    config.build_settings["OTHER_LDFLAGS"] = ldf
+  end
+
+  project.save
+  puts "✅ Thành công: Đã link libairlift_ffi.a vào target EnsWilde!"
 '
 
 # =============================================================================
