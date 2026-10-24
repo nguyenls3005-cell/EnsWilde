@@ -19,15 +19,6 @@ pub fn get_runtime() -> &'static Runtime {
     })
 }
 
-// Hàm chạy block async trong runtime
-fn run_sync<F, T>(f: F) -> T 
-where 
-    F: std::future::Future<Output = T> + Send + 'static, 
-    T: Send + 'static 
-{
-    get_runtime().block_on(f)
-}
-
 #[no_mangle]
 pub extern "C" fn al_log_init(_level: c_int) -> c_int { 0 }
 
@@ -50,39 +41,58 @@ pub extern "C" fn al_string_free(s: *mut c_char) {
     }
 }
 
-// Signature này khớpb, với exploit_write_dir trong exploit.rs
-#[no_m ctxangle]
+// Hàm hỗ trợ chạy async trên background thread để không block Main Thread
+fn run_on_background<F>(f: F) -> Result<(), String> 
+where 
+    F: std::future::Future<Output = Result<(), String>> + Send + 'static
+{
+    // Tạo một thread riêng biệt để chạy Tokio runtime
+    let handle = std::thread::spawn(move || {
+        // Tạo runtime mới hoàn toàn cho thread này để tránh xung đột
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(f)
+    });
+
+    match handle.join() {
+        Ok(res) => res,
+        Err(_) => Err("Rust thread panicked".to_string()),
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn al_exploit_write_dir(
-: ctx_us    pairing_path: *const c_char,
+    pairing_path: *const c_char,
     source_dir: *const c_char,
     target_dir: *const c_char,
     log_cb: exploit::ALLogCallback,
     ctx: *mut c_void,
     out_error: *mut *mut c_char,
 ) -> c_int {
-    let pairing = unsafe { std::ffi::CStr::from_ptr(pairing_path) }.to_str().unwrap_or("").to_string();
-    let src = unsafe { std::ffi::CStr::from_ptr(source_dir) }.to_str().unwrap_or("").to_string();
-    let dst = unsafe { std::ffi::CStr::from_ptr(target_dir) }.to_str().unwrap_or("").to_string();
+    let pairing = if pairing_path.is_null() { "airlift_pairing.plist".to_string() }
+        else { unsafe { std::ffi::CStr::from_ptr(pairing_path) }.to_str().unwrap_or("").to_string() };
+    let src = if source_dir.is_null() { "".to_string() }
+        else { unsafe { std::ffi::CStr::from_ptr(source_dir) }.to_str().unwrap_or("").to_string() };
+    let dst = if target_dir.is_null() { "".to_string() }
+        else { unsafe { std::ffi::CStr::from_ptr(target_dir) }.to_str().unwrap_or("").to_string() };
+    
+    // Chuyển con trỏ thành số nguyên để gửi an toàn qua thread
     let ctx_usize = ctx as usize;
+    // Ép kiểu callback (thực tế con trỏ hàm có thể gửi qua thread an toàn nếu ta tự đảm bảo)
+    let cb = log_cb;
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        run_sync(async move {
-            let logger = exploit::Logger { cb: log_cize as *mut c_void };
-            exploit::exploit_write_dir(pairing, src, dst, &logger).await
-        })
-    }));
+    let res = run_on_background(async move {
+        let logger = exploit::Logger { cb, ctx: ctx_usize as *mut c_void };
+        exploit::exploit_write_dir(pairing, src, dst, &logger).await
+    });
 
-    match result {
-        Ok(Ok(())) => 0,
-        Ok(Err(e)) => {
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
             if !out_error.is_null() {
                 unsafe { *out_error = CString::new(e).unwrap_or_default().into_raw(); }
-            }
-            1
-        }
-        Err(_) => {
-            if !out_error.is_null() {
-                unsafe { *out_error = CString::new("Rust panic").unwrap().into_raw(); }
             }
             1
         }
@@ -96,27 +106,22 @@ pub extern "C" fn al_device_respring(
     ctx: *mut c_void,
     out_error: *mut *mut c_char,
 ) -> c_int {
-    let pairing = unsafe { std::ffi::CStr::from_ptr(pairing_path) }.to_str().unwrap_or("").to_string();
+    let pairing = if pairing_path.is_null() { "airlift_pairing.plist".to_string() }
+        else { unsafe { std::ffi::CStr::from_ptr(pairing_path) }.to_str().unwrap_or("").to_string() };
+    
     let ctx_usize = ctx as usize;
+    let cb = log_cb;
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        run_sync(async move {
-            let logger = exploit::Logger { cb: log_cb, ctx: ctx_usize as *mut c_void };
-            exploit::exploit_device_respring(pairing, &logger).await
-        })
-    }));
+    let res = run_on_background(async move {
+        let logger = exploit::Logger { cb, ctx: ctx_usize as *mut c_void };
+        exploit::exploit_device_respring(pairing, &logger).await
+    });
 
-    match result {
-        Ok(Ok(())) => 0,
-        Ok(Err(e)) => {
+    match res {
+        Ok(()) => 0,
+        Err(e) => {
             if !out_error.is_null() {
                 unsafe { *out_error = CString::new(e).unwrap_or_default().into_raw(); }
-            }
-            1
-        }
-        Err(_) => {
-            if !out_error.is_null() {
-                unsafe { *out_error = CString::new("Rust panic").unwrap().into_raw(); }
             }
             1
         }
