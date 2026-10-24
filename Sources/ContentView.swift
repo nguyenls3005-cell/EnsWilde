@@ -32,7 +32,7 @@ struct ContentView: View {
                 statusSection
                 tweaksSection
                 respringSection
-                applySection
+                // applySection đã được xóa khỏi Home
             }
             .headerProminence(.increased)
             .navigationTitle("EnsWilde,")
@@ -74,36 +74,6 @@ struct ContentView: View {
             Text("Using Neospring to Respring device")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private var applySection: some View {
-        Section {
-            Button {
-                Task {
-                    await toolRunner.applyAll(
-                        isSystemReady: true,
-                        store: toolStore,
-                        walletStore: walletStore,
-                        themeStore: themeStore,
-                        featureFlagsStore: featureFlagsStore
-                    )
-                }
-            } label: {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Apply Enabled Tweaks").font(.headline)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(AppTheme.accent)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-            }
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
         }
     }
 
