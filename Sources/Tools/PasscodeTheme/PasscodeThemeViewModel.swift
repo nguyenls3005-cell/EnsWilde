@@ -8,8 +8,6 @@ import Network
 @MainActor
 class PasscodeThemeViewModel: ObservableObject {
     @Published var isProcessing = false
-    @Published var errorMessage: String?
-    
     private let store: PasscodeThemeStore
     
     init(store: PasscodeThemeStore) {
@@ -100,9 +98,7 @@ class PasscodeThemeViewModel: ObservableObject {
         try? fm.removeItem(at: telephonyFolderURL)
     }
     
-    func importDefaultPasscode(from sourceURL: URL, name: String, themeStore: PasscodeThemeStore) async throws {
-        // Code cũ của bạn (nếu có)
-    }
+    func importDefaultPasscode(from sourceURL: URL, name: String, themeStore: PasscodeThemeStore) async throws {}
     
     func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
         let globalTelephony = self.store.globalTelephonyVersion
@@ -141,25 +137,15 @@ class PasscodeThemeViewModel: ObservableObject {
             throw NSError(domain: "AirLift", code: -3, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy RSD tunnel."]) 
         }
         
-        let observer = NotificationCenter.default.addObserver(forName: .airliftLog, object: nil, queue: .main) { note in
-            if let line = note.userInfo?["line"] as? String { onLogUpdate("[Airlift] \(line)") }
-        }
-        defer { NotificationCenter.default.removeObserver(observer) }
-        
         onLogUpdate("Đang ghi qua AirTraffic...")
+        let pairingPath = pairingURL.path
+        let srcDir = tempDir.path
         
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                // Warm-up runtime
-                var outJson: UnsafeMutablePointer<CChar>? = nil
-                var warmupErr: UnsafeMutablePointer<CChar>? = nil
-                _ = al_exploit_run(pairingURL.path, "/var/mobile/Library", nil, nil, &outJson, &warmupErr)
-                if let j = outJson { al_string_free(j) }
-                if let e = warmupErr { al_string_free(e) }
-                
-                // Write dir
+                // Gọi hàm C-FFI. Lúc này Runtime đã được khởi tạo bên trong Rust (nhờ lib.rs ở trên)
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
-                let res = al_exploit_write_dir(pairingURL.path, tempDir.path, cleanTargetPath, nil, nil, &errPtr)
+                let res = al_exploit_write_dir(pairingPath, srcDir, cleanTargetPath, nil, nil, &errPtr)
                 
                 if res != 0 {
                     let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error"
@@ -176,11 +162,7 @@ class PasscodeThemeViewModel: ObservableObject {
 }
 
 enum PasscodeThemeError: LocalizedError {
-    case accessDenied
-    case noImagesFound
-    case noImagesProcessed
-    case invalidFormat
-    
+    case accessDenied, noImagesFound, noImagesProcessed, invalidFormat
     var errorDescription: String? {
         switch self {
         case .accessDenied: return "Không có quyền truy cập file."
