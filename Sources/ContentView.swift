@@ -31,8 +31,7 @@ struct ContentView: View {
             Form {
                 statusSection
                 tweaksSection
-                respringSection
-                // applySection đã được xóa khỏi Home
+                // Đã xóa respringSection ở đây
             }
             .headerProminence(.increased)
             .navigationTitle("EnsWilde,")
@@ -64,16 +63,6 @@ struct ContentView: View {
             toolNavigationLink(value: "ConfigTweaks", title: "Config Tweaks", subtitle: "Custom Lock Screen Footnote", icon: "textformat", isEnabled: toolStore.configTweaksEnabled)
             toolNavigationLink(value: "PasscodeTheme", title: "Passcode Theme", subtitle: "Customize passcode screen", icon: "lock.rectangle", isEnabled: themeStore.passcodeThemeEnabled)
             toolNavigationLink(value: "AppleWallet", title: "Apple Wallet", subtitle: "Manage wallet cards", icon: "wallet.pass", isEnabled: walletStore.appleWalletEnabled)
-        }
-    }
-
-    @ViewBuilder
-    private var respringSection: some View {
-        Section {
-            Toggle("Respring after apply", isOn: .constant(true))
-            Text("Using Neospring to Respring device")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
