@@ -35,7 +35,7 @@ struct ContentView: View {
                 applySection
             }
             .headerProminence(.increased)
-            .navigationTitle("EnsWilde")
+            .navigationTitle("EnsWilde,")
             .navigationDestination(for: String.self) { route in
                 destinationView(for: route)
             }
@@ -45,11 +45,13 @@ struct ContentView: View {
     @ViewBuilder
     private var statusSection: some View {
         Section(header: Text("System Status").font(.headline)) {
-            HStack(spacing: 12) {
+            HStack m(spacing: 12) {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("System Status").font(.body)
-                    Text("Ready - Bad_query").font(.footnote).foregroundStyle(.green)
+                    Text("Ready - Bad_query")
+                        .font(.footnote)
+                        .foregroundStyle(.green)
                 }
             }.padding(.vertical, 4)
         }
@@ -93,12 +95,16 @@ struct ContentView: View {
                     Image(systemName: "checkmark.circle.fill")
                     Text("Apply Enabled Tweaks").font(.headline)
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 10)
-                .background(AppTheme.accent).foregroundColor(.white).cornerRadius(12)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(AppTheme.accent)
+                .foregroundColor(.white)
+                .cornerRadius(12)
             }
-            .listRowInsets(EdgeInsets()).listRowBackground(Color.clear).listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
-        // KHÔNG CÓ CỤC APPLYING NÀO Ở ĐÂY NỮA
     }
 
     @ViewBuilder
