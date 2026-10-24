@@ -121,6 +121,7 @@ class PasscodeThemeViewModel: ObservableObject {
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
         
+        // Lưu từng file vào thư mục tạm
         for (_, imageData, targetFilename) in processedFiles {
             try imageData.write(to: tempDir.appendingPathComponent(targetFilename))
         }
@@ -141,14 +142,24 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
+        // Gọi FFI bất đồng bộ thông qua Task để không chặn Main Thread
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
-                // Gọi hàm C-FFI. Lúc này Runtime đã được khởi tạo bên trong Rust (nhờ lib.rs ở trên)
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
-                let res = al_exploit_write_dir(pairingPath, srcDir, cleanTargetPath, nil, nil, &errPtr)
+                
+                // GỌI HÀM ĐÚNG SIGNATURE: (pairing_path, source_dir, target_dir, log_cb, ctx, out_error)
+                // Lưu ý: srcDir là thư mục chứa các file vừa tạo, cleanTargetPath là thư mục đích
+                let res = al_exploit_write_dir(
+                    pairingPath, 
+                    srcDir, 
+                    cleanTargetPath, 
+                    nil, // log_cb
+                    nil, // ctx
+                    &errPtr
+                )
                 
                 if res != 0 {
-                    let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error"
+                    let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error (Code: \(res))"
                     if let e = errPtr { al_string_free(e) }
                     continuation.resume(throwing: NSError(domain: "AirLift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg]))
                 } else {
