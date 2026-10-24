@@ -5,6 +5,9 @@ import ZIPFoundation
 import AirliftFFI
 import Network
 
+// MARK: - Airlift log bridge (fix @convention(c) capture context)
+private var airliftLogSink: ((String) -> Void)?
+
 @MainActor
 class PasscodeThemeViewModel: ObservableObject {
     @Published var isProcessing = false
@@ -140,25 +143,27 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
+        // Gán sink TRƯỚC khi vào background queue — closure C sẽ gọi qua đây
+        airliftLogSink = { message in
+            DispatchQueue.main.async { onLogUpdate(message) }
+        }
+        
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             DispatchQueue.global(qos: .userInitiated).async {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
                 
-                // Cầu nối nhận log từ Rust
+                // Closure C KHÔNG capture context — chỉ đọc msgPtr, gọi qua global sink
                 let logCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?) -> Void = { _, msgPtr in
-                    if let msgPtr = msgPtr {
-                        let msg = String(cString: msgPtr)
-                        DispatchQueue.main.async { onLogUpdate(msg) }
-                    }
+                    guard let msgPtr else { return }
+                    airliftLogSink?(String(cString: msgPtr))
                 }
                 
-                // Gọi hàm C-FFI VỚI LOGCALLBACK
                 let res = al_exploit_write_dir(
                     pairingPath, 
                     srcDir, 
                     targetPath, 
-                    logCallback, // <-- Truyền log để hiện lên màn hình
-                    nil,        // ctx
+                    logCallback,
+                    nil,
                     &errPtr
                 )
                 
@@ -172,6 +177,7 @@ class PasscodeThemeViewModel: ObservableObject {
             }
         }
         
+        airliftLogSink = nil
         onLogUpdate("✅ Passcode applied successfully.")
     }
 }
