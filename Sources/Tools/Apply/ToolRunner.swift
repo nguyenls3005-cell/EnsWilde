@@ -82,7 +82,8 @@ final class ToolRunner: ObservableObject {
                     try await PasscodeThemeViewModel(store: themeStore).applyTheme(selectedTheme, store: store) { msg in Task { await self.log(msg) } }
                     await log("✅ Passcode applied.")
                 } catch {
-                    await log("❌ Passcode failed: \(error.localizedDescription)")
+                    // FIX: Bắt lỗi và in ra màn hình
+                    await log("❌ LỖI AIRLIFT: \(error.localizedDescription)")
                 }
             } else {
                 await log("⚠️ No passcode theme selected.")
