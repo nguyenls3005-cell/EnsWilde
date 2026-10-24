@@ -27,8 +27,6 @@ idevice = { git = "https://github.com/jkcoxson/idevice.git", rev = "7bd551c16c6d
 ] }
 
 # idevice-ffi for tunnel_create_rppairing + AFC C FFI (re-exports its #[no_mangle] symbols).
-# Use full feature set (matching SideInstaller's proven config) so idevice-ffi's
-# internal cross-module imports resolve. We re-export its #[no_mangle] symbols.
 idevice-ffi = { path = "vendor/idevice-ffi", features = [
   "full",
   "aws-lc",
