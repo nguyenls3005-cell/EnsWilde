@@ -144,12 +144,21 @@ class PasscodeThemeViewModel: ObservableObject {
             DispatchQueue.global(qos: .userInitiated).async {
                 var errPtr: UnsafeMutablePointer<CChar>? = nil
                 
+                // Cầu nối nhận log từ Rust
+                let logCallback: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<CChar>?) -> Void = { _, msgPtr in
+                    if let msgPtr = msgPtr {
+                        let msg = String(cString: msgPtr)
+                        DispatchQueue.main.async { onLogUpdate(msg) }
+                    }
+                }
+                
+                // Gọi hàm C-FFI VỚI LOGCALLBACK
                 let res = al_exploit_write_dir(
                     pairingPath, 
                     srcDir, 
                     targetPath, 
-                    nil, // log_cb
-                    nil, // ctx
+                    logCallback, // <-- Truyền log để hiện lên màn hình
+                    nil,        // ctx
                     &errPtr
                 )
                 
