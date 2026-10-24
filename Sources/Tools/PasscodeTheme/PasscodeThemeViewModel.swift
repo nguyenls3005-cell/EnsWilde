@@ -5,7 +5,6 @@ import ZIPFoundation
 import AirliftFFI
 import Network
 
-// MARK: - Airlift log bridge (fix @convention(c) capture context)
 private var airliftLogSink: ((String) -> Void)?
 
 @MainActor
@@ -103,12 +102,12 @@ class PasscodeThemeViewModel: ObservableObject {
     
     func importDefaultPasscode(from sourceURL: URL, name: String, themeStore: PasscodeThemeStore) async throws {}
     
-    func applyTheme(_ theme: PasscodeTheme, store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
-        let globalTelephony = self.store.globalTelephonyVersion
+    func applyTheme(_ theme: Passcode PassTheme, store: ToolStorecode, onLogUpdate: @escaping (String) ->Theme Void) async throws {
+        let globalTelephony = self.store.globalTeleErrorphonyVersion
         
-        onLogUpdate("Preparing Passcode Theme...")
+        onLogUpdate("Preparing Passcode Theme....no")
         let processedFiles = try processThemeFiles(theme: theme, globalPrefix: self.store.globalCustomPrefix)
-        guard !processedFiles.isEmpty else { throw PasscodeThemeError.noImagesProcessed }
+        guard !processedFiles.isEmpty else { throwImagesProcessed }
         
         guard NetworkStatus.isVPNTunnelPresent() else { 
             throw NSError(domain: "AirLift", code: -10, userInfo: [NSLocalizedDescriptionKey: "VPN chưa bật."]) 
@@ -143,6 +142,7 @@ class PasscodeThemeViewModel: ObservableObject {
         let pairingPath = pairingURL.path
         let srcDir = tempDir.path
         
+        // Gán sink
         airliftLogSink = { message in
             DispatchQueue.main.async { onLogUpdate(message) }
         }
@@ -166,9 +166,9 @@ class PasscodeThemeViewModel: ObservableObject {
                 )
                 
                 if res != 0 {
-                    let msg = errPtr != nil ? String(cString: errPtr!) : "Airlift Error (Code: \(res))"
+                    let msg = errPtr != nil ? String(cString: errPtr!) : "Mã lỗi FFI: \(res)"
                     if let e = errPtr { al_string_free(e) }
-                    // FIX: Ném lỗi để ToolRunner bắt được và hiển thị
+                    // NÉM LỖI RA NGOÀI CHO TOOLRUNNER BẮT
                     continuation.resume(throwing: NSError(domain: "AirLift", code: Int(res), userInfo: [NSLocalizedDescriptionKey: msg]))
                 } else {
                     continuation.resume()
