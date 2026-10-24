@@ -59,7 +59,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW (ĐÃ FIX)
+// MARK: - APPLY TAB VIEW (ĐÃ FIX: BỎ CỤC APPLYING, THÊM NEOSPRING)
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -82,14 +82,12 @@ struct ApplyTabView: View {
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
+        if toolStore.configTweaksEnabled { list.append((L("tool_config_tweaks"), "textformat")) }
         return list
     }
     
-    // XOÁ CỤC APPLYING LƠ LỬNG, CHỈ HIỂN THỊ STATUS CHUNG
     private var currentStatus: String {
-        if isApplying {
-            return "Applying..."
-        }
+        if isApplying { return "Applying..." }
         return "Ready to apply."
     }
 
