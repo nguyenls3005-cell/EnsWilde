@@ -49,9 +49,7 @@ struct ContentView: View {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("System Status").font(.body)
-                    Text("Ready - Bad_query")
-                        .font(.footnote)
-                        .foregroundStyle(.green)
+                    Text("Ready - Bad_query").font(.footnote).foregroundStyle(.green)
                 }
             }.padding(.vertical, 4)
         }
@@ -74,7 +72,6 @@ struct ContentView: View {
             Text("Using Neospring to Respring device")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .padding(.leading, 16)
         }
     }
 
@@ -94,31 +91,14 @@ struct ContentView: View {
             } label: {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
-                    Text("Apply Enabled Tweaks")
-                        .font(.headline)
+                    Text("Apply Enabled Tweaks").font(.headline)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(AppTheme.accent)
-                .foregroundColor(.white)
-                .cornerRadius(12)
+                .frame(maxWidth: .infinity).padding(.vertical, 10)
+                .background(AppTheme.accent).foregroundColor(.white).cornerRadius(12)
             }
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            
-            // CHỈ HIỂN THỊ STATUS KHI ĐANG CHẠY, KHÔNG CÓ CỤC LƠ LỬNG
-            if case .running(let toolName) = toolRunner.state {
-                HStack {
-                    ProgressView().padding(.trailing, 8)
-                    Text("Applying: \(toolName)")
-                }
-            } else if case .failed(let message) = toolRunner.state {
-                Text(message).foregroundColor(.red)
-            } else if case .success = toolRunner.state {
-                Text("✅ Applied successfully!").foregroundColor(.green)
-            }
+            .listRowInsets(EdgeInsets()).listRowBackground(Color.clear).listRowSeparator(.hidden)
         }
+        // KHÔNG CÓ CỤC APPLYING NÀO Ở ĐÂY NỮA
     }
 
     @ViewBuilder
