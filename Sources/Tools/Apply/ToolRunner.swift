@@ -7,7 +7,7 @@ final class ToolRunner: ObservableObject {
     @Published var state: ToolRunState = .idle
     @Published var logs: [ToolRunLogLine] = []
 
-    func resetLogs() { logs.remove:All() }
+    func resetLogs() { logs.removeAll() }
 
     // Hàm log đồng bộ, đảm bảo UI cập nhật ngay lập tức
     func log(_ s: String) {
@@ -53,7 +53,7 @@ final class ToolRunner: ObservableObject {
                 try BadQueryManager.ensureMobileGestaltAccess()
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let modMGURL = docs.appendingPathComponent("ModifiedMobileGestalt.plist")
-                guard FileManager.default.fileExists(atPath modMGURL.path) else { throw NSError(domain: "ToolRunner", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing ModifiedMobileGestalt.plist."]) }
+                guard FileManager.default.fileExists(atPath: modMGURL.path) else { throw NSError(domain: "ToolRunner", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing ModifiedMobileGestalt.plist."]) }
                 let mgData = try Data(contentsOf: modMGURL)
                 try BadQueryWrapper.writeFile(at: MobileGestaltApplyTask.onDeviceMGPath, data: mgData)
                 log("✅ MobileGestalt written.")
