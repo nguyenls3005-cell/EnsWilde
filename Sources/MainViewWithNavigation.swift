@@ -59,7 +59,7 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW
+// MARK: - APPLY TAB VIEW (ĐÃ FIX)
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -85,9 +85,10 @@ struct ApplyTabView: View {
         return list
     }
     
+    // XOÁ CỤC APPLYING LƠ LỬNG, CHỈ HIỂN THỊ STATUS CHUNG
     private var currentStatus: String {
         if isApplying {
-            return toolRunner.logs.last?.text ?? "Starting..."
+            return "Applying..."
         }
         return "Ready to apply."
     }
@@ -110,6 +111,10 @@ struct ApplyTabView: View {
                     Toggle(isOn: $toolStore.soundRespringEnabled) {
                         Text("Respring after apply")
                     }
+                    // THÊM CHỮ NEOSPRING VÀO ĐÂY
+                    Text("Using Neospring to Respring device")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
