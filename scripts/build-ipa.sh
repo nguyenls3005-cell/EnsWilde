@@ -26,31 +26,24 @@ cd AirCardCore
 cargo build --release --target aarch64-apple-ios
 cd ..
 
-LIB_PATH="AirCardCore/target/aarch64-apple-ios/release/libairlift_ffi.a"
-if [ ! -f "$LIB_PATH" ]; then
-  echo "ERROR: Cannot find $LIB_PATH"
-  exit 1
-fi
-
-# =============================================================================
-# TẠO STATIC FRAMEWORK AirliftFFI (đúng chuẩn: binary là file .a)
-# =============================================================================
+# Tạo framework bundle
 FRAMEWORK_DIR="Frameworks/AirliftFFI.framework"
 rm -rf "$FRAMEWORK_DIR"
 mkdir -p "$FRAMEWORK_DIR/Headers"
 mkdir -p "$FRAMEWORK_DIR/Modules"
 
-# Binary của static framework chính là file .a
-cp "$LIB_PATH" "$FRAMEWORK_DIR/AirliftFFI"
+cp AirCardCore/target/aarch64-apple-ios/release/libairlift_ffi.a "$FRAMEWORK_DIR/AirliftFFI"
 
+# Tự động dò tìm và copy header (dù nó nằm ở đâu trong AirCardCore)
 AIRLIFT_H=$(find AirCardCore -name "airlift.h" | head -n 1)
 GRAPPA_H=$(find AirCardCore -name "GrappaHelper.h" | head -n 1)
 
-if [ -z "$AIRLIFT_H" ]; then
+if [ -n "$AIRLIFT_H" ]; then
+  cp "$AIRLIFT_H" "$FRAMEWORK_DIR/Headers/airlift.h"
+else
   echo "ERROR: Cannot find airlift.h in AirCardCore!"
   exit 1
 fi
-cp "$AIRLIFT_H" "$FRAMEWORK_DIR/Headers/airlift.h"
 
 if [ -n "$GRAPPA_H" ]; then
   cp "$GRAPPA_H" "$FRAMEWORK_DIR/Headers/GrappaHelper.h"
@@ -85,10 +78,10 @@ cat > "$FRAMEWORK_DIR/Info.plist" <<EOF
 </plist>
 EOF
 
-echo "✅ Built AirliftFFI.framework (static)!"
+echo "✅ Built AirliftFFI framework!"
 
 # =============================================================================
-# INJECT VÀO XCODE: thêm framework vào Link + FRAMEWORK_SEARCH_PATHS
+# INJECT VÀO XCODE
 # =============================================================================
 echo "==> Injecting AirliftFFI into Xcode project..."
 gem install xcodeproj --no-document
@@ -96,43 +89,33 @@ ruby -e '
   require "xcodeproj"
   project_path = "EnsWilde.xcodeproj"
   framework_path = "Frameworks/AirliftFFI.framework"
-
+  
   project = Xcodeproj::Project.open(project_path)
   target = project.targets.find { |t| t.name == "EnsWilde" }
-
-  if target.nil?
+  
+  unless target.nil?
+    file_ref = project.new_file(framework_path)
+    target.frameworks_build_phase.add_file_reference(file_ref)
+    
+    embed_phase = target.copy_files_build_phases.find { |p| p.name == "Embed Frameworks" } 
+    if embed_phase.nil?
+      embed_phase = target.new_copy_files_build_phase("Embed Frameworks")
+      embed_phase.dst_subfolder_spec = "10"
+    end
+    build_file = embed_phase.add_file_reference(file_ref)
+    build_file.settings = { "ATTRIBUTES" => ["CodeSignOnCopy", "RemoveHeadersOnCopy"] }
+    
+    target.build_configurations.each do |config|
+      config.build_settings["FRAMEWORK_SEARCH_PATHS"] ||= ["$(inherited)"]
+      config.build_settings["FRAMEWORK_SEARCH_PATHS"] << "$(PROJECT_DIR)/Frameworks"
+    end
+    
+    project.save
+    puts "✅ Thành công: Đã nhúng AirliftFFI vào project!"
+  else
     puts "❌ Lỗi: Không tìm thấy target EnsWilde"
     exit 1
   end
-
-  # Tránh thêm trùng nếu chạy lại
-  existing = target.frameworks_build_phase.files.find do |f|
-    f.file_ref && f.file_ref.path && f.file_ref.path.end_with?("AirliftFFI.framework")
-  end
-
-  unless existing
-    file_ref = project.new_file(framework_path)
-    target.frameworks_build_phase.add_file_reference(file_ref)
-  end
-
-  target.build_configurations.each do |config|
-    config.build_settings["FRAMEWORK_SEARCH_PATHS"] ||= ["$(inherited)"]
-    fsp = config.build_settings["FRAMEWORK_SEARCH_PATHS"]
-    fsp = [fsp] if fsp.is_a?(String)
-    unless fsp.include?("$(PROJECT_DIR)/Frameworks")
-      fsp << "$(PROJECT_DIR)/Frameworks"
-    end
-    config.build_settings["FRAMEWORK_SEARCH_PATHS"] = fsp
-
-    config.build_settings["OTHER_LDFLAGS"] ||= ["$(inherited)"]
-    ldf = config.build_settings["OTHER_LDFLAGS"]
-    ldf = [ldf] if ldf.is_a?(String)
-    ldf << "-lc++" unless ldf.include?("-lc++")
-    config.build_settings["OTHER_LDFLAGS"] = ldf
-  end
-
-  project.save
-  puts "✅ Thành công: Đã link AirliftFFI.framework vào target EnsWilde!"
 '
 
 # =============================================================================
