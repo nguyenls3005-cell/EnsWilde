@@ -45,7 +45,7 @@ struct ContentView: View {
     @ViewBuilder
     private var statusSection: some View {
         Section(header: Text("System Status").font(.headline)) {
-            HStack m(spacing: 12) {
+            HStack(spacing: 12) {
                 Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("System Status").font(.body)
