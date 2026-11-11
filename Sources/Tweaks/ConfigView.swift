@@ -66,8 +66,8 @@ struct ConfigView: View {
                 }
 
                 Button(role: .destructive) {
-                    // Reset toàn bộ @AppStorage về mặc định, UI sẽ tự update
-                    toolStore.configTweaksEnabled = false
+                    // 🔥 FIX: KHÔNG tắt toolStore.configTweaksEnabled
+                    // Chỉ clear các field. Toggle giữ ON để Apply vẫn chạy → xoá file trên máy.
                     footnoteText = ""
                     supervised = false
                     orgName = ""
