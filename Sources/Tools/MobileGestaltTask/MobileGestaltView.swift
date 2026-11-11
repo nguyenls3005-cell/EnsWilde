@@ -202,9 +202,9 @@ struct MobileGestaltView: View {
     @ViewBuilder private var displayAndUISection: some View {
         Section(header: Text(L("section_display_and_ui"))) {
             IconToggle(title: L("mg_stage_manager"), systemImage: "rectangle.on.rectangle.angled", isOn: store.mgByteBinding(key: MGKey.stageMgr))
-            IconToggle(title: L("mg_aod"), systemImage: "moon.stars.fill", isOn: store.mgByteBinding(key: MGKey.aod))
+            IconToggle(title: L("mg_aod"), systemImage: "moon.stars.fill", isOn: store.mgByteBinding(key: MGKey.AOD))
                 .disabled(Utils.requiresVersion(18))
-            IconToggle(title: L("mg_aod_vibrancy"), systemImage: "circle.lefthalf.filled", isOn: store.mgByteBinding(key: MGKey.aodVibrancy))
+            IconToggle(title: L("mg_aod_vibrancy"), systemImage: "circle.lefthalf.filled", isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                 .disabled(Utils.requiresVersion(18))
             Toggle(isOn: store.mgTrollPadBinding()) {
                 HStack(spacing: 12) {
