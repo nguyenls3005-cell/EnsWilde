@@ -4,7 +4,6 @@
 
 # EnsWilde (Mobile)
   <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-2.0-E6753A?style=flat-square">
   <img alt="iOS" src="https://img.shields.io/badge/iOS%20%7C%20iPadOS-27-000000?style=flat-square&logo=apple&logoColor=white" alt="Platform">
   <img alt="Swift" src="https://img.shields.io/badge/swift-%23F54A2A.svg?style=for-the-badge&logo=swift&logoColor=white">
 </p>
