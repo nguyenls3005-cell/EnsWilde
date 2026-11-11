@@ -74,7 +74,6 @@ struct MobileGestaltView: View {
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            // Đảm bảo Store có dữ liệu
             if store.mgCurrentDict.count == 0 {
                 store.loadFromPlist(url: modMGURL)
             }
@@ -85,7 +84,6 @@ struct MobileGestaltView: View {
                 showErrorAlert.toggle()
                 return
             }
-            // Đồng bộ lại UI từ Store
             mobileGestalt = store.mgCurrentDict
             hydrateFromDict()
         }
@@ -103,7 +101,6 @@ struct MobileGestaltView: View {
     }
 
     private func hydrateFromDict() {
-        // Reset mặc định trước khi load
         dynamicIslandType = 0
         enableCustomSubtype = false
         customSubtypeValue = ""
@@ -154,7 +151,7 @@ struct MobileGestaltView: View {
                 Text(L("mg_subtype_2622")).tag(5)
                 Text(L("mg_subtype_2868")).tag(6)
                 Text(L("mg_subtype_2736")).tag(7)
-                Text("Custom Subtype").tag(-1) // Thêm option custom
+                Text("Custom Subtype").tag(-1)
             } label: {
                 MGIconPickerLabel(title: L("mg_device_subtype_preset"), systemImage: "iphone")
             }
@@ -168,7 +165,6 @@ struct MobileGestaltView: View {
                 }
             }
 
-            // Custom Subtype UI
             if enableCustomSubtype {
                 Toggle("Enable Custom Subtype", isOn: $enableCustomSubtype)
                 if enableCustomSubtype {
@@ -305,47 +301,73 @@ struct MobileGestaltView: View {
         }
     }
 
-    // 🔥 ĐÃ FIX: Tắt luôn công tắc khi Restore
+    // 🔥 RESET – Không tắt toggle, xoá cứng toàn bộ key tweak
     private func resetOriginal() {
         do {
-            // 1. Lấy dữ liệu backup nguyên bản
+            // 1. Lấy nguồn dữ liệu gốc
             let pristineData: Data
             if MobileGestaltBackupManager.shared.hasBackup {
                 pristineData = try MobileGestaltBackupManager.shared.restoreData()
             } else {
-                // Nếu chưa có backup, lấy file hệ thống gốc làm chuẩn
                 pristineData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
             }
             
             guard pristineData.count > 0 else {
-                throw NSError(domain: "Reset", code: -1, userInfo: [NSLocalizedDescriptionKey: "Dữ liệu backup bị rỗng! Không thể khôi phục."])
+                throw NSError(domain: "Reset", code: -1, userInfo: [NSLocalizedDescriptionKey: "Dữ liệu backup bị rỗng!"])
             }
 
-            // 2. Ghi đè lên file local
-            try pristineData.write(to: modMGURL)
-            
-            // 3. Load lại từ file local vào State & Store
-            let freshDict = try NSMutableDictionary(contentsOf: modMGURL, error: ())
-            self.mobileGestalt = freshDict
-            
-            store.mgCurrentDict = freshDict
+            // 2. Parse thành NSMutableDictionary
+            guard let dict = try PropertyListSerialization.propertyList(from: pristineData, options: .mutableContainersAndLeaves, format: nil) as? NSMutableDictionary else {
+                throw NSError(domain: "Reset", code: -2, userInfo: [NSLocalizedDescriptionKey: "Không parse được plist"])
+            }
+
+            // 3. 🔥 XOÁ CỨNG toàn bộ key tweak khỏi CacheExtra
+            //    (không tin backup có thể đã nhiễm tweak từ lần save trước)
+            if let cacheExtra = dict["CacheExtra"] as? NSMutableDictionary {
+                let allTweakKeys: [String] = [
+                    MGKey.island, MGKey.AOTime, MGKey.AOD, MGKey.AODVibrancy,
+                    MGKey.chargeLim, MGKey.bootChime, MGKey.intInstall, MGKey.intBuild,
+                    MGKey.srd, MGKey.appIntell, MGKey.stageMgr, MGKey.crashDet,
+                    MGKey.pwm, MGKey.appPencil, MGKey.camButton, MGKey.grapPefr,
+                    MGKey.actButton, MGKey.tapToWake, MGKey.regionCode, MGKey.regionSysconfig,
+                    "9MZ5AdH43csAUajl/dU+IQ"
+                ] + MGKey.ipadosCacheEx
+                
+                for key in allTweakKeys {
+                    cacheExtra.removeObject(forKey: key)
+                }
+                
+                // Xoá key con trong Artwork (dynamic island + model name)
+                if let artwork = cacheExtra[MGKey.artwork] as? NSMutableDictionary {
+                    artwork.removeObject(forKey: "ArtworkDeviceSubType")
+                    artwork.removeObject(forKey: "ArtworkDeviceProductDescription")
+                }
+            }
+
+            // 4. Ghi dict đã làm sạch vào modMGURL
+            try dict.write(to: modMGURL)
+
+            // 5. Update state và store
+            self.mobileGestalt = dict
+            store.mgCurrentDict = dict
             store.objectWillChange.send()
-            
-            // 4. Reset cứng UI
+
+            // 6. Reset UI state
             dynamicIslandType = 0
             enableCustomSubtype = false
             customSubtypeValue = ""
             enableModelName = false
             modelName = ""
-            
-            // 🔥 TẮT CÔNG TẮC TÍNH NĂNG
-            toolStore.replaceMobileGestaltEnabled = false
-            
-            // 5. Hydrate lại (để lấy đúng dữ liệu nếu file pristine có sẵn tweaks)
+            productType = MobileGestaltView.machineName()
+
+            // 🔥 KHÔNG tắt toggle – để user sang tab Apply bấm chạy
+            // toolStore.replaceMobileGestaltEnabled = false  ← KHÔNG ĐƯỢC CÓ
+
+            // 7. Đồng bộ UI lần cuối
             hydrateFromDict()
-            
+
             showApplyTab = true
-            lastError = "Đã khôi phục về nguyên bản, xoá sạch key cũ. Bấm Apply để ghi đè lên thiết bị."
+            lastError = "Đã reset. Sang tab Apply để ghi đè lên thiết bị."
             showErrorAlert = true
         } catch {
             lastError = "Reset failed: \(error)"
