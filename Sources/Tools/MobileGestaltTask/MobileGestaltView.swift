@@ -305,7 +305,7 @@ struct MobileGestaltView: View {
         }
     }
 
-    // SỬA LẠI: Xoá sạch key cũ, reset UI, load lại nguyên bản từ backup
+    // 🔥 ĐÃ FIX: Tắt luôn công tắc khi Restore
     private func resetOriginal() {
         do {
             // 1. Lấy dữ liệu backup nguyên bản
@@ -337,6 +337,9 @@ struct MobileGestaltView: View {
             customSubtypeValue = ""
             enableModelName = false
             modelName = ""
+            
+            // 🔥 TẮT CÔNG TẮC TÍNH NĂNG
+            toolStore.replaceMobileGestaltEnabled = false
             
             // 5. Hydrate lại (để lấy đúng dữ liệu nếu file pristine có sẵn tweaks)
             hydrateFromDict()
