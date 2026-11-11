@@ -17,10 +17,11 @@ enum ConfigTweaksApplyTask {
         let isSupervised = UserDefaults.standard.bool(forKey: "ConfigSupervised")
         let orgName = UserDefaults.standard.string(forKey: "ConfigOrgName") ?? "EnsWilde"
 
-        if footnoteText.isEmpty && !isSupervised {
-            onLogUpdate("[Config] Không có thay đổi nào để ghi.")
-            return
-        }
+        // 🔥 ĐÃ FIX: Bỏ đoạn early-return để app có thể xoá key khi Restore
+        // if footnoteText.isEmpty && !isSupervised {
+        //     onLogUpdate("[Config] Không có thay đổi nào để ghi.")
+        //     return
+        // }
 
         let fm = FileManager.default
 
