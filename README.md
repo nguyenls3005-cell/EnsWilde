@@ -3,6 +3,7 @@
 </div>
 
 # EnsWilde (Mobile)
+  <img src="https://img.shields.io/badge/iOS%20%7C%20iPadOS-27-000000?style=flat-square&logo=apple&logoColor=white" alt="Platform">
 
 **EnsWilde** is a tool utilizing `Worse_query` & `Airlift` exploits, designed for iPhone and iPad running the  **Worse_query iOS Version 27.0-27.3 (24C5370i) Airlift iOS Version : 26.0-27.2 Beta 2**.
 
