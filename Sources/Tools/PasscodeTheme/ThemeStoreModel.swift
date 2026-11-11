@@ -291,14 +291,12 @@ class ThemeStoreManager: ObservableObject {
             downloadProgress.removeValue(forKey: theme.id)
         }
 
-        // Download với retry 3 lần
         var lastError: Error?
         var downloadedURL: URL?
         for attempt in 1...3 {
             do {
                 let (url, response) = try await Self.downloadSession.download(from: downloadURL)
 
-                // ⚡ Validate: phải là file thật, không phải HTML error page
                 if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                     throw NSError(domain: "ThemeStore", code: http.statusCode,
                                   userInfo: [NSLocalizedDescriptionKey: "Server trả HTTP \(http.statusCode)"])
@@ -309,7 +307,12 @@ class ThemeStoreManager: ObservableObject {
                                   userInfo: [NSLocalizedDescriptionKey: "File tải về quá nhỏ (\(size) bytes) — có thể là lỗi server."])
                 }
 
-                downloadedURL = url
+                // 🔥 FIX: Copy file ra temp an toàn vì file từ URLSession có thể bị xoá bất cứ lúc nào
+                let safeURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).zip")
+                try? FileManager.default.removeItem(at: safeURL)
+                try FileManager.default.copyItem(at: url, to: safeURL)
+
+                downloadedURL = safeURL
                 break
             } catch {
                 lastError = error
@@ -324,56 +327,58 @@ class ThemeStoreManager: ObservableObject {
                                        userInfo: [NSLocalizedDescriptionKey: "Download thất bại sau 3 lần."])
         }
 
+        defer { try? FileManager.default.removeItem(at: srcURL) }
         try await importThemeDirectly(from: srcURL, name: theme.name, store: themeStore)
     }
 
-    // ⚡ FIX: dùng extractImagesRecursively (handle mọi cấu trúc theme)
+    // ⚡ FIX: Đẩy việc giải nén ra Background Thread để không đơ UI
     private func importThemeDirectly(from sourceURL: URL, name: String, store: PasscodeThemeStore) async throws {
         let newTheme = PasscodeTheme(name: name)
         let folder = newTheme.themeFolderURL
-
-        // Xoá nếu có folder cũ trùng UUID (rare, nhưng an toàn)
-        try? FileManager.default.removeItem(at: folder)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-
-        let detected = detectSizeFromZIP(at: sourceURL)
-
-        // Unzip
-        do {
-            try FileManager.default.unzipItem(at: sourceURL, to: folder)
-        } catch {
+        
+        let finalTheme = try await Task.detached(priority: .userInitiated) { () -> PasscodeTheme in
             try? FileManager.default.removeItem(at: folder)
-            throw ThemeStoreError.unzipFailed
-        }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
-        // ⚡ Recursive extract — handle mọi cấu trúc (file ở root, folder lồng, Telephony*)
-        do {
-            try PasscodeThemeViewModel.extractImagesRecursively(themeFolder: folder)
-        } catch {
-            try? FileManager.default.removeItem(at: folder)
-            throw ThemeStoreError.unzipFailed
-        }
+            let detected = ThemeStoreManager.detectSizeFromZIPStatic(at: sourceURL)
 
-        // Validate: phải có ít nhất 1 ảnh
-        let hasImages = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?
-            .contains { f in
-                let ext = (f as NSString).pathExtension.lowercased()
-                return ext == "png" || ext == "jpg" || ext == "jpeg"
-            } ?? false
-        guard hasImages else {
-            try? FileManager.default.removeItem(at: folder)
-            throw NSError(domain: "ThemeStore", code: -3,
-                          userInfo: [NSLocalizedDescriptionKey: "Theme không có ảnh nào sau khi giải nén."])
-        }
+            do {
+                try FileManager.default.unzipItem(at: sourceURL, to: folder)
+            } catch {
+                try? FileManager.default.removeItem(at: folder)
+                throw ThemeStoreError.unzipFailed
+            }
 
-        var t = newTheme
-        t.detectedSize = detected
-        if detected == .big { t.keySize = .big }
-        store.addTheme(t)
+            do {
+                try PasscodeThemeViewModel.extractImagesRecursively(themeFolder: folder)
+            } catch {
+                try? FileManager.default.removeItem(at: folder)
+                throw ThemeStoreError.unzipFailed
+            }
+
+            let hasImages = (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?
+                .contains { f in
+                    let ext = (f as NSString).pathExtension.lowercased()
+                    return ext == "png" || ext == "jpg" || ext == "jpeg"
+                } ?? false
+            guard hasImages else {
+                try? FileManager.default.removeItem(at: folder)
+                throw NSError(domain: "ThemeStore", code: -3,
+                              userInfo: [NSLocalizedDescriptionKey: "Theme không có ảnh nào sau khi giải nén."])
+            }
+
+            var t = newTheme
+            t.detectedSize = detected
+            if detected == .big { t.keySize = .big }
+            return t
+        }.value
+        
+        // Thêm vào Store ở Main Thread
+        store.addTheme(finalTheme)
     }
 
-    // ⚡ Gộp 1 pass
-    private func detectSizeFromZIP(at zipURL: URL) -> PasscodeTheme.DetectedSize {
+    // 🔥 FIX: Thêm hàm static để chạy được ở Background Thread
+    nonisolated private static func detectSizeFromZIPStatic(at zipURL: URL) -> PasscodeTheme.DetectedSize {
         do {
             let archive = try Archive(url: zipURL, accessMode: .read)
             var sawBig = false
