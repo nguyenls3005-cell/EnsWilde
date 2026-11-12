@@ -4,102 +4,62 @@ import CryptoKit
 final class MobileGestaltBackupManager {
     static let shared = MobileGestaltBackupManager()
 
-    struct BackupInfo {
-        let createdAt: Date
-        let byteCount: Int
+    struct BackupRecord {
+        let id: UUID
+        let url: URL
         let sha256: String
-    }
-
-    enum BackupError: LocalizedError {
-        case writeFailed, readFailed, noBackup, invalidData
-        var errorDescription: String? {
-            switch self {
-            case .writeFailed: return "Không ghi được file backup."
-            case .readFailed: return "Không đọc được file backup."
-            case .noBackup: return "Chưa có backup. Bấm Save lần đầu hoặc Apply trước."
-            case .invalidData: return "File không phải MobileGestalt plist hợp lệ."
-            }
-        }
+        let byteCount: Int
+        let date: Date
     }
 
     private let fm = FileManager.default
-
-    private var backupDirectory: URL {
-        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appendingPathComponent("EnsWilde/Backup", isDirectory: true)
-    }
-
-    // Pristine backup (chỉ tạo 1 lần, dùng cho Reset Original)
-    private var pristineURL: URL { backupDirectory.appendingPathComponent("MobileGestalt.plist") }
-    private var metaURL: URL { backupDirectory.appendingPathComponent("backup.json") }
-
-    var hasBackup: Bool { fm.fileExists(atPath: pristineURL.path) }
-
-    var info: BackupInfo? {
-        guard hasBackup else { return nil }
-        let attrs = try? fm.attributesOfItem(atPath: pristineURL.path)
-        let date = attrs?[.creationDate] as? Date
-        let size = attrs?[.size] as? Int ?? 0
-        let digest = (try? Data(contentsOf: pristineURL)).map { Self.sha256($0) } ?? ""
-        return BackupInfo(createdAt: date ?? Date(), byteCount: size, sha256: digest)
-    }
-
-    // PORT GestaltBackupStore.create: tạo file timestamped mỗi lần ghi
-    @discardableResult
-    func createBackup(from data: Data) throws -> URL {
-        try fm.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss-SSS"
-        let url = backupDirectory
-            .appendingPathComponent("MobileGestalt_\(formatter.string(from: Date()))")
-            .appendingPathExtension("plist")
-        do { try data.write(to: url, options: .atomic) }
-        catch { throw BackupError.writeFailed }
-        return url
-    }
-
-    // Chỉ tạo 1 lần (dùng cho pristine, giữ tương thích cũ)
-    @discardableResult
-    func ensureBackup(from data: Data) throws -> BackupInfo {
-        if hasBackup, let info { return info }
-        try fm.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
-        guard (try? data.write(to: pristineURL, options: .withoutOverwriting)) != nil else {
-            throw BackupError.writeFailed
-        }
-        let meta: [String: Any] = [
-            "createdAt": ISO8601DateFormatter().string(from: Date()),
-            "byteCount": data.count,
-            "sha256": Self.sha256(data)
-        ]
-        if let metaData = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted]) {
-            try? metaData.write(to: metaURL)
-        }
-        return BackupInfo(createdAt: Date(), byteCount: data.count, sha256: Self.sha256(data))
-    }
-
-    func importBackup(from data: Data) throws {
-        guard (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) != nil else {
-            throw BackupError.invalidData
-        }
-        try fm.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
-        do { try data.write(to: pristineURL, options: .atomic) }
-        catch { throw BackupError.writeFailed }
-    }
-
-    // Đọc pristine (MobileGestalt.plist cố định)
-    func restoreData() throws -> Data {
-        guard hasBackup else { throw BackupError.noBackup }
-        return try Data(contentsOf: pristineURL)
-    }
-
-    func clearBackup() throws {
-        if hasBackup { try fm.removeItem(at: pristineURL) }
-        if fm.fileExists(atPath: metaURL.path) { try? fm.removeItem(at: metaURL) }
+    private var backupDir: URL {
+        fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("EnsWilde/Backups", isDirectory: true)
     }
 
     static func sha256(_ data: Data) -> String {
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    @discardableResult
+    func createBackup(from data: Data, reason: String = "Before applying") throws -> BackupRecord {
+        try fm.createDirectory(at: backupDir, withIntermediateDirectories: true)
+        let id = UUID()
+        let url = backupDir.appendingPathComponent("\(id.uuidString).plist")
+        try data.write(to: url, options: .atomic)
+        
+        let hash = Self.sha256(data)
+        let meta = ["id": id.uuidString, "sha256": hash, "byteCount": "\(data.count)", "reason": reason]
+        let metaURL = backupDir.appendingPathComponent("\(id.uuidString).json")
+        try JSONSerialization.data(withJSONObject: meta).write(to: metaURL)
+        
+        return BackupRecord(id: id, url: url, sha256: hash, byteCount: data.count, date: Date())
+    }
+
+    func backupData(_ record: BackupRecord) throws -> Data {
+        let data = try Data(contentsOf: record.url)
+        guard data.count == record.byteCount, Self.sha256(data) == record.sha256 else {
+            throw NSError(domain: "Backup", code: -1, userInfo: [NSLocalizedDescriptionKey: "Backup bị hỏng (SHA256 không khớp)."])
+        }
+        return data
+    }
+
+    func latestBackup() -> BackupRecord? {
+        guard let files = try? fm.contentsOfDirectory(at: backupDir, includingPropertiesForKeys: [.creationDateKey], options: .skipsHiddenFiles) else { return nil }
+        let plists = files.filter { $0.pathExtension == "plist" }
+        guard let latest = plists.max(by: { url1, url2 in
+            let d1 = (try? url1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            let d2 = (try? url2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            return d1 < d2
+        }) else { return nil }
+        
+        guard let id = UUID(uuidString: latest.deletingPathExtension().lastPathComponent),
+              let metaData = try? Data(contentsOf: backupDir.appendingPathComponent("\(id.uuidString).json")),
+              let meta = try? JSONSerialization.jsonObject(with: metaData) as? [String: String],
+              let hash = meta["sha256"], let countStr = meta["byteCount"], let count = Int(countStr) else { return nil }
+        
+        return BackupRecord(id: id, url: latest, sha256: hash, byteCount: count, date: Date())
     }
 }
