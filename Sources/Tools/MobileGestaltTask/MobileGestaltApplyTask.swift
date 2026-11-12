@@ -20,7 +20,7 @@ enum MobileGestaltApplyTask {
             throw mgError(-1, "Store rỗng. Hãy bấm Save trước khi Apply.")
         }
 
-        // 2. Xin quyền MCM TRƯỚC (fix Apply không chạy)
+        // 2. 🔥 XIN QUYỀN MCM TRƯỚC (fix Apply không chạy)
         onLogUpdate("[MG] Đang xin quyền ghi (Native WorseQuery)...")
         guard let task = SecTaskCreateFromSelf(nil),
               let entitlements = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil) as? [String],
