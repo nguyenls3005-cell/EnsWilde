@@ -25,25 +25,15 @@ enum MobileGestaltApplyTask {
             throw mgError(-2, "Không tìm thấy MobileGestalt.plist.")
         }
 
-        // 🔥 FIX GESTER: Backup LUÔN lấy từ file gốc lúc cài (OriginalMobileGestalt.plist)
-        // Nếu chưa có file gốc thì mới lấy từ máy (trường hợp xấu nhất)
+        // Tự động backup nếu chưa có (chỉ lần đầu)
         if !MobileGestaltBackupManager.shared.hasBackup {
-            onLogUpdate("[MG] Đang backup pristine...")
-            let docs = URL.documentsDirectory
-            let origURL = docs.appendingPathComponent("OriginalMobileGestalt.plist")
-            
-            if FileManager.default.fileExists(atPath: origURL.path),
-               let origData = try? Data(contentsOf: origURL), !origData.isEmpty {
-                try MobileGestaltBackupManager.shared.ensureBackup(from: origData)
-                onLogUpdate("[MG] ✅ Đã backup từ file gốc lúc cài.")
-            } else {
-                let originalData = try Data(contentsOf: mgURL)
-                guard (try? PropertyListSerialization.propertyList(from: originalData, format: nil)) != nil else {
-                    throw mgError(-3, "File gốc không parse được — dừng để tránh bootloop.")
-                }
-                try MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
-                onLogUpdate("[MG] ⚠️ Đã backup từ máy (có thể nhiễm nếu đã tweak trước đó).")
+            onLogUpdate("[MG] Đang backup pristine (lần đầu)...")
+            let originalData = try Data(contentsOf: mgURL)
+            guard (try? PropertyListSerialization.propertyList(from: originalData, format: nil)) != nil else {
+                throw mgError(-3, "File gốc không parse được — dừng để tránh bootloop.")
             }
+            try MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
+            onLogUpdate("[MG] ✅ Đã backup pristine.")
         }
 
         onLogUpdate("[MG] Đang serialize plist...")
