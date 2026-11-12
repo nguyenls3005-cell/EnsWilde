@@ -57,7 +57,7 @@ final class GestaltStore: ObservableObject {
         ) else { return nil }
         let obj = cf.takeRetainedValue()
         guard let dict = (obj as? NSDictionary) as? NSMutableDictionary else { return nil }
-        // Defensive: force CacheExtra / CacheData mutable
+        // Force CacheExtra / CacheData mutable
         if let ce = dict["CacheExtra"] as? NSDictionary, !(ce is NSMutableDictionary) {
             dict["CacheExtra"] = NSMutableDictionary(dictionary: ce)
         }
