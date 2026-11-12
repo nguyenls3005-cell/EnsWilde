@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import CoreFoundation
 
 enum MGURL {
     static let fsGestaltURL = URL(fileURLWithPath: "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist")
@@ -44,27 +45,20 @@ final class GestaltStore: ObservableObject {
         return mgCurrentDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
     }
     
-    // 🔥 FIX: Load với .mutableContainersAndLeaves + force-mutable CacheExtra/CacheData
+    // 🔥 PORT Y CHANG `[NSMutableDictionary dictionaryWithContentsOfFile:]` của Gester
+    // CFPropertyListCreateWithData với kCFPropertyListMutableContainersAndLeaves
     static func loadMutableDict(from url: URL) -> NSMutableDictionary? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let parsed = try? PropertyListSerialization.propertyList(
-            from: data,
-            options: [.mutableContainers, .mutableContainersAndLeaves],
-            format: nil
-        ) as? NSMutableDictionary else { return nil }
-        
-        // Force CacheExtra mutable
-        if let ce = parsed["CacheExtra"] as? NSDictionary {
-            parsed["CacheExtra"] = NSMutableDictionary(dictionary: ce)
-        }
-        // Force CacheData mutable
-        if let cd = parsed["CacheData"] as? Data {
-            parsed["CacheData"] = NSMutableData(data: cd)
-        } else if let cd = parsed["CacheData"] as? NSData, !(cd is NSMutableData) {
-            parsed["CacheData"] = NSMutableData(data: cd as Data)
-        }
-        
-        return parsed
+        var format = CFPropertyListFormat.binaryFormat_v1_0
+        var error: Unmanaged<CFError>?
+        guard let plist = CFPropertyListCreateWithData(
+            kCFAllocatorDefault,
+            data as CFData,
+            CFOptionFlags(kCFPropertyListMutableContainersAndLeaves),
+            &format,
+            &error
+        ) else { return nil }
+        return plist.takeRetainedValue() as? NSMutableDictionary
     }
     
     func loadFromPlist(url: URL) {
@@ -77,7 +71,6 @@ final class GestaltStore: ObservableObject {
         guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSDictionary,
               let uid = cacheExtra[key] as? Int else { return nil }
         let uidBytes = withUnsafeBytes(of: uid.littleEndian) { Data($0) }
-        
         guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return nil }
         return cacheData.range(of: uidBytes)?.lowerBound
     }
@@ -92,14 +85,11 @@ final class GestaltStore: ObservableObject {
             return (self.cacheExtra[key] as? Int) == Int(enableValue)
         }, set: { enabled in
             self.objectWillChange.send()
-            
             if enabled { self.cacheExtra[key] = Int(enableValue) }
             else { self.cacheExtra.removeObject(forKey: key) }
-            
             guard let offset = self.FindCacheDataOffset(key),
                   let mutableData = self.mgCurrentDict["CacheData"] as? NSMutableData,
                   offset < mutableData.length else { return }
-            
             var value = enabled ? enableValue : disableValue
             mutableData.replaceBytes(in: NSRange(location: offset, length: 1), withBytes: &value)
         })
@@ -107,9 +97,7 @@ final class GestaltStore: ObservableObject {
 
     func applyDynamicIsland(type: Int, customValue: Int? = nil) -> Bool {
         guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSMutableDictionary else { return false }
-        
         let subtypeValues: [Int] = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736]
-        
         if type == 0 {
             cacheExtra.removeObject(forKey: MGKey.island)
         } else {
