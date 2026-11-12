@@ -4,6 +4,12 @@ import CryptoKit
 final class MobileGestaltBackupManager {
     static let shared = MobileGestaltBackupManager()
 
+    // ✅ NEW: kiểu dữ liệu SettingsView dùng để hiển thị (createdAt + byteCount)
+    struct BackupInfo {
+        let createdAt: Date
+        let byteCount: Int
+    }
+
     struct BackupRecord {
         let id: UUID
         let url: URL
@@ -61,5 +67,45 @@ final class MobileGestaltBackupManager {
               let hash = meta["sha256"], let countStr = meta["byteCount"], let count = Int(countStr) else { return nil }
         
         return BackupRecord(id: id, url: latest, sha256: hash, byteCount: count, date: Date())
+    }
+
+    // MARK: - ✅ NEW: API mà SettingsView đang gọi (line 276 / 595 / 600 / 601 / 607 / 613)
+
+    /// Dùng ở SettingsView line 600
+    var hasBackup: Bool {
+        return latestBackup() != nil
+    }
+
+    /// Dùng ở SettingsView line 601 (hiển thị createdAt + byteCount)
+    var info: BackupInfo? {
+        guard let record = latestBackup() else { return nil }
+        let createdAt = (try? record.url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? record.date
+        return BackupInfo(createdAt: createdAt, byteCount: record.byteCount)
+    }
+
+    /// Dùng ở SettingsView line 595 — import file user chọn thành 1 backup mới
+    func importBackup(from data: Data) throws {
+        _ = try createBackup(from: data, reason: "Imported")
+    }
+
+    /// Dùng ở SettingsView line 607 — tạo backup nếu chưa có hoặc data khác bản gần nhất
+    @discardableResult
+    func ensureBackup(from data: Data) throws -> BackupInfo {
+        let newHash = Self.sha256(data)
+        if let existing = latestBackup(), existing.sha256 == newHash {
+            let createdAt = (try? existing.url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? existing.date
+            return BackupInfo(createdAt: createdAt, byteCount: existing.byteCount)
+        }
+        let record = try createBackup(from: data, reason: "Backup Now")
+        let createdAt = (try? record.url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? record.date
+        return BackupInfo(createdAt: createdAt, byteCount: record.byteCount)
+    }
+
+    /// Dùng ở SettingsView line 613 — xoá toàn bộ backup (.plist + .json)
+    func clearBackup() throws {
+        guard let files = try? fm.contentsOfDirectory(at: backupDir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else { return }
+        for file in files {
+            try? fm.removeItem(at: file)
+        }
     }
 }
