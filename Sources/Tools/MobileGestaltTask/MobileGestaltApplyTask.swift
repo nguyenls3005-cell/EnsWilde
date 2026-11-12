@@ -8,6 +8,15 @@ enum MobileGestaltApplyTask {
     static var onDeviceMGPath: String { MGURL.fsGestaltURL.path }
 
     private static func writeGestalt(data: Data) throws {
+        // 1. Gỡ cờ immutable nếu có
+        var st = stat()
+        if stat(onDeviceMGPath, &st) == 0, (st.st_flags & UInt32(UF_IMMUTABLE)) != 0 {
+            if chflags(onDeviceMGPath, st.st_flags & ~UInt32(UF_IMMUTABLE)) != 0 {
+                throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: "Không thể gỡ cờ immutable (errno=\(errno))"])
+            }
+        }
+
+        // 2. Mở file
         let fd = open(onDeviceMGPath, O_WRONLY | O_CLOEXEC | O_NOFOLLOW)
         guard fd >= 0 else {
             throw NSError(domain: "MG", code: -1, userInfo: [NSLocalizedDescriptionKey: "Mở file thất bại (errno=\(errno))"])
@@ -15,12 +24,14 @@ enum MobileGestaltApplyTask {
         
         let originalData = try? Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         
+        // 3. Ghi đè原位: truncate -> lseek -> write -> fsync
         let wrote = ftruncate(fd, 0) == 0 &&
                     lseek(fd, 0, SEEK_SET) == 0 &&
                     writeAll(fd: fd, data: data) &&
                     fsync(fd) == 0
                     
         if !wrote {
+            // Rollback
             ftruncate(fd, 0)
             lseek(fd, 0, SEEK_SET)
             if let original = originalData {
@@ -32,8 +43,13 @@ enum MobileGestaltApplyTask {
         }
         close(fd)
         
+        // 4. Verify byte-by-byte
         let verification = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         guard verification == data else {
+            // Nếu verify thất bại, thử rollback
+            if let original = originalData {
+                try? original.write(to: URL(fileURLWithPath: onDeviceMGPath), options: .atomic)
+            }
             throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: "Verify thất bại: dữ liệu không khớp."])
         }
     }
@@ -68,6 +84,7 @@ enum MobileGestaltApplyTask {
     }
 
     static func applyGestalt(store: GestaltStore, onLogUpdate: @escaping (String) -> Void) async throws {
+        // 1. Escape
         guard let task = SecTaskCreateFromSelf(nil),
               let entitlements = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil) as? [String],
               let group = entitlements.first else {
@@ -81,14 +98,17 @@ enum MobileGestaltApplyTask {
         }
         defer { NativeWorseQuery.shared.releaseAll() }
         
+        // 2. Đọc dữ liệu hiện tại (bên trong scope escape)
         let expectedData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         let plistData = try PropertyListSerialization.data(fromPropertyList: store.mgCurrentDict, format: .binary, options: 0)
         
+        // 3. Commit
         _ = try commit(expectedData: expectedData, editedData: plistData, reason: "Before applying")
         onLogUpdate("[MG] ✅ Apply thành công.")
     }
     
     static func restoreGestalt(record: MobileGestaltBackupManager.BackupRecord, onLogUpdate: @escaping (String) -> Void) async throws {
+        // 1. Escape
         guard let task = SecTaskCreateFromSelf(nil),
               let entitlements = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil) as? [String],
               let group = entitlements.first else {
@@ -102,9 +122,11 @@ enum MobileGestaltApplyTask {
         }
         defer { NativeWorseQuery.shared.releaseAll() }
         
+        // 2. Đọc backup và dữ liệu hiện tại
         let backupData = try MobileGestaltBackupManager.shared.backupData(record)
         let expectedData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         
+        // 3. Commit
         _ = try commit(expectedData: expectedData, editedData: backupData, reason: "Before restoring")
         onLogUpdate("[MG] ✅ Restore thành công.")
     }
