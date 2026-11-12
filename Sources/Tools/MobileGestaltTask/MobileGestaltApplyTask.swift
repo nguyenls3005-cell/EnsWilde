@@ -10,17 +10,17 @@ enum MobileGestaltApplyTask {
 
     static func applyGestalt(store: GestaltStore,
                              onLogUpdate: @escaping (String) -> Void) async throws {
-        // 1. Load store từ file local nếu rỗng (không cần escape)
+        // 1. Load store nếu rỗng
         if store.mgCurrentDict.count == 0 {
             let modURL = URL.documentsDirectory.appendingPathComponent("ModifiedMobileGestalt.plist")
             store.loadFromPlist(url: modURL)
         }
 
         guard store.mgCurrentDict.count > 0 else {
-            throw mgError(-1, "Store rỗng. Hãy bấm Reset Original hoặc lưu lại trước khi Apply.")
+            throw mgError(-1, "Store rỗng. Hãy bấm Save trước khi Apply.")
         }
 
-        // 2. 🔥 XIN QUYỀN MCM NGAY ĐẦU (trước mọi thao tác file)
+        // 2. Xin quyền MCM TRƯỚC (fix Apply không chạy)
         onLogUpdate("[MG] Đang xin quyền ghi (Native WorseQuery)...")
         guard let task = SecTaskCreateFromSelf(nil),
               let entitlements = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil) as? [String],
@@ -31,12 +31,12 @@ enum MobileGestaltApplyTask {
         let targetDir = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches"
         let (handle, accessMsg) = NativeWorseQuery.shared.grantAccess(targetPath: targetDir, appGroupID: group)
         guard handle > 0 else {
-            throw mgError(-5, "Xin quyền MCM thất bại: \(accessMsg). Hãy chắc chắn cert có App Group hợp lệ.")
+            throw mgError(-5, "Xin quyền MCM thất bại: \(accessMsg).")
         }
         onLogUpdate("[MG] ✅ Đã được cấp quyền ghi.")
         defer { NativeWorseQuery.shared.releaseAll() }
 
-        // 3. Giờ file đã accessible. Check tồn tại + backup nếu chưa có
+        // 3. File check + backup (bây giờ mới làm được)
         let mgURL = URL(fileURLWithPath: onDeviceMGPath)
         guard FileManager.default.fileExists(atPath: onDeviceMGPath) else {
             throw mgError(-2, "Không tìm thấy MobileGestalt.plist.")
@@ -46,25 +46,23 @@ enum MobileGestaltApplyTask {
             onLogUpdate("[MG] Đang backup pristine (lần đầu)...")
             let originalData = try Data(contentsOf: mgURL)
             guard (try? PropertyListSerialization.propertyList(from: originalData, format: nil)) != nil else {
-                throw mgError(-3, "File gốc không parse được — dừng để tránh bootloop.")
+                throw mgError(-3, "File gốc không parse được.")
             }
             try MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
             onLogUpdate("[MG] ✅ Đã backup pristine.")
         }
 
-        // 4. Serialize store
+        // 4. Serialize + ghi
         onLogUpdate("[MG] Đang serialize plist...")
         let plistData = try PropertyListSerialization.data(
             fromPropertyList: store.mgCurrentDict, format: .binary, options: 0
         )
 
-        // 5. Gỡ cờ immutable
         var st = stat()
         if stat(onDeviceMGPath, &st) == 0, (st.st_flags & UInt32(UF_IMMUTABLE)) != 0 {
             _ = chflags(onDeviceMGPath, st.st_flags & ~UInt32(UF_IMMUTABLE))
         }
 
-        // 6. Ghi in-place
         onLogUpdate("[MG] Đang ghi đè MobileGestalt.plist (In-place)...")
         let fd = open(onDeviceMGPath, O_RDWR | O_CLOEXEC)
         guard fd >= 0 else {
@@ -83,7 +81,7 @@ enum MobileGestaltApplyTask {
 
         _ = fcntl(fd, F_FULLFSYNC)
 
-        // 7. Verify
+        // 5. Verify
         onLogUpdate("[MG] Verify file sau khi ghi...")
         do {
             let writtenData = try Data(contentsOf: mgURL)
