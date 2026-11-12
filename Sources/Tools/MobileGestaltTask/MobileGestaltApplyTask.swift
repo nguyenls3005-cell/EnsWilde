@@ -12,6 +12,7 @@ enum MobileGestaltApplyTask {
                              onLogUpdate: @escaping (String) -> Void) async throws {
         let mgURL = URL(fileURLWithPath: onDeviceMGPath)
 
+        // Nếu store rỗng do chưa load, thử load lại từ file modified
         if store.mgCurrentDict.count == 0 {
             let modURL = URL.documentsDirectory.appendingPathComponent("ModifiedMobileGestalt.plist")
             store.loadFromPlist(url: modURL)
@@ -24,7 +25,7 @@ enum MobileGestaltApplyTask {
             throw mgError(-2, "Không tìm thấy MobileGestalt.plist.")
         }
 
-        // 🔥 FIX: Backup LUÔN lấy từ file gốc lúc cài (OriginalMobileGestalt.plist)
+        // 🔥 FIX GESTER: Backup LUÔN lấy từ file gốc lúc cài (OriginalMobileGestalt.plist)
         // Nếu chưa có file gốc thì mới lấy từ máy (trường hợp xấu nhất)
         if !MobileGestaltBackupManager.shared.hasBackup {
             onLogUpdate("[MG] Đang backup pristine...")
@@ -65,6 +66,7 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Đã được cấp quyền ghi.")
         defer { NativeWorseQuery.shared.releaseAll() }
 
+        // Gỡ cờ immutable
         var st = stat()
         if stat(onDeviceMGPath, &st) == 0, (st.st_flags & UInt32(UF_IMMUTABLE)) != 0 {
             _ = chflags(onDeviceMGPath, st.st_flags & ~UInt32(UF_IMMUTABLE))
@@ -82,6 +84,7 @@ enum MobileGestaltApplyTask {
             throw mgError(-6, "Ghi file thất bại (errno: \(errno))")
         }
 
+        // Cắt bớt phần dư của file cũ
         if ftruncate(fd, off_t(plistData.count)) != 0 {
             throw mgError(-7, "Cắt file (ftruncate) thất bại (errno: \(errno))")
         }
