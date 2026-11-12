@@ -272,63 +272,43 @@ struct MobileGestaltView: View {
         }
     }
 
-    // Sync productType vào store, ghi local, reload store, sync UI
     private func saveChanges() {
         do {
-            if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
-                ce[MGKey.prodType] = productType
-            }
-            try store.mgCurrentDict.write(to: modMGURL)
+            let expectedData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
+            let editedData = try PropertyListSerialization.data(fromPropertyList: store.mgCurrentDict, format: .binary, options: 0)
+            
+            let newData = try MobileGestaltApplyTask.commit(expectedData: expectedData, editedData: editedData, reason: "Before applying")
+            try newData.write(to: modMGURL)
             store.loadFromPlist(url: modMGURL)
             self.mobileGestalt = store.mgCurrentDict
             hydrateFromDict()
             showApplyTab = true
-            lastError = "Đã lưu. Tab Apply đã mở."
+            lastError = "Đã lưu và ghi thành công. Respring để áp dụng."
             showErrorAlert = true
         } catch {
-            lastError = "Save failed: \(error)"
+            lastError = "Save failed: \(error.localizedDescription)"
             showErrorAlert = true
         }
     }
 
-    // PORT GestaltViewModel.restore: đọc pristine backup → ghi thẳng xuống máy
-    // KHÔNG tắt toggle, KHÔNG parse chế cháo
     private func resetOriginal() {
         Task {
             do {
-                guard MobileGestaltBackupManager.shared.hasBackup else {
-                    await MainActor.run {
-                        lastError = "Chưa có backup. Bấm Apply ít nhất 1 lần trước."
-                        showErrorAlert = true
-                    }
-                    return
+                guard let record = MobileGestaltBackupManager.shared.latestBackup() else {
+                    throw NSError(domain: "MG", code: -12, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy bản backup nào."])
                 }
-                let pristineData = try MobileGestaltBackupManager.shared.restoreData()
-                guard pristineData.count > 0 else {
-                    await MainActor.run {
-                        lastError = "Backup rỗng."
-                        showErrorAlert = true
-                    }
-                    return
-                }
-
-                try await MobileGestaltApplyTask.restoreGestalt(backupData: pristineData) { log in
-                    print("[Restore] \(log)")
-                }
-
-                try pristineData.write(to: modMGURL)
+                let backupData = try MobileGestaltBackupManager.shared.backupData(record)
+                let expectedData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
+                
+                let newData = try MobileGestaltApplyTask.commit(expectedData: expectedData, editedData: backupData, reason: "Before restoring")
+                
+                try newData.write(to: modMGURL)
                 store.loadFromPlist(url: modMGURL)
                 self.mobileGestalt = store.mgCurrentDict
-
+                
                 await MainActor.run {
-                    dynamicIslandType = 0
-                    enableCustomSubtype = false
-                    customSubtypeValue = ""
-                    enableModelName = false
-                    modelName = ""
-                    productType = MobileGestaltView.machineName()
                     hydrateFromDict()
-                    lastError = "Đã restore và ghi đè xuống máy. Respring để áp dụng."
+                    lastError = "Đã restore thành công. Respring để áp dụng."
                     showErrorAlert = true
                 }
             } catch {
