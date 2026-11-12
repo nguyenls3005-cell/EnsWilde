@@ -4,7 +4,6 @@ import CoreFoundation
 
 enum MGURL {
     static let fsGestaltURL = URL(fileURLWithPath: "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist")
-    static let savedGestaltURL = URL.documentsDirectory.appendingPathComponent("OriginalGestalt.plist")
 }
 
 enum MGKey {
@@ -39,34 +38,41 @@ enum MGKey {
 
 final class GestaltStore: ObservableObject {
     static let shared = GestaltStore()
-    
+
     @Published var mgCurrentDict = NSMutableDictionary()
     var cacheExtra: NSMutableDictionary {
-        return mgCurrentDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
+        mgCurrentDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
     }
-    
-    // 🔥 PORT Y CHANG `[NSMutableDictionary dictionaryWithContentsOfFile:]` của Gester
-    // CFPropertyListCreateWithData với kCFPropertyListMutableContainersAndLeaves
+
     static func loadMutableDict(from url: URL) -> NSMutableDictionary? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         var format = CFPropertyListFormat.binaryFormat_v1_0
         var error: Unmanaged<CFError>?
-        guard let plist = CFPropertyListCreateWithData(
+        guard let cf = CFPropertyListCreateWithData(
             kCFAllocatorDefault,
             data as CFData,
-            CFOptionFlags(CFPropertyListMutabilityOptions.mutableContainersAndLeaves.rawValue),
+            CFOptionFlags(kCFPropertyListMutableContainersAndLeaves),
             &format,
             &error
         ) else { return nil }
-        return plist.takeRetainedValue() as? NSMutableDictionary
+        let obj = cf.takeRetainedValue()
+        guard let dict = (obj as? NSDictionary) as? NSMutableDictionary else { return nil }
+        // Defensive: force CacheExtra / CacheData mutable
+        if let ce = dict["CacheExtra"] as? NSDictionary, !(ce is NSMutableDictionary) {
+            dict["CacheExtra"] = NSMutableDictionary(dictionary: ce)
+        }
+        if let cd = dict["CacheData"] as? NSData, !(cd is NSMutableData) {
+            dict["CacheData"] = NSMutableData(data: cd as Data)
+        }
+        return dict
     }
-    
+
     func loadFromPlist(url: URL) {
         guard let dict = Self.loadMutableDict(from: url) else { return }
-        self.mgCurrentDict = dict
-        self.objectWillChange.send()
+        mgCurrentDict = dict
+        objectWillChange.send()
     }
-    
+
     func FindCacheDataOffset(_ key: String) -> Int? {
         guard let cacheExtra = mgCurrentDict["CacheExtra"] as? NSDictionary,
               let uid = cacheExtra[key] as? Int else { return nil }
@@ -74,7 +80,7 @@ final class GestaltStore: ObservableObject {
         guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return nil }
         return cacheData.range(of: uidBytes)?.lowerBound
     }
-    
+
     func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> {
         return Binding(get: {
             if let offset = self.FindCacheDataOffset(key),
@@ -125,7 +131,7 @@ final class GestaltStore: ObservableObject {
             }
         })
     }
-    
+
     func mgRegionRestrictionsBinding() -> Binding<Bool> {
         return Binding<Bool>(
             get: { return self.cacheExtra[MGKey.regionCode] as? String == "LL" && self.cacheExtra[MGKey.regionSysconfig] as? String == "LL/A" },
@@ -141,7 +147,7 @@ final class GestaltStore: ObservableObject {
             }
         )
     }
-    
+
     func mgSetiPadOS(enable: Bool) -> Bool {
         guard let cacheData = mgCurrentDict["CacheData"] as? Data else { return false }
         let hexString = cacheData.map { String(format: "%02x", $0) }.joined()
