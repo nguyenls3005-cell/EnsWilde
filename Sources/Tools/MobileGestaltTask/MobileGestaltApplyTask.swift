@@ -1,133 +1,29 @@
 import Foundation
 import UIKit
-import AirliftFFI
-import Darwin
-import Security
 
 enum MobileGestaltApplyTask {
     static var onDeviceMGPath: String { MGURL.fsGestaltURL.path }
 
-    private static func writeGestalt(data: Data) throws {
-        // 1. Gỡ cờ immutable nếu có
-        var st = stat()
-        if stat(onDeviceMGPath, &st) == 0, (st.st_flags & UInt32(UF_IMMUTABLE)) != 0 {
-            if chflags(onDeviceMGPath, st.st_flags & ~UInt32(UF_IMMUTABLE)) != 0 {
-                throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: "Không thể gỡ cờ immutable (errno=\(errno))"])
-            }
-        }
-
-        // 2. Mở file
-        let fd = open(onDeviceMGPath, O_WRONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard fd >= 0 else {
-            throw NSError(domain: "MG", code: -1, userInfo: [NSLocalizedDescriptionKey: "Mở file thất bại (errno=\(errno))"])
-        }
-        
-        let originalData = try? Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
-        
-        // 3. Ghi đè原位: truncate -> lseek -> write -> fsync
-        let wrote = ftruncate(fd, 0) == 0 &&
-                    lseek(fd, 0, SEEK_SET) == 0 &&
-                    writeAll(fd: fd, data: data) &&
-                    fsync(fd) == 0
-                    
-        if !wrote {
-            // Rollback
-            ftruncate(fd, 0)
-            lseek(fd, 0, SEEK_SET)
-            if let original = originalData {
-                _ = writeAll(fd: fd, data: original)
-                fsync(fd)
-            }
-            close(fd)
-            throw NSError(domain: "MG", code: -2, userInfo: [NSLocalizedDescriptionKey: "Ghi file thất bại, đã rollback."])
-        }
-        close(fd)
-        
-        // 4. Verify byte-by-byte
-        let verification = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
-        guard verification == data else {
-            // Nếu verify thất bại, thử rollback
-            if let original = originalData {
-                try? original.write(to: URL(fileURLWithPath: onDeviceMGPath), options: .atomic)
-            }
-            throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: "Verify thất bại: dữ liệu không khớp."])
-        }
-    }
-    
-    private static func writeAll(fd: Int32, data: Data) -> Bool {
-        var remaining = data.count
-        var offset = 0
-        return data.withUnsafeBytes { buf -> Bool in
-            guard let base = buf.baseAddress else { return false }
-            while remaining > 0 {
-                let written = write(fd, base + offset, remaining)
-                if written < 0 && errno == EINTR { continue }
-                if written <= 0 { return false }
-                offset += written
-                remaining -= written
-            }
-            return true
-        }
-    }
-
-    static func commit(expectedData: Data, editedData: Data, reason: String) throws -> Data {
-        let currentData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
-        guard currentData == expectedData else {
-            throw NSError(domain: "MG", code: -10, userInfo: [NSLocalizedDescriptionKey: "MobileGestalt đã thay đổi kể từ khi tải. Hãy refresh trước khi ghi."])
-        }
-        
-        _ = try MobileGestaltBackupManager.shared.createBackup(from: currentData, reason: reason)
-        
-        try writeGestalt(data: editedData)
-        
-        return editedData
+    private static func ensureAccess() throws {
+        let dir = MGURL.fsGestaltURL.deletingLastPathComponent().path
+        if wq.hasActiveAccess(path: dir) { return }
+        let (ok, handle, msg) = wq.grantAccess(path: dir)
+        guard ok, handle > 0 else { throw NSError(domain: "MG", code: -1, userInfo: [NSLocalizedDescriptionKey: msg]) }
     }
 
     static func applyGestalt(store: GestaltStore, onLogUpdate: @escaping (String) -> Void) async throws {
-        // 1. Escape
-        guard let task = SecTaskCreateFromSelf(nil),
-              let entitlements = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil) as? [String],
-              let group = entitlements.first else {
-            throw NSError(domain: "MG", code: -4, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy App Group"])
-        }
-        
-        let targetDir = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches"
-        let (handle, msg) = NativeWorseQuery.shared.grantAccess(targetPath: targetDir, appGroupID: group)
-        guard handle > 0 else {
-            throw NSError(domain: "MG", code: -5, userInfo: [NSLocalizedDescriptionKey: "Xin quyền thất bại: \(msg)"])
-        }
-        defer { NativeWorseQuery.shared.releaseAll() }
-        
-        // 2. Đọc dữ liệu hiện tại (bên trong scope escape)
-        let expectedData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
-        let plistData = try PropertyListSerialization.data(fromPropertyList: store.mgCurrentDict, format: .binary, options: 0)
-        
-        // 3. Commit
-        _ = try commit(expectedData: expectedData, editedData: plistData, reason: "Before applying")
+        try ensureAccess()
+        let data = try PropertyListSerialization.data(fromPropertyList: store.mgCurrentDict, format: .binary, options: 0)
+        let (ok, msg) = mgWriteDetailed(data) // Gọi hàm ghi pwrite+F_FULLFSYNC chuẩn Erosion
+        guard ok else { throw NSError(domain: "MG", code: -2, userInfo: [NSLocalizedDescriptionKey: msg]) }
         onLogUpdate("[MG] ✅ Apply thành công.")
     }
-    
+
     static func restoreGestalt(record: MobileGestaltBackupManager.BackupRecord, onLogUpdate: @escaping (String) -> Void) async throws {
-        // 1. Escape
-        guard let task = SecTaskCreateFromSelf(nil),
-              let entitlements = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil) as? [String],
-              let group = entitlements.first else {
-            throw NSError(domain: "MG", code: -4, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy App Group"])
-        }
-        
-        let targetDir = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches"
-        let (handle, msg) = NativeWorseQuery.shared.grantAccess(targetPath: targetDir, appGroupID: group)
-        guard handle > 0 else {
-            throw NSError(domain: "MG", code: -5, userInfo: [NSLocalizedDescriptionKey: "Xin quyền thất bại: \(msg)"])
-        }
-        defer { NativeWorseQuery.shared.releaseAll() }
-        
-        // 2. Đọc backup và dữ liệu hiện tại
+        try ensureAccess()
         let backupData = try MobileGestaltBackupManager.shared.backupData(record)
-        let expectedData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
-        
-        // 3. Commit
-        _ = try commit(expectedData: expectedData, editedData: backupData, reason: "Before restoring")
+        let (ok, msg) = mgWriteDetailed(backupData, allowVerifiedFactoryRestore: true)
+        guard ok else { throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: msg]) }
         onLogUpdate("[MG] ✅ Restore thành công.")
     }
 }
