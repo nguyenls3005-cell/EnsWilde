@@ -12,7 +12,6 @@ enum MobileGestaltApplyTask {
                              onLogUpdate: @escaping (String) -> Void) async throws {
         let mgURL = URL(fileURLWithPath: onDeviceMGPath)
 
-        // Nếu store rỗng do chưa load, thử load lại từ file modified
         if store.mgCurrentDict.count == 0 {
             let modURL = URL.documentsDirectory.appendingPathComponent("ModifiedMobileGestalt.plist")
             store.loadFromPlist(url: modURL)
@@ -25,15 +24,25 @@ enum MobileGestaltApplyTask {
             throw mgError(-2, "Không tìm thấy MobileGestalt.plist.")
         }
 
-        // Tự động backup nếu chưa có (chỉ lần đầu)
+        // 🔥 FIX: Backup LUÔN lấy từ file gốc lúc cài (OriginalMobileGestalt.plist)
+        // Nếu chưa có file gốc thì mới lấy từ máy (trường hợp xấu nhất)
         if !MobileGestaltBackupManager.shared.hasBackup {
-            onLogUpdate("[MG] Đang backup pristine (lần đầu)...")
-            let originalData = try Data(contentsOf: mgURL)
-            guard (try? PropertyListSerialization.propertyList(from: originalData, format: nil)) != nil else {
-                throw mgError(-3, "File gốc không parse được — dừng để tránh bootloop.")
+            onLogUpdate("[MG] Đang backup pristine...")
+            let docs = URL.documentsDirectory
+            let origURL = docs.appendingPathComponent("OriginalMobileGestalt.plist")
+            
+            if FileManager.default.fileExists(atPath: origURL.path),
+               let origData = try? Data(contentsOf: origURL), !origData.isEmpty {
+                try MobileGestaltBackupManager.shared.ensureBackup(from: origData)
+                onLogUpdate("[MG] ✅ Đã backup từ file gốc lúc cài.")
+            } else {
+                let originalData = try Data(contentsOf: mgURL)
+                guard (try? PropertyListSerialization.propertyList(from: originalData, format: nil)) != nil else {
+                    throw mgError(-3, "File gốc không parse được — dừng để tránh bootloop.")
+                }
+                try MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
+                onLogUpdate("[MG] ⚠️ Đã backup từ máy (có thể nhiễm nếu đã tweak trước đó).")
             }
-            try MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
-            onLogUpdate("[MG] ✅ Đã backup pristine.")
         }
 
         onLogUpdate("[MG] Đang serialize plist...")
@@ -56,7 +65,6 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Đã được cấp quyền ghi.")
         defer { NativeWorseQuery.shared.releaseAll() }
 
-        // Gỡ cờ immutable
         var st = stat()
         if stat(onDeviceMGPath, &st) == 0, (st.st_flags & UInt32(UF_IMMUTABLE)) != 0 {
             _ = chflags(onDeviceMGPath, st.st_flags & ~UInt32(UF_IMMUTABLE))
@@ -74,7 +82,6 @@ enum MobileGestaltApplyTask {
             throw mgError(-6, "Ghi file thất bại (errno: \(errno))")
         }
 
-        // Cắt bớt phần dư của file cũ
         if ftruncate(fd, off_t(plistData.count)) != 0 {
             throw mgError(-7, "Cắt file (ftruncate) thất bại (errno: \(errno))")
         }
