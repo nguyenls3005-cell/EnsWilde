@@ -290,6 +290,10 @@ struct MobileGestaltView: View {
             }
             try mobileGestalt.write(to: modMGURL)
             store.loadFromPlist(url: modMGURL)
+            
+            // 🔥 Sync mobileGestalt với store sau reload (đảm bảo cả 2 mutable)
+            self.mobileGestalt = store.mgCurrentDict
+            
             showApplyTab = true
             lastError = "Đã lưu. Tab Apply đã mở."
             showErrorAlert = true
@@ -299,7 +303,7 @@ struct MobileGestaltView: View {
         }
     }
 
-    // 🔥 RESET Y CHANG GESTER: Đọc backup → load store → ghi modMGURL → gọi applyGestalt ghi thẳng xuống máy
+    // 🔥 RESTORE: Đọc backup → load mutable → ghi modMGURL → gọi applyGestalt ghi thẳng xuống máy
     private func resetOriginal() {
         Task {
             do {
@@ -314,21 +318,22 @@ struct MobileGestaltView: View {
                 
                 guard let data = pristineData, !data.isEmpty else {
                     await MainActor.run {
-                        lastError = "Chưa có backup. Bấm Apply ít nhất một lần trước để tạo backup."
-                        showErrorAlert = true
-                    }
-                    return
-                }
-                
-                guard let dict = try PropertyListSerialization.propertyList(from: data, format: nil) as? NSMutableDictionary else {
-                    await MainActor.run {
-                        lastError = "File backup không phải plist MobileGestalt hợp lệ."
+                        lastError = "Chưa có backup. Bấm Save một lần trước để tạo backup."
                         showErrorAlert = true
                     }
                     return
                 }
                 
                 try data.write(to: modMGURL)
+                
+                // Load mutable qua GestaltStore.loadMutableDict
+                guard let dict = GestaltStore.loadMutableDict(from: modMGURL) else {
+                    await MainActor.run {
+                        lastError = "File backup không phải plist hợp lệ."
+                        showErrorAlert = true
+                    }
+                    return
+                }
                 
                 await MainActor.run {
                     store.mgCurrentDict = dict
@@ -346,17 +351,16 @@ struct MobileGestaltView: View {
                     showApplyTab = true
                 }
                 
+                // Ghi thẳng xuống máy
                 do {
-                    try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
-                        print("[Restore] \(log)")
-                    }
+                    try await MobileGestaltApplyTask.applyGestalt(store: store) { _ in }
                     await MainActor.run {
                         lastError = "Đã restore backup và ghi đè xuống máy. Respring để áp dụng."
                         showErrorAlert = true
                     }
                 } catch {
                     await MainActor.run {
-                        lastError = "Đã restore local file. Nhưng ghi xuống máy thất bại: \(error.localizedDescription)\n\nBấm tab Apply để thử lại."
+                        lastError = "Restore local OK nhưng ghi xuống máy thất bại: \(error.localizedDescription)"
                         showErrorAlert = true
                     }
                 }
@@ -386,7 +390,14 @@ struct MobileGestaltView: View {
                 try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
             }
             chmod(modMGURL.path, 0o644)
-            _mobileGestalt = State(initialValue: try NSMutableDictionary(contentsOf: modMGURL, error: ()))
+            
+            // 🔥 Load mutable qua helper
+            if let mutable = GestaltStore.loadMutableDict(from: modMGURL) {
+                _mobileGestalt = State(initialValue: mutable)
+            } else {
+                _mobileGestalt = State(initialValue: [:])
+                _initError = State(initialValue: "Failed to load MobileGestalt")
+            }
         } catch {
             _mobileGestalt = State(initialValue: [:])
             _initError = State(initialValue: "Failed to copy MobileGestalt: \(error)")
