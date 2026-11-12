@@ -306,40 +306,32 @@ struct MobileGestaltView: View {
         }
     }
 
-    // 🔥 RESTORE CHUẨN GESTER: Chỉ copy Data thô từ file gốc đè lên file mod. Không can thiệp Dictionary, không tắt toggle.
+    // 🔥 RESTORE CHUẨN GESTER: Chỉ dùng file gốc lúc cài (origMGURL), xoá backup cũ, tạo backup mới.
     private func resetOriginal() {
         do {
-            // 1. Lấy dữ liệu nguyên bản (Binary Data thô)
-            var pristineData: Data?
-            
-            // Ưu tiên file gốc được tạo lúc mới cài app
-            if FileManager.default.fileExists(atPath: origMGURL.path) {
-                pristineData = try Data(contentsOf: origMGURL)
-            }
-            // Nếu không có, dùng hàm backup của Manager
-            if pristineData == nil || pristineData!.isEmpty {
-                if MobileGestaltBackupManager.shared.hasBackup {
-                    pristineData = try MobileGestaltBackupManager.shared.restoreData()
-                }
-            }
-            // Nếu vẫn không có, lấy trực tiếp từ thiết bị
-            if pristineData == nil || pristineData!.isEmpty {
-                pristineData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
+            // 1. Bắt buộc phải có file gốc lúc cài
+            guard FileManager.default.fileExists(atPath: origMGURL.path) else {
+                throw NSError(domain: "Reset", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy file gốc (OriginalMobileGestalt.plist). Hãy xoá app và cài lại để tạo file gốc sạch."])
             }
             
-            guard let data = pristineData, data.count > 0 else {
-                throw NSError(domain: "Reset", code: -1, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy dữ liệu plist gốc (Zin)!"])
+            let pristineData = try Data(contentsOf: origMGURL)
+            guard pristineData.count > 0 else {
+                throw NSError(domain: "Reset", code: -2, userInfo: [NSLocalizedDescriptionKey: "File gốc rỗng."])
             }
 
-            // 2. Ghi đè nguyên bản Binary vào file modMGURL
-            try data.write(to: modMGURL)
+            // 2. Ghi đè modMGURL bằng file gốc (Binary Data thô)
+            try pristineData.write(to: modMGURL)
             
-            // 3. Xoá sạch Store cũ trong RAM và load lại file Zin
+            // 3. Xoá backup cũ (nếu có) và tạo backup mới từ file gốc
+            try? MobileGestaltBackupManager.shared.clearBackup()
+            try? MobileGestaltBackupManager.shared.ensureBackup(from: pristineData)
+            
+            // 4. Xoá sạch Store trong RAM và load lại file gốc
             store.mgCurrentDict.removeAllObjects()
             store.loadFromPlist(url: modMGURL)
             self.mobileGestalt = store.mgCurrentDict
             
-            // 4. Reset UI State
+            // 5. Reset UI State
             dynamicIslandType = 0
             enableCustomSubtype = false
             customSubtypeValue = ""
@@ -347,12 +339,12 @@ struct MobileGestaltView: View {
             modelName = ""
             productType = MobileGestaltView.machineName()
             
-            // 5. Đồng bộ lại UI
+            // 6. Đồng bộ lại UI
             hydrateFromDict()
 
-            // 🔥 KHÔNG TẮT TOGGLE. Bạn sang tab Apply bấm nó mới đẩy file Zin xuống máy.
+            // 🔥 KHÔNG TẮT TOGGLE. Sang tab Apply bấm để ghi đè file gốc xuống máy.
             showApplyTab = true
-            lastError = "Đã khôi phục nguyên bản gốc (Zin). Bấm sang tab Apply để ghi đè lên thiết bị."
+            lastError = "Đã khôi phục từ file gốc lúc cài. Bấm sang tab Apply để ghi đè lên thiết bị."
             showErrorAlert = true
         } catch {
             lastError = "Reset failed: \(error)"
