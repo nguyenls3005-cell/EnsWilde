@@ -16,7 +16,7 @@ final class MobileGestaltBackupManager {
             switch self {
             case .writeFailed: return "Không ghi được file backup."
             case .readFailed: return "Không đọc được file backup."
-            case .noBackup: return "Chưa có backup. Bấm Save lần đầu hoặc Backup ngay."
+            case .noBackup: return "Chưa có backup. Bấm Save lần đầu hoặc Apply trước."
             case .invalidData: return "File không phải MobileGestalt plist hợp lệ."
             }
         }
@@ -29,7 +29,7 @@ final class MobileGestaltBackupManager {
         return docs.appendingPathComponent("EnsWilde/Backup", isDirectory: true)
     }
 
-    // File backup GỐC (chỉ tạo 1 lần)
+    // Pristine backup (chỉ tạo 1 lần, dùng cho Reset Original)
     private var pristineURL: URL { backupDirectory.appendingPathComponent("MobileGestalt.plist") }
     private var metaURL: URL { backupDirectory.appendingPathComponent("backup.json") }
 
@@ -44,7 +44,7 @@ final class MobileGestaltBackupManager {
         return BackupInfo(createdAt: date ?? Date(), byteCount: size, sha256: digest)
     }
 
-    // PORT Y CHANG GestaltBackupStore.create: tạo file mới mỗi lần (không ghi đè)
+    // PORT GestaltBackupStore.create: tạo file timestamped mỗi lần ghi
     @discardableResult
     func createBackup(from data: Data) throws -> URL {
         try fm.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
@@ -54,15 +54,12 @@ final class MobileGestaltBackupManager {
         let url = backupDirectory
             .appendingPathComponent("MobileGestalt_\(formatter.string(from: Date()))")
             .appendingPathExtension("plist")
-        do {
-            try data.write(to: url, options: .atomic)
-        } catch {
-            throw BackupError.writeFailed
-        }
+        do { try data.write(to: url, options: .atomic) }
+        catch { throw BackupError.writeFailed }
         return url
     }
 
-    // Giữ nguyên: backup gốc chỉ tạo 1 lần
+    // Chỉ tạo 1 lần (dùng cho pristine, giữ tương thích cũ)
     @discardableResult
     func ensureBackup(from data: Data) throws -> BackupInfo {
         if hasBackup, let info { return info }
@@ -90,7 +87,7 @@ final class MobileGestaltBackupManager {
         catch { throw BackupError.writeFailed }
     }
 
-    // Đọc file GỐC (MobileGestalt.plist cố định)
+    // Đọc pristine (MobileGestalt.plist cố định)
     func restoreData() throws -> Data {
         guard hasBackup else { throw BackupError.noBackup }
         return try Data(contentsOf: pristineURL)
