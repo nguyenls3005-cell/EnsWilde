@@ -1,3 +1,8 @@
+//
+//  MobileGestaltView.swift
+//  EnsWilde (Rebuilt with Erosion-CN Logic)
+//
+
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -274,7 +279,10 @@ struct MobileGestaltView: View {
     private func saveChanges() {
         Task {
             do {
-                // Gọi applyGestalt để escape và ghi file an toàn
+                // Đồng bộ UI state sang Store trước khi ghi
+                store.mgCurrentDict = mobileGestalt
+                
+                // Gọi hàm ghi chuẩn Erosion-CN qua MobileGestaltApplyTask
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
                     print(log)
                 }
@@ -282,10 +290,10 @@ struct MobileGestaltView: View {
                 // Cập nhật lại local file để đồng bộ UI
                 let expectedData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
                 try expectedData.write(to: modMGURL)
-                store.loadFromPlist(url: modMGURL)
-                self.mobileGestalt = store.mgCurrentDict
                 
                 await MainActor.run {
+                    store.loadFromPlist(url: modMGURL)
+                    self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
                     lastError = "Đã lưu và ghi thành công. Respring để áp dụng."
@@ -307,7 +315,7 @@ struct MobileGestaltView: View {
                     throw NSError(domain: "MG", code: -12, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy bản backup nào."])
                 }
                 
-                // Gọi restoreGestalt để escape và ghi file an toàn
+                // Gọi hàm restore chuẩn Erosion-CN
                 try await MobileGestaltApplyTask.restoreGestalt(record: record) { log in
                     print(log)
                 }
@@ -315,10 +323,10 @@ struct MobileGestaltView: View {
                 // Cập nhật lại local file để đồng bộ UI
                 let backupData = try MobileGestaltBackupManager.shared.backupData(record)
                 try backupData.write(to: modMGURL)
-                store.loadFromPlist(url: modMGURL)
-                self.mobileGestalt = store.mgCurrentDict
                 
                 await MainActor.run {
+                    store.loadFromPlist(url: modMGURL)
+                    self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     lastError = "Đã restore thành công. Respring để áp dụng."
                     showErrorAlert = true
@@ -362,27 +370,12 @@ struct MobileGestaltView: View {
         }
     }
 
+    // FIX: Dùng chuẩn mgKeyBinding của Erosion-CN, bỏ logic ghi eligibility thủ công
     func bindingForAppleIntelligence() -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return .constant(false) }
-        let key = MGKey.appIntell
-        return Binding(
-            get: { (cacheExtra[key] as? Int) == 1 },
-            set: { enabled in
-                if enabled {
-                    if let url = Bundle.main.url(forResource: "eligibility", withExtension: "plist"),
-                       let data = try? Data(contentsOf: url) { eligibilityData = data }
-                    if let url = Bundle.main.url(forResource: "FeatureFlags_Global", withExtension: "plist"),
-                       let data = try? Data(contentsOf: url) { featureFlagsData = data }
-                    cacheExtra[key] = 1
-                } else {
-                    featureFlagsData = (try? PropertyListSerialization.data(fromPropertyList: [:], format: .xml, options: 0)) ?? Data()
-                    eligibilityData = featureFlagsData
-                    cacheExtra.removeObject(forKey: key)
-                }
-            }
-        )
+        return store.mgKeyBinding(MGKey.appIntellAllKeys)
     }
 
+    // Giữ nguyên hàm này nếu UI cũ cần binding mảng
     func bindingForMGKeys<T: Equatable>(_ keys: [String], type: T.Type = Int.self, defaultValue: T? = 0, enableValue: T? = 1) -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return .constant(false) }
         return Binding(
