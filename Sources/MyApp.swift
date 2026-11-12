@@ -45,7 +45,21 @@ struct MyApp: App {
             "24A5370h", // 27.0 beta 2
             "24A5380h", // 27.0 beta 3
             "24A5390f", // 27.0 beta 4
-            "24A446" // 27.0.1 
+            "24A5408d", // 27.0 beta 5
+            "24A5418b", // 27.0 beta 6
+            "24A5424a", // 27.0 beta 7
+            "24A5430a", // 27.0 beta 8
+            "24A435", // 27.0 RC
+            "24A437", // 27.0
+            "24A446", // 27.0.1 
+            "24B5084k", // 27.2 beta 1
+            "24B5089g", // 27.2 beta 2
+            "24B5099f", // 27.2 beta 3
+            "24B5110a", // 27.2 beta 4
+            "24B115", // 27.2 RC
+            "24B119", // 27.2
+            "24B156", // 27.2.1
+            "24C5037i", // 27.3 beta 1
         ]
         
         if supportedBuilds.contains(build) {
@@ -80,7 +94,7 @@ struct VersionBlockedView: View {
                     .font(.title.bold())
                     .foregroundColor(.white)
                 
-                Text("This app only supports iOS versions 27.0 Developer Beta 1-4 / Public Beta 1-2")
+                Text("This app only supports iOS versions 27.0 To 27.3 Beta 1")
                     .font(.subheadline)
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
@@ -105,7 +119,7 @@ struct VersionBlockedView: View {
                     
                     HStack(spacing: 10) {
                         Image(systemName: "arrow.down.circle.fill").foregroundColor(.gray)
-                        Text("Downgrade to iOS 27 Developer Beta 4 or earlier")
+                        Text("Upgrade to iOS 27.2 or 27.3")
                             .foregroundColor(.gray).font(.subheadline)
                     }
                     
