@@ -54,7 +54,7 @@ final class GestaltStore: ObservableObject {
         guard let plist = CFPropertyListCreateWithData(
             kCFAllocatorDefault,
             data as CFData,
-            CFOptionFlags(kCFPropertyListMutableContainersAndLeaves),
+            CFOptionFlags(CFPropertyListMutabilityOptions.mutableContainersAndLeaves.rawValue),
             &format,
             &error
         ) else { return nil }
