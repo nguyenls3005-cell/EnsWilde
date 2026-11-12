@@ -1,4 +1,7 @@
 //
+//  EnsWilde-Bridging-Header.h
+//  EnsWilde
+//
 //  Use this file to import your target's public headers that you would like to expose to Swift.
 //
 
@@ -12,6 +15,7 @@
 #import "airlift.h"
 #import "GrappaHelper.h"
 
+// Hàm cũ (Giữ lại để tránh lỗi link, nhưng đéo dùng trong logic mới)
 long FindCacheDataOffset(const char *mgKey);
 
 #pragma mark - Private API
@@ -27,15 +31,8 @@ LSApplicationWorkspace *LSApplicationWorkspaceDefaultWorkspace(void);
 + (BOOL)_hasHomeButton;
 @end
 
-#pragma mark - worse_query
-//
-// Khai báo trực tiếp 3 hàm C thay vì #include "worse_query.h" / "pathleak.h".
-// Lý do: HEADER_SEARCH_PATHS trong project.pbxproj chỉ có `include`,
-// nên compiler không tìm được .h nằm trong Sources/Helpers/.
-// Khai báo inline dưới đây giúp bridging header luôn compile được,
-// trong khi worse_query.m và pathleak.m vẫn tự động compile nhờ
-// PBXFileSystemSynchronizedRootGroup.
-//
+#pragma mark - worse_query & pathleak
+// Khai báo trực tiếp để tránh lỗi Header Search Paths
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -45,3 +42,7 @@ void    worse_query_release(int64_t handle);
 
 // pathleak.h
 NSArray *pathleak(NSString *filter, uint64_t max_inode);
+
+#pragma mark - MGImageReader
+// Hàm C đọc trực tiếp bộ nhớ của libMobileGestalt.dylib (Trái tim của logic mới)
+NSDictionary<NSString *, id> * _Nullable MGCopyLoadedMobileGestaltImage(void);
