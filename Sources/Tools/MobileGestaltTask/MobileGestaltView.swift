@@ -2,19 +2,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 import AirliftFFI
 
-// Custom Icon siêu mỏng, không màu mè
 struct CleanTweakIcon: View {
     let systemImage: String
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: 15, weight: .light)) // Nét mỏng
+            .font(.system(size: 15, weight: .light))
             .frame(width: 28, height: 28)
-            .background(Color.secondary.opacity(0.1)) // Nền xám mờ tinh tế
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous)) // Bo góc nhẹ
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 
-// ĐÃ RENAME: tránh trùng với IconPickerLabel trong TweakRowIcon.swift
 struct MGIconPickerLabel: View {
     let title: String
     let systemImage: String
@@ -48,7 +46,6 @@ struct MobileGestaltView: View {
     @State var lastError: String?
     @State var dynamicIslandType: Int = 0
 
-    // Custom Subtype State
     @State var enableCustomSubtype: Bool = false
     @State var customSubtypeValue: String = ""
 
@@ -74,18 +71,15 @@ struct MobileGestaltView: View {
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            // Đảm bảo Store có dữ liệu
             if store.mgCurrentDict.count == 0 {
                 store.loadFromPlist(url: modMGURL)
             }
-            
             if initError != nil {
                 lastError = initError
                 initError = nil
                 showErrorAlert.toggle()
                 return
             }
-            // Đồng bộ lại UI từ Store
             mobileGestalt = store.mgCurrentDict
             hydrateFromDict()
         }
@@ -103,7 +97,6 @@ struct MobileGestaltView: View {
     }
 
     private func hydrateFromDict() {
-        // Reset mặc định trước khi load
         dynamicIslandType = 0
         enableCustomSubtype = false
         customSubtypeValue = ""
@@ -154,7 +147,7 @@ struct MobileGestaltView: View {
                 Text(L("mg_subtype_2622")).tag(5)
                 Text(L("mg_subtype_2868")).tag(6)
                 Text(L("mg_subtype_2736")).tag(7)
-                Text("Custom Subtype").tag(-1) // Thêm option custom
+                Text("Custom Subtype").tag(-1)
             } label: {
                 MGIconPickerLabel(title: L("mg_device_subtype_preset"), systemImage: "iphone")
             }
@@ -168,7 +161,6 @@ struct MobileGestaltView: View {
                 }
             }
 
-            // Custom Subtype UI
             if enableCustomSubtype {
                 Toggle("Enable Custom Subtype", isOn: $enableCustomSubtype)
                 if enableCustomSubtype {
@@ -280,27 +272,16 @@ struct MobileGestaltView: View {
         }
     }
 
+    // Sync productType vào store, ghi local, reload store, sync UI
     private func saveChanges() {
         do {
-            let onDeviceURL = URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath)
-            if let originalData = try? Data(contentsOf: onDeviceURL) {
-                try? MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
+            if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
+                ce[MGKey.prodType] = productType
             }
-            saveProductType()
-            
-            if let storeCacheExtra = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary,
-               let localCacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
-                for (key, value) in storeCacheExtra { localCacheExtra[key as! String] = value }
-            }
-            if let storeCacheData = store.mgCurrentDict["CacheData"] {
-                mobileGestalt["CacheData"] = storeCacheData
-            }
-            try mobileGestalt.write(to: modMGURL)
+            try store.mgCurrentDict.write(to: modMGURL)
             store.loadFromPlist(url: modMGURL)
-            
-            // 🔥 Sync mobileGestalt với store sau reload (đảm bảo cả 2 mutable)
             self.mobileGestalt = store.mgCurrentDict
-            
+            hydrateFromDict()
             showApplyTab = true
             lastError = "Đã lưu. Tab Apply đã mở."
             showErrorAlert = true
@@ -310,27 +291,36 @@ struct MobileGestaltView: View {
         }
     }
 
-    // 🔥 PORT Y CHANG revertTweaks (GestaltVC.m) của Gester
-    // Restore = BQRestoreGestalt → ghi thẳng xuống máy → reload store
+    // PORT GestaltViewModel.restore: đọc pristine backup → ghi thẳng xuống máy
+    // KHÔNG tắt toggle, KHÔNG parse chế cháo
     private func resetOriginal() {
         Task {
             do {
-                // 1. Gọi restoreGestalt (đọc backup + ghi thẳng xuống máy)
-                try await MobileGestaltApplyTask.restoreGestalt { log in
+                guard MobileGestaltBackupManager.shared.hasBackup else {
+                    await MainActor.run {
+                        lastError = "Chưa có backup. Bấm Apply ít nhất 1 lần trước."
+                        showErrorAlert = true
+                    }
+                    return
+                }
+                let pristineData = try MobileGestaltBackupManager.shared.restoreData()
+                guard pristineData.count > 0 else {
+                    await MainActor.run {
+                        lastError = "Backup rỗng."
+                        showErrorAlert = true
+                    }
+                    return
+                }
+
+                try await MobileGestaltApplyTask.restoreGestalt(backupData: pristineData) { log in
                     print("[Restore] \(log)")
                 }
-                
-                // 2. Ghi backup vào modMGURL local + reload store
-                let modURL = URL.documentsDirectory.appendingPathComponent("ModifiedMobileGestalt.plist")
-                if let backupData = try? MobileGestaltBackupManager.shared.restoreData() {
-                    try? backupData.write(to: modURL)
-                }
-                store.mgCurrentDict.removeAllObjects()
-                store.loadFromPlist(url: modURL)
-                
-                // 3. Reset UI
+
+                try pristineData.write(to: modMGURL)
+                store.loadFromPlist(url: modMGURL)
+                self.mobileGestalt = store.mgCurrentDict
+
                 await MainActor.run {
-                    self.mobileGestalt = store.mgCurrentDict
                     dynamicIslandType = 0
                     enableCustomSubtype = false
                     customSubtypeValue = ""
@@ -338,7 +328,7 @@ struct MobileGestaltView: View {
                     modelName = ""
                     productType = MobileGestaltView.machineName()
                     hydrateFromDict()
-                    lastError = "Đã restore backup và ghi đè xuống máy. Respring để áp dụng."
+                    lastError = "Đã restore và ghi đè xuống máy. Respring để áp dụng."
                     showErrorAlert = true
                 }
             } catch {
@@ -367,8 +357,6 @@ struct MobileGestaltView: View {
                 try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
             }
             chmod(modMGURL.path, 0o644)
-            
-            // 🔥 Load mutable qua helper (fix lỗi tweak không lưu được)
             if let mutable = GestaltStore.loadMutableDict(from: modMGURL) {
                 _mobileGestalt = State(initialValue: mutable)
             } else {
