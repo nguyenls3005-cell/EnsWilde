@@ -273,21 +273,31 @@ struct MobileGestaltView: View {
     }
 
     private func saveChanges() {
-        do {
-            let expectedData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
-            let editedData = try PropertyListSerialization.data(fromPropertyList: store.mgCurrentDict, format: .binary, options: 0)
-            
-            let newData = try MobileGestaltApplyTask.commit(expectedData: expectedData, editedData: editedData, reason: "Before applying")
-            try newData.write(to: modMGURL)
-            store.loadFromPlist(url: modMGURL)
-            self.mobileGestalt = store.mgCurrentDict
-            hydrateFromDict()
-            showApplyTab = true
-            lastError = "Đã lưu và ghi thành công. Respring để áp dụng."
-            showErrorAlert = true
-        } catch {
-            lastError = "Save failed: \(error.localizedDescription)"
-            showErrorAlert = true
+        Task {
+            do {
+                // Gọi applyGestalt để escape và ghi file an toàn
+                try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
+                    print(log)
+                }
+                
+                // Cập nhật lại local file để đồng bộ UI
+                let expectedData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
+                try expectedData.write(to: modMGURL)
+                store.loadFromPlist(url: modMGURL)
+                self.mobileGestalt = store.mgCurrentDict
+                
+                await MainActor.run {
+                    hydrateFromDict()
+                    showApplyTab = true
+                    lastError = "Đã lưu và ghi thành công. Respring để áp dụng."
+                    showErrorAlert = true
+                }
+            } catch {
+                await MainActor.run {
+                    lastError = "Save failed: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
         }
     }
 
@@ -297,12 +307,15 @@ struct MobileGestaltView: View {
                 guard let record = MobileGestaltBackupManager.shared.latestBackup() else {
                     throw NSError(domain: "MG", code: -12, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy bản backup nào."])
                 }
+                
+                // Gọi restoreGestalt để escape và ghi file an toàn
+                try await MobileGestaltApplyTask.restoreGestalt(record: record) { log in
+                    print(log)
+                }
+                
+                // Cập nhật lại local file để đồng bộ UI
                 let backupData = try MobileGestaltBackupManager.shared.backupData(record)
-                let expectedData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
-                
-                let newData = try MobileGestaltApplyTask.commit(expectedData: expectedData, editedData: backupData, reason: "Before restoring")
-                
-                try newData.write(to: modMGURL)
+                try backupData.write(to: modMGURL)
                 store.loadFromPlist(url: modMGURL)
                 self.mobileGestalt = store.mgCurrentDict
                 
