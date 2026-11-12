@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import AirliftFFI
 
 struct CleanTweakIcon: View {
     let systemImage: String
