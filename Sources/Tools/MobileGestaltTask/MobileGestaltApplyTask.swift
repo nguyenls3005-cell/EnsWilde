@@ -10,9 +10,7 @@ enum MobileGestaltApplyTask {
 
     static func applyGestalt(store: GestaltStore,
                              onLogUpdate: @escaping (String) -> Void) async throws {
-        let mgURL = URL(fileURLWithPath: onDeviceMGPath)
-
-        // Nếu store rỗng do chưa load, thử load lại từ file modified
+        // 1. Load store từ file local nếu rỗng (không cần escape)
         if store.mgCurrentDict.count == 0 {
             let modURL = URL.documentsDirectory.appendingPathComponent("ModifiedMobileGestalt.plist")
             store.loadFromPlist(url: modURL)
@@ -21,26 +19,8 @@ enum MobileGestaltApplyTask {
         guard store.mgCurrentDict.count > 0 else {
             throw mgError(-1, "Store rỗng. Hãy bấm Reset Original hoặc lưu lại trước khi Apply.")
         }
-        guard FileManager.default.fileExists(atPath: onDeviceMGPath) else {
-            throw mgError(-2, "Không tìm thấy MobileGestalt.plist.")
-        }
 
-        // Tự động backup nếu chưa có (chỉ lần đầu)
-        if !MobileGestaltBackupManager.shared.hasBackup {
-            onLogUpdate("[MG] Đang backup pristine (lần đầu)...")
-            let originalData = try Data(contentsOf: mgURL)
-            guard (try? PropertyListSerialization.propertyList(from: originalData, format: nil)) != nil else {
-                throw mgError(-3, "File gốc không parse được — dừng để tránh bootloop.")
-            }
-            try MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
-            onLogUpdate("[MG] ✅ Đã backup pristine.")
-        }
-
-        onLogUpdate("[MG] Đang serialize plist...")
-        let plistData = try PropertyListSerialization.data(
-            fromPropertyList: store.mgCurrentDict, format: .binary, options: 0
-        )
-
+        // 2. 🔥 XIN QUYỀN MCM NGAY ĐẦU (trước mọi thao tác file)
         onLogUpdate("[MG] Đang xin quyền ghi (Native WorseQuery)...")
         guard let task = SecTaskCreateFromSelf(nil),
               let entitlements = SecTaskCopyValueForEntitlement(task, "com.apple.security.application-groups" as CFString, nil) as? [String],
@@ -56,12 +36,35 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Đã được cấp quyền ghi.")
         defer { NativeWorseQuery.shared.releaseAll() }
 
-        // Gỡ cờ immutable
+        // 3. Giờ file đã accessible. Check tồn tại + backup nếu chưa có
+        let mgURL = URL(fileURLWithPath: onDeviceMGPath)
+        guard FileManager.default.fileExists(atPath: onDeviceMGPath) else {
+            throw mgError(-2, "Không tìm thấy MobileGestalt.plist.")
+        }
+
+        if !MobileGestaltBackupManager.shared.hasBackup {
+            onLogUpdate("[MG] Đang backup pristine (lần đầu)...")
+            let originalData = try Data(contentsOf: mgURL)
+            guard (try? PropertyListSerialization.propertyList(from: originalData, format: nil)) != nil else {
+                throw mgError(-3, "File gốc không parse được — dừng để tránh bootloop.")
+            }
+            try MobileGestaltBackupManager.shared.ensureBackup(from: originalData)
+            onLogUpdate("[MG] ✅ Đã backup pristine.")
+        }
+
+        // 4. Serialize store
+        onLogUpdate("[MG] Đang serialize plist...")
+        let plistData = try PropertyListSerialization.data(
+            fromPropertyList: store.mgCurrentDict, format: .binary, options: 0
+        )
+
+        // 5. Gỡ cờ immutable
         var st = stat()
         if stat(onDeviceMGPath, &st) == 0, (st.st_flags & UInt32(UF_IMMUTABLE)) != 0 {
             _ = chflags(onDeviceMGPath, st.st_flags & ~UInt32(UF_IMMUTABLE))
         }
 
+        // 6. Ghi in-place
         onLogUpdate("[MG] Đang ghi đè MobileGestalt.plist (In-place)...")
         let fd = open(onDeviceMGPath, O_RDWR | O_CLOEXEC)
         guard fd >= 0 else {
@@ -74,13 +77,13 @@ enum MobileGestaltApplyTask {
             throw mgError(-6, "Ghi file thất bại (errno: \(errno))")
         }
 
-        // Cắt bớt phần dư của file cũ
         if ftruncate(fd, off_t(plistData.count)) != 0 {
             throw mgError(-7, "Cắt file (ftruncate) thất bại (errno: \(errno))")
         }
 
         _ = fcntl(fd, F_FULLFSYNC)
 
+        // 7. Verify
         onLogUpdate("[MG] Verify file sau khi ghi...")
         do {
             let writtenData = try Data(contentsOf: mgURL)
