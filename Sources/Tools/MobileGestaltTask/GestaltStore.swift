@@ -44,11 +44,33 @@ final class GestaltStore: ObservableObject {
         return mgCurrentDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
     }
     
-    func loadFromPlist(url: URL) {
-        if let dict = try? NSMutableDictionary(contentsOf: url, error: ()) {
-            self.mgCurrentDict = dict
-            self.objectWillChange.send()
+    // 🔥 FIX: Load với .mutableContainersAndLeaves + force-mutable CacheExtra/CacheData
+    static func loadMutableDict(from url: URL) -> NSMutableDictionary? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let parsed = try? PropertyListSerialization.propertyList(
+            from: data,
+            options: [.mutableContainers, .mutableContainersAndLeaves],
+            format: nil
+        ) as? NSMutableDictionary else { return nil }
+        
+        // Force CacheExtra mutable
+        if let ce = parsed["CacheExtra"] as? NSDictionary {
+            parsed["CacheExtra"] = NSMutableDictionary(dictionary: ce)
         }
+        // Force CacheData mutable
+        if let cd = parsed["CacheData"] as? Data {
+            parsed["CacheData"] = NSMutableData(data: cd)
+        } else if let cd = parsed["CacheData"] as? NSData, !(cd is NSMutableData) {
+            parsed["CacheData"] = NSMutableData(data: cd as Data)
+        }
+        
+        return parsed
+    }
+    
+    func loadFromPlist(url: URL) {
+        guard let dict = Self.loadMutableDict(from: url) else { return }
+        self.mgCurrentDict = dict
+        self.objectWillChange.send()
     }
     
     func FindCacheDataOffset(_ key: String) -> Int? {
