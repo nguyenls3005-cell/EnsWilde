@@ -13,10 +13,16 @@ enum MobileGestaltApplyTask {
 
     static func applyGestalt(store: GestaltStore, onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
+        
+        // ĐM ĐÂY RỒI: Tự động lấy UUID thật của máy đè vào cái cũ trước khi ghi
+        if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
+            store.mgCurrentDict["CacheUUID"] = layout.uuid
+        }
+        
         let data = try PropertyListSerialization.data(fromPropertyList: store.mgCurrentDict, format: .binary, options: 0)
-        let (ok, msg) = mgWriteDetailed(data) // Gọi hàm ghi pwrite+F_FULLFSYNC chuẩn Erosion
+        let (ok, msg) = mgWriteDetailed(data)
         guard ok else { throw NSError(domain: "MG", code: -2, userInfo: [NSLocalizedDescriptionKey: msg]) }
-        onLogUpdate("[MG] ✅ Apply thành công.")
+        onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
     static func restoreGestalt(record: MobileGestaltBackupManager.BackupRecord, onLogUpdate: @escaping (String) -> Void) async throws {
@@ -24,6 +30,6 @@ enum MobileGestaltApplyTask {
         let backupData = try MobileGestaltBackupManager.shared.backupData(record)
         let (ok, msg) = mgWriteDetailed(backupData, allowVerifiedFactoryRestore: true)
         guard ok else { throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: msg]) }
-        onLogUpdate("[MG] ✅ Restore thành công.")
+        onLogUpdate("[MG] ✅ Restored successfully.")
     }
 }
