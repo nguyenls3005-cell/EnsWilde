@@ -8,6 +8,8 @@
 import Foundation
 import Darwin
 
+private let fm = FileManager.default
+
 private func fullFsyncSafe(_ fd: Int32) -> Bool {
     if fcntl(fd, F_FULLFSYNC) == 0 {
         return true
