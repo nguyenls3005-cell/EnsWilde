@@ -83,7 +83,7 @@ class FSHandlers {
             targetMaxInode = userMax
         }
         print(L("(fs) 正在通过多线程 pathleak 枚举目录: \(normKey) (扫描上限: \(targetMaxInode), 本机最大 Inode: \(baselineInode))"))
-        let leakedPaths = pathleak(normKey, targetMaxInode) ?? []
+        let leakedPaths: [String] = (pathleak(normKey, targetMaxInode) as? [String]) ?? []
         print(L("(fs) pathleak 枚举完成，共找到 \(leakedPaths.count) 个容器路径"))
         if !leakedPaths.isEmpty {
             cacheLock.lock()
