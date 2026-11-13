@@ -8,6 +8,8 @@
 import Foundation
 import UIKit
 
+private let fm = FileManager.default
+
 let fsHandlers = FSHandlers()
 
 class FSHandlers {
