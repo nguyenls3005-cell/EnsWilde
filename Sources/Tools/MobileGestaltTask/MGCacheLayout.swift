@@ -9,6 +9,10 @@
 
 import Foundation
 
+fileprivate extension String {
+    var loc: String { L(self) }
+}
+
 struct MGSlotDescriptorInfo: Identifiable, Equatable, Sendable {
     var id: String { "\(slotIndex):\(obfuscatedKey)" }
     let obfuscatedKey: String
@@ -514,7 +518,7 @@ struct MGCacheDataLayout: Codable, Equatable, Sendable {
             for pad in (valOff + 1)..<(valOff + 8) {
                 guard cacheData[pad] == 0 else {
                     let padHex = String(format: "%X", pad)
-                    return .failure(.slotInvalid(L("槽位 \(slotIdx) 填充字节非零（偏移 0x\(padHex) = \(cacheData[pad])），拒绝修改！")))
+                    return .failure(.slotInvalid(L("槽位 \(slotIndex) 填充字节非零（偏移 0x\(padHex) = \(cacheData[pad])），拒绝修改！")))
                 }
             }
         }
