@@ -14,18 +14,21 @@ enum MobileGestaltApplyTask {
     static func applyGestalt(store: GestaltStore, onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
-        // 1. Đọc file MobileGestalt thật đang nằm trên máy
+        // 1. Đọc file MobileGestalt thật đang chạy trên máy
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         guard let liveDict = try PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
             throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
-        // 2. Đồng bộ CacheUUID chuẩn của máy
+        // 2. Tự động lưu backup nếu chưa có
+        _ = try? MobileGestaltBackupManager.shared.ensureBackup(from: liveData)
+        
+        // 3. Đồng bộ CacheUUID
         if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
             liveDict["CacheUUID"] = layout.uuid
         }
         
-        // 3. Ghi đè CacheExtra (Các nút switch thông thường)
+        // 4. Ghi đè CacheExtra
         let liveExtra = (liveDict["CacheExtra"] as? NSMutableDictionary) ?? NSMutableDictionary()
         let storeExtra = store.cacheExtra
         for (k, v) in storeExtra {
@@ -33,43 +36,34 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheExtra"] = liveExtra
         
-        // 4. Ghi đè CacheData (Các nút switch dạng slot)
+        // 5. Ghi đè CacheData (Chỉ lấy đúng trạng thái trên UI của mày đè vào)
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
         let targetCacheData = NSMutableData(data: liveCacheData)
         
-        let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
-        if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: liveDict) {
-            // Danh sách toàn bộ các key có slot
-            let allToggleKeys = MGKey.appIntellAllKeys + MGKey.mediaHealthAllKeys + MGKey.experimentalCacheSlotKeys + [MGKey.island, MGKey.AOD, MGKey.AOTime, MGKey.AODVibrancy, MGKey.chargeLim, MGKey.bootChime, MGKey.crashDet, MGKey.pwm, MGKey.appPencil, MGKey.camButton, MGKey.actButton, MGKey.tapToWake, MGKey.stageMgr]
+        if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: liveDict),
+           let storeData = store.mgCurrentDict["CacheData"] as? Data {
+            
+            let allToggleKeys = MGKey.appIntellAllKeys + MGKey.mediaHealthAllKeys + MGKey.experimentalCacheSlotKeys + [
+                MGKey.island, MGKey.AOD, MGKey.AOTime, MGKey.AODVibrancy,
+                MGKey.chargeLim, MGKey.bootChime, MGKey.crashDet, MGKey.pwm,
+                MGKey.appPencil, MGKey.camButton, MGKey.actButton,
+                MGKey.tapToWake, MGKey.stageMgr
+            ]
             
             for key in allToggleKeys {
                 if let slotIdx = layout.featureSlotIndices[key] {
                     let offset = slotIdx * 8
-                    if offset < targetCacheData.length {
-                        var desiredBit: UInt8 = liveCacheData[offset] // Mặc định giữ nguyên trạng thái của máy
-                        
-                        // So sánh UI hiện tại với file gốc để xem thằng user có bấm đổi nút này không
-                        if let storeData = store.mgCurrentDict["CacheData"] as? Data, offset < storeData.count {
-                            let storeBit = storeData[offset]
-                            if let origData = savedOrig?["CacheData"] as? Data, offset < origData.count {
-                                // Nếu user bấm đổi (khác với trạng thái gốc) thì mới ghi đè
-                                if storeBit != origData[offset] {
-                                    desiredBit = storeBit
-                                }
-                            } else {
-                                desiredBit = storeBit
-                            }
-                        }
-                        targetCacheData.mutableBytes.assumingMemoryBound(to: UInt8.self)[offset] = desiredBit
+                    if offset < targetCacheData.length && offset < storeData.count {
+                        targetCacheData[offset] = storeData[offset]
                     }
                 }
             }
         }
         liveDict["CacheData"] = targetCacheData
 
-        // 5. Ghi xuống file
+        // 6. Ghi xuống file
         let data = try PropertyListSerialization.data(fromPropertyList: liveDict, format: .binary, options: 0)
         let (ok, msg) = mgWriteDetailed(data)
         guard ok else {
@@ -80,8 +74,19 @@ enum MobileGestaltApplyTask {
 
     static func restoreGestalt(record: MobileGestaltBackupManager.BackupRecord, onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
+        
         let backupData = try MobileGestaltBackupManager.shared.backupData(record)
-        let (ok, msg) = mgWriteDetailed(backupData, allowVerifiedFactoryRestore: true)
+        guard let backupDict = try PropertyListSerialization.propertyList(from: backupData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
+            throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "Failed to parse backup data"])
+        }
+        
+        // Lấy UUID hiện tại của máy đắp vào file backup để bypass check
+        if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
+            backupDict["CacheUUID"] = layout.uuid
+        }
+        
+        let finalData = try PropertyListSerialization.data(fromPropertyList: backupDict, format: .binary, options: 0)
+        let (ok, msg) = mgWriteDetailed(finalData, allowVerifiedFactoryRestore: true)
         guard ok else { throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: msg]) }
         onLogUpdate("[MG] ✅ Restored successfully.")
     }
