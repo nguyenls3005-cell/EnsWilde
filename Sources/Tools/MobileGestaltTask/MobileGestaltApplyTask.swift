@@ -32,7 +32,6 @@ enum MobileGestaltApplyTask {
         
         let candidateDict = NSMutableDictionary(dictionary: liveDict)
         
-        // RAW BYTE DIFF CHO CACHEDATA (Bắt trọn mọi thay đổi từ Hex của iPadOS)
         onLogUpdate("[MG] Đang đồng bộ CacheData (raw byte diff)...")
         if let liveCacheData = liveDict["CacheData"] as? Data,
            let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
