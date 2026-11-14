@@ -1,3 +1,8 @@
+//
+//  MobileGestaltApplyTask.swift
+//  EnsWilde
+//
+
 import Foundation
 import UIKit
 
@@ -37,7 +42,7 @@ enum MobileGestaltApplyTask {
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
-        var targetCacheData = liveCacheData
+        let targetCacheData = NSMutableData(data: liveCacheData)
         
         if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: liveDict),
            let storeData = store.mgCurrentDict["CacheData"] as? Data {
@@ -52,7 +57,7 @@ enum MobileGestaltApplyTask {
             for key in allToggleKeys {
                 if let slotIdx = layout.featureSlotIndices[key] {
                     let offset = slotIdx * 8
-                    if offset < targetCacheData.count && offset < storeData.count {
+                    if offset < targetCacheData.length && offset < storeData.count {
                         targetCacheData[offset] = storeData[offset]
                     }
                 }
@@ -69,10 +74,10 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
-    // SỬA LẠI: Bỏ tham số record, dùng thẳng Factory Restore của Erosion-CN để đảm bảo lấy file gốc xịn
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
+        // Gọi thẳng hàm Factory Restore của Erosion-CN (Đã bảo vệ bằng SHA256)
         let outcome = mgExecuteFactoryRestore(alsoResetConfigAndKeypad: false)
         
         switch outcome {
