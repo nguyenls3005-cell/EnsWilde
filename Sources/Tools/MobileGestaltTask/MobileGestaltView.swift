@@ -41,10 +41,6 @@ struct MobileGestaltView: View {
     
     @State private var showDIWarning = false
     
-    // THÊM BIẾN BÁO LỖI CHO iPADOS
-    @State private var showIPadOSError = false
-    @State private var ipadOSErrorMsg = ""
-    
     let regionPresets: [MGRegionPreset] = [
         MGRegionPreset(id: "VN", name: "Viet Nam", suffix: "VN/A"),
         MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
@@ -130,19 +126,12 @@ struct MobileGestaltView: View {
                 Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                     .disabled(Utils.requiresVersion(18))
                 
-                // ĐÃ SỬA CÔNG TẮC iPADOS ĐỂ BÁO LỖI THAY VÌ TỰ NHẢY VỀ
+                // ĐÃ XÓA BỎ POPUP LỖI HEX VÀ DÙNG LOGIC MỚI
                 Toggle("Become iPadOS", isOn: Binding(
                     get: { return store.mgTrollPadBinding().wrappedValue },
                     set: { newValue in
-                        if store.mgSetiPadOS(enable: newValue) {
-                            for key in MGKey.ipadosCacheEx {
-                                if newValue { store.cacheExtra[key] = 1 } else { store.cacheExtra.removeObject(forKey: key) }
-                            }
-                            store.objectWillChange.send()
-                        } else {
-                            ipadOSErrorMsg = "Lỗi: Không tìm thấy chuỗi Hex '0300000000000000' trong CacheData. Bản iOS 27.0.1 của bạn có thể có layout khác với Erosion-CN."
-                            showIPadOSError = true
-                        }
+                        _ = store.mgSetiPadOS(enable: newValue)
+                        store.objectWillChange.send()
                     }
                 ))
             }
@@ -219,12 +208,6 @@ struct MobileGestaltView: View {
             Button("OK") {}
         } message: {
             Text(lastError ?? "???")
-        }
-        // THÊM ALERT BÁO LỖI iPADOS
-        .alert("iPadOS Hex Error", isPresented: $showIPadOSError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(ipadOSErrorMsg)
         }
         .onAppear {
             let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
