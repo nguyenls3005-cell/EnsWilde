@@ -21,13 +21,6 @@ enum MobileGestaltApplyTask {
         
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         
-        // Tự động tạo backup nếu chưa có
-        if !FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) || (try? Data(contentsOf: MGURL.savedGestaltURL))?.count ?? 0 < 256 {
-            try? liveData.write(to: MGURL.savedGestaltURL, options: .atomic)
-            try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL)
-            onLogUpdate("[MG] 📦 Created pristine backup for the first time.")
-        }
-        
         guard let liveDict = try PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
             throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
@@ -77,45 +70,15 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
-    // THUẬT TOÁN REVERT CHUẨN GESTALTX (Bê nguyên CacheExtra & CacheData từ Backup)
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
-        let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
-        guard let liveDict = try PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
-            throw NSError(domain: "MG", code: -10, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
+        let outcome = mgExecuteCleanCacheRebuild(alsoResetConfigAndKeypad: false)
+        switch outcome {
+        case .success:
+            onLogUpdate("[MG] ✅ Cleared cache. Please REBOOT to regenerate factory settings.")
+        case .failure(let err):
+            throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: "Clean rebuild failed: \(err.localizedDescription)"])
         }
-        
-        guard let backupData = try? Data(contentsOf: MGURL.savedGestaltURL),
-              backupData.count > 256,
-              let backupDict = try? PropertyListSerialization.propertyList(from: backupData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
-            throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "No valid backup file found. Please import a clean plist."])
-        }
-        
-        // Đắp nguyên cục CacheExtra từ backup (bao gồm tên máy, Dynamic Island, Region, Toggles)
-        if let backupExtra = backupDict["CacheExtra"] as? NSMutableDictionary {
-            liveDict["CacheExtra"] = backupExtra
-        }
-        
-        // Đắp nguyên cục CacheData từ backup
-        if let backupCacheData = backupDict["CacheData"] as? Data {
-            liveDict["CacheData"] = backupCacheData
-        }
-        
-        // Đắp UUID và Version live vào để bypass check của hệ thống
-        if let liveUUID = liveDict["CacheUUID"] as? String {
-            backupDict["CacheUUID"] = liveUUID
-            liveDict["CacheUUID"] = liveUUID
-        }
-        if let liveVersion = liveDict["CacheVersion"] as? String {
-            liveDict["CacheVersion"] = liveVersion
-        }
-        
-        let finalData = try PropertyListSerialization.data(fromPropertyList: liveDict, format: .binary, options: 0)
-        let (ok, msg) = mgWriteDetailed(finalData, allowVerifiedFactoryRestore: true)
-        guard ok else {
-            throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: msg])
-        }
-        onLogUpdate("[MG] ✅ Reverted to pristine factory settings.")
     }
 }
