@@ -1,6 +1,7 @@
 //
 //  MobileGestaltApplyTask.swift
-//  EnsWilde (Exact Erosion-CN Write Mechanism + Real Logs)
+//  EnsWilde
+//  Fixed: Safe patching, no bulk overwrite, prevents iOS from rejecting cache.
 //
 
 import Foundation
@@ -31,57 +32,95 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
-        // 2. Tạo Candidate từ dữ liệu của Store (Đã được UI cập nhật)
-        onLogUpdate("[MG] Đang lấy dữ liệu cấu hình từ Store...")
         let candidateDict = NSMutableDictionary(dictionary: liveDict)
         
-        if let storeExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary {
-            candidateDict["CacheExtra"] = storeExtra
-        }
-        if let storeCacheData = store.mgCurrentDict["CacheData"] as? Data {
-            candidateDict["CacheData"] = storeCacheData
+        // 2. VÁ CACHE DATA (Chỉ sửa đúng 8 byte của các slot, không ghi đè toàn bộ)
+        onLogUpdate("[MG] Đang đồng bộ CacheData (chỉ vá các byte thay đổi)...")
+        if let liveCacheData = liveDict["CacheData"] as? Data,
+           let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
+           liveCacheData.count == storeCacheData.count {
+            
+            var patchedData = liveCacheData
+            var patchedBytes = 0
+            
+            if let layout = try? MGCacheDataCoordinator.shared.libraryLayout().get() {
+                for (_, slotIdx) in layout.featureSlotIndices {
+                    let offset = slotIdx * 8
+                    if offset + 8 <= patchedData.count {
+                        let liveSlice = patchedData[offset..<offset+8]
+                        let storeSlice = storeCacheData[offset..<offset+8]
+                        if liveSlice != storeSlice {
+                            patchedData.replaceSubrange(offset..<offset+8, with: storeSlice)
+                            patchedBytes += 1
+                        }
+                    }
+                }
+            }
+            candidateDict["CacheData"] = patchedData
+            onLogUpdate("[MG] Đã vá \(patchedBytes) slot trong CacheData.")
+        } else {
+            onLogUpdate("[MG] ⚠️ Kích thước CacheData không khớp, bỏ qua vá CacheData.")
         }
         
-        // 3. Kiểm tra nghiêm ngặt (Erosion-CN ValidateTransition) - Chống ghi bậy byte
-        onLogUpdate("[MG] Đang kiểm tra tính hợp lệ của các byte thay đổi...")
-        if case .failure(let cacheErr) = MGCacheDataCoordinator.shared.validateTransition(from: liveDict, to: candidateDict) {
-            onLogUpdate("[MG] ❌ LỖI VALIDATE: \(cacheErr.localizedDescription)")
-            throw NSError(domain: "MG", code: -10, userInfo: [NSLocalizedDescriptionKey: "Từ chối ghi: \(cacheErr.localizedDescription)"])
+        // 3. VÁ CACHE EXTRA (Chỉ cập nhật các key hợp lệ, xóa key rác)
+        onLogUpdate("[MG] Đang đồng bộ CacheExtra...")
+        if let liveExtra = liveDict["CacheExtra"] as? NSMutableDictionary,
+           let storeExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary {
+            
+            let allowedExtraKeys = [
+                MGKey.artwork, MGKey.prodType, MGKey.regionCode, MGKey.regionSysconfig,
+                MGKey.regModelNumber, MGKey.modelNameOuter1, MGKey.modelNameOuter2,
+                MGKey.liquidGlassLowPower, MGKey.island, MGKey.AOTime, MGKey.AOD,
+                MGKey.AODVibrancy, MGKey.chargeLim, MGKey.bootChime, MGKey.intInstall,
+                MGKey.intBuild, MGKey.srd, MGKey.crashDet, MGKey.pwm, MGKey.appPencil,
+                MGKey.camButton, MGKey.grapPefr, MGKey.actButton, MGKey.tapToWake,
+                MGKey.stageMgr
+            ] + MGKey.appIntellAllKeys + MGKey.ipadosCacheEx
+            
+            for key in allowedExtraKeys {
+                if let newVal = storeExtra[key] {
+                    liveExtra[key] = newVal
+                } else {
+                    liveExtra.removeObject(forKey: key)
+                }
+            }
+            
+            // Xóa các key rác không được phép tồn tại trong CacheExtra (gây lỗi iOS)
+            let blockedKeys = ["RegionInfo", "zHeENZu+wbg7PUprwNwBWg", "green-tea", "not-green-tea", "wapi"]
+            for blocked in blockedKeys {
+                liveExtra.removeObject(forKey: blocked)
+            }
+            
+            candidateDict["CacheExtra"] = liveExtra
         }
         
-        // 4. Serialize ra binary plist
-        let data = try PropertyListSerialization.data(fromPropertyList: candidateDict, format: .binary, options: 0)
-        onLogUpdate("[MG] Dữ liệu mới: \(data.count) bytes (Cũ: \(liveData.count) bytes)")
+        // 4. Serialize
+        let finalData = try PropertyListSerialization.data(fromPropertyList: candidateDict, format: .binary, options: 0)
+        onLogUpdate("[MG] Kích thước file mới: \(finalData.count) bytes (Cũ: \(liveData.count) bytes)")
         
-        // 5. GHI ĐÈ TRỰC TIẾP (PWRITE + F_FULLFSYNC) - Y NHƯ EROSION-CN
+        // 5. GHI FILE (pwrite + F_FULLFSYNC)
         onLogUpdate("[MG] Đang ghi đè file (pwrite + F_FULLFSYNC)...")
         let fd = open(onDeviceMGPath, O_RDWR)
         guard fd >= 0 else {
-            let err = String(cString: strerror(errno))
-            onLogUpdate("[MG] ❌ Lỗi open file: \(err)")
-            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: "Cannot open MobileGestalt for writing. \(err)"])
+            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: "Không thể mở file để ghi."])
         }
         defer { close(fd) }
 
         let oldSize = lseek(fd, 0, SEEK_END)
         
-        // Ghi đè không truncate
-        let written = data.withUnsafeBytes { ptr -> Int in
+        let written = finalData.withUnsafeBytes { ptr -> Int in
             guard let base = ptr.baseAddress else { return -1 }
-            return pwrite(fd, base, data.count, 0)
+            return pwrite(fd, base, finalData.count, 0)
         }
         
-        guard written == data.count else {
-            onLogUpdate("[MG] ❌ Lỗi pwrite: Ghi được \(written)/\(data.count) bytes")
-            throw NSError(domain: "MG", code: -21, userInfo: [NSLocalizedDescriptionKey: "pwrite failed. Wrote \(written) of \(data.count) bytes."])
+        guard written == finalData.count else {
+            throw NSError(domain: "MG", code: -21, userInfo: [NSLocalizedDescriptionKey: "Lỗi pwrite. Ghi được \(written)/\(finalData.count) bytes."])
         }
         
-        // Cắt phần đuôi thừa nếu file cũ dài hơn
-        if oldSize > off_t(data.count) {
-            ftruncate(fd, off_t(data.count))
+        if oldSize > off_t(finalData.count) {
+            ftruncate(fd, off_t(finalData.count))
         }
         
-        // Ép hệ thống lưu xuống Flash
         if fcntl(fd, F_FULLFSYNC) == -1 {
             fsync(fd)
             onLogUpdate("[MG] ⚠️ F_FULLFSYNC thất bại, dùng fsync thay thế.")
@@ -89,25 +128,14 @@ enum MobileGestaltApplyTask {
             onLogUpdate("[MG] ✅ F_FULLFSYNC thành công (Đã ép xuống ổ cứng).")
         }
         
-        // 6. Verify lại file ngay sau khi ghi
-        let verifyData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
-        if verifyData == data {
-            onLogUpdate("[MG] ✅ Verify: File trên đĩa khớp 100% với dữ liệu mới.")
-        } else {
-            onLogUpdate("[MG] ❌ Verify thất bại: File trên đĩa KHÔNG khớp.")
-        }
-        
         onLogUpdate("[MG] 🎉 GHI THÀNH CÔNG. Hãy TẮT NGUỒN (Hard Reboot) để iOS nạp lại cấu hình.")
     }
 
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
-        
         if FileManager.default.fileExists(atPath: onDeviceMGPath) {
             try FileManager.default.removeItem(atPath: onDeviceMGPath)
             onLogUpdate("[MG] ✅ Đã xóa MobileGestalt cache. Hãy Respring để iOS tạo lại file gốc.")
-        } else {
-            onLogUpdate("[MG] ✅ Cache đã bị xóa từ trước.")
         }
     }
 }
