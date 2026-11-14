@@ -1,6 +1,7 @@
 //
 //  GestaltStore.swift
 //  EnsWilde (Ported from Erosion-CN)
+//  Updated: Removed iPadOS safety block.
 //
 
 import SwiftUI
@@ -322,14 +323,12 @@ final class GestaltStore: ObservableObject {
             guard let firstKey = MGKey.ipadosCacheEx.first else { return false }
             return (self.cacheExtra[firstKey] as? NSNumber)?.intValue == 1
         }, set: { enabled in
-            if enabled {
-                Alertinator.shared.alert(
-                    title: L("安全护栏已拦截高危操作！"),
-                    body: L("在 iPhone 上强制启用 iPadOS 界面需篡改未经验证的 CacheData 偏移，在锁屏密码或横竖屏切换时极易引发无限白苹果重启与触控冻结，防白苹果护栏已永久禁用该功能。")
-                )
-            } else {
-                self.objectWillChange.send()
-                for key in MGKey.ipadosCacheEx {
+            // ĐÃ XÓA BỎ POPUP CHẶN CỦA TÁC GIẢ
+            self.objectWillChange.send()
+            for key in MGKey.ipadosCacheEx {
+                if enabled {
+                    self.cacheExtra[key] = 1
+                } else {
                     self.disableBooleanExtraKey(key, enableValue: 1)
                 }
             }
@@ -995,8 +994,16 @@ final class GestaltStore: ObservableObject {
     }
     
     func mgSetiPadOS(enable: Bool) -> Bool {
-        print("[!] (mg) blocked unsafe mgSetiPadOS regex CacheData mutation")
-        return false
+        // ĐÃ XÓA BỎ CHẶN
+        self.objectWillChange.send()
+        for key in MGKey.ipadosCacheEx {
+            if enable {
+                self.cacheExtra[key] = 1
+            } else {
+                self.disableBooleanExtraKey(key, enableValue: 1)
+            }
+        }
+        return true
     }
 }
 
