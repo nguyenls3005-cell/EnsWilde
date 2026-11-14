@@ -39,27 +39,18 @@ struct MobileGestaltView: View {
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
     
+    // Cảnh báo iOS 27
+    @State private var showDIWarning = false
+    
     // Danh sách Region
     let regionPresets: [MGRegionPreset] = [
-        MGRegionPreset(id: "VN", name: "Việt Nam", suffix: "VN/A"),
-        MGRegionPreset(id: "LL", name: "Mỹ (United States)", suffix: "LL/A"),
+        MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
+        MGRegionPreset(id: "CH", name: "China", suffix: "CH/A"),
+        MGRegionPreset(id: "J", name: "Japan", suffix: "J/A"),
         MGRegionPreset(id: "ZA", name: "Singapore", suffix: "ZA/A"),
-        MGRegionPreset(id: "ZP", name: "Hồng Kông / Ma Cao", suffix: "ZP/A"),
-        MGRegionPreset(id: "J", name: "Nhật Bản", suffix: "J/A"),
-        MGRegionPreset(id: "KH", name: "Hàn Quốc", suffix: "KH/A"),
-        MGRegionPreset(id: "TH", name: "Thái Lan", suffix: "TH/A"),
-        MGRegionPreset(id: "CH", name: "Trung Quốc", suffix: "CH/A"),
-        MGRegionPreset(id: "B", name: "Anh (UK)", suffix: "B/A"),
-        MGRegionPreset(id: "F", name: "Pháp", suffix: "F/A"),
-        MGRegionPreset(id: "T", name: "Ý (Italy)", suffix: "T/A"),
+        MGRegionPreset(id: "B", name: "United Kingdom", suffix: "B/A"),
         MGRegionPreset(id: "C", name: "Canada", suffix: "C/A"),
-        MGRegionPreset(id: "X", name: "Úc (Australia)", suffix: "X/A"),
-        MGRegionPreset(id: "TA", name: "Đài Loan", suffix: "TA/A"),
-        MGRegionPreset(id: "TU", name: "Thổ Nhĩ Kỳ", suffix: "TU/A"),
-        MGRegionPreset(id: "EU", name: "Châu Âu", suffix: "EU/A"),
-        MGRegionPreset(id: "QL", name: "Tây Ban Nha / Ý / Bồ Đào Nha", suffix: "QL/A"),
-        MGRegionPreset(id: "AE", name: "UAE / Ả Rập Xê Út", suffix: "AE/A"),
-        MGRegionPreset(id: "CL", name: "Paraguay", suffix: "CL/A")
+        MGRegionPreset(id: "X", name: "Australia", suffix: "X/A")
     ]
     
     @State private var selectedRegionCode: String = "CH"
@@ -90,12 +81,17 @@ struct MobileGestaltView: View {
                 }
                 .pickerStyle(.menu)
                 .onChange(of: dynamicIslandType) { newValue in
-                    if newValue != -1 {
+                    if newValue == 8 {
+                        showDIWarning = true
+                    } else if newValue != -1 {
                         enableCustomSubtype = false
-                        _ = store.applyDynamicIsland(type: newValue)
                     } else {
                         enableCustomSubtype = true
                     }
+                }
+                .alert("Dynamic Island need iOS 27.0RC+!!", isPresented: $showDIWarning) {
+                    Button("Cancel", role: .cancel) { dynamicIslandType = 0 }
+                    Button("Accept") { enableCustomSubtype = false }
                 }
 
                 if enableCustomSubtype {
@@ -139,7 +135,6 @@ struct MobileGestaltView: View {
                     Text(L("mg_install_ipad_apps"))
                 }
                 
-                // Picker chọn Region
                 Picker(selection: $selectedRegionCode) {
                     ForEach(regionPresets) { preset in
                         Text("\(preset.suffix) - \(preset.name)").tag(preset.id)
@@ -148,13 +143,6 @@ struct MobileGestaltView: View {
                     Text("Region")
                 }
                 .pickerStyle(.menu)
-                .onChange(of: selectedRegionCode) { newValue in
-                    if let preset = regionPresets.first(where: { $0.id == newValue }) {
-                        store.cacheExtra[MGKey.regionCode] = preset.id
-                        store.cacheExtra[MGKey.regionSysconfig] = preset.suffix
-                        store.cacheExtra[MGKey.regionInfo] = preset.suffix
-                    }
-                }
 
                 Toggle(L("mg_apple_pencil"), isOn: store.mgByteBinding(key: MGKey.appPencil))
                 Toggle(L("mg_action_button"), isOn: store.mgByteBinding(key: MGKey.actButton))
@@ -187,10 +175,10 @@ struct MobileGestaltView: View {
 
             Section(header: Text(L("section_save_reset"))) {
                 Button(action: saveChanges) {
-                    Text(L("mg_save_settings"))
+                    Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
                 }
                 Button(role: .destructive, action: resetOriginal) {
-                    Text("Revert Tweaks")
+                    Label("Revert Tweaks", systemImage: "arrow.counterclockwise")
                 }
             }
         }
@@ -295,16 +283,28 @@ struct MobileGestaltView: View {
                 if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
                     ce[MGKey.prodType] = productType
                     
-                    if let artwork = ce[MGKey.artwork] as? NSMutableDictionary {
-                        if enableModelName {
-                            artwork["ArtworkDeviceProductDescription"] = modelName
-                        } else {
-                            artwork.removeObject(forKey: "ArtworkDeviceProductDescription")
-                        }
-                        
-                        if enableCustomSubtype, let val = Int(customSubtypeValue) {
-                            artwork["ArtworkDeviceSubType"] = val
-                        }
+                    let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+                    
+                    if dynamicIslandType == 0 {
+                        art.removeObject(forKey: "ArtworkDeviceSubType")
+                    } else if dynamicIslandType > 0 {
+                        let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
+                        art["ArtworkDeviceSubType"] = subtypes[dynamicIslandType]
+                    } else if enableCustomSubtype, let val = Int(customSubtypeValue) {
+                        art["ArtworkDeviceSubType"] = val
+                    }
+                    
+                    if enableModelName {
+                        art["ArtworkDeviceProductDescription"] = modelName
+                    } else {
+                        art.removeObject(forKey: "ArtworkDeviceProductDescription")
+                    }
+                    ce[MGKey.artwork] = art
+                    
+                    if let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
+                        ce[MGKey.regionCode] = preset.id
+                        ce[MGKey.regionSysconfig] = preset.suffix
+                        ce[MGKey.regionInfo] = preset.suffix
                     }
                 }
                 
@@ -349,7 +349,7 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "All tweaks reverted to factory settings. Respring to take effect."
+                    lastError = "All tweaks reverted to factory settings. Please REBOOT to fully apply."
                     showErrorAlert = true
                 }
             } catch {
