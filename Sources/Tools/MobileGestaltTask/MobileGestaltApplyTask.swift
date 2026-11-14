@@ -1,9 +1,3 @@
-//
-//  MobileGestaltApplyTask.swift
-//  EnsWilde
-//  Fixed: Safe patching, no bulk overwrite, prevents iOS from rejecting cache.
-//
-
 import Foundation
 import UIKit
 import Darwin
@@ -25,7 +19,6 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -404, userInfo: [NSLocalizedDescriptionKey: "MobileGestalt cache is missing. Please RESPIRING or REBOOT your device to let iOS regenerate it before applying."])
         }
         
-        // 1. Đọc dữ liệu hiện tại (Live)
         onLogUpdate("[MG] Đang đọc file MobileGestalt hiện tại...")
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         guard let liveDict = try PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
@@ -34,7 +27,6 @@ enum MobileGestaltApplyTask {
         
         let candidateDict = NSMutableDictionary(dictionary: liveDict)
         
-        // 2. VÁ CACHE DATA (Chỉ sửa đúng 8 byte của các slot, không ghi đè toàn bộ)
         onLogUpdate("[MG] Đang đồng bộ CacheData (chỉ vá các byte thay đổi)...")
         if let liveCacheData = liveDict["CacheData"] as? Data,
            let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
@@ -62,7 +54,6 @@ enum MobileGestaltApplyTask {
             onLogUpdate("[MG] ⚠️ Kích thước CacheData không khớp, bỏ qua vá CacheData.")
         }
         
-        // 3. VÁ CACHE EXTRA (Chỉ cập nhật các key hợp lệ, xóa key rác)
         onLogUpdate("[MG] Đang đồng bộ CacheExtra...")
         if let liveExtra = liveDict["CacheExtra"] as? NSMutableDictionary,
            let storeExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary {
@@ -78,27 +69,18 @@ enum MobileGestaltApplyTask {
             ] + MGKey.appIntellAllKeys + MGKey.ipadosCacheEx
             
             for key in allowedExtraKeys {
-                if let newVal = storeExtra[key] {
-                    liveExtra[key] = newVal
-                } else {
-                    liveExtra.removeObject(forKey: key)
-                }
+                if let newVal = storeExtra[key] { liveExtra[key] = newVal } else { liveExtra.removeObject(forKey: key) }
             }
             
-            // Xóa các key rác không được phép tồn tại trong CacheExtra (gây lỗi iOS)
             let blockedKeys = ["RegionInfo", "zHeENZu+wbg7PUprwNwBWg", "green-tea", "not-green-tea", "wapi"]
-            for blocked in blockedKeys {
-                liveExtra.removeObject(forKey: blocked)
-            }
+            for blocked in blockedKeys { liveExtra.removeObject(forKey: blocked) }
             
             candidateDict["CacheExtra"] = liveExtra
         }
         
-        // 4. Serialize
         let finalData = try PropertyListSerialization.data(fromPropertyList: candidateDict, format: .binary, options: 0)
         onLogUpdate("[MG] Kích thước file mới: \(finalData.count) bytes (Cũ: \(liveData.count) bytes)")
         
-        // 5. GHI FILE (pwrite + F_FULLFSYNC)
         onLogUpdate("[MG] Đang ghi đè file (pwrite + F_FULLFSYNC)...")
         let fd = open(onDeviceMGPath, O_RDWR)
         guard fd >= 0 else {
