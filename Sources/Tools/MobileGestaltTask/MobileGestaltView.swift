@@ -127,7 +127,7 @@ struct MobileGestaltView: View {
                     // Ghi đè thẳng vào file backup gốc
                     try data.write(to: MGURL.savedGestaltURL, options: .atomic)
                     // Xóa hash cũ để hệ thống không check SHA256
-                    try? fm.removeItem(at: MGURL.savedGestaltSHA256URL)
+                    try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL)
                     
                     lastError = "Imported original backup successfully."
                     showErrorAlert = true
