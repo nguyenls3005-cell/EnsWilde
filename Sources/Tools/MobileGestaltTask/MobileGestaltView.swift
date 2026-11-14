@@ -55,6 +55,8 @@ struct MobileGestaltView: View {
 
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
+    
+    @State private var showBackupImporter = false
 
     var body: some View {
         Form {
@@ -107,6 +109,33 @@ struct MobileGestaltView: View {
         }
         .onChange(of: customSubtypeValue) { _ in
             if enableCustomSubtype { applyCustomSubtype() }
+        }
+        .fileImporter(
+            isPresented: $showBackupImporter,
+            allowedContentTypes: [.propertyList, .data],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                let stopAccess = url.startAccessingSecurityScopedResource()
+                defer { if stopAccess { url.stopAccessingSecurityScopedResource() } }
+                
+                do {
+                    let data = try Data(contentsOf: url)
+                    try data.write(to: MGURL.savedGestaltURL, options: .atomic)
+                    try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL)
+                    
+                    lastError = "Imported original backup successfully."
+                    showErrorAlert = true
+                } catch {
+                    lastError = "Import failed: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            case .failure(let error):
+                lastError = "Import failed: \(error.localizedDescription)"
+                showErrorAlert = true
+            }
         }
     }
 
@@ -277,6 +306,9 @@ struct MobileGestaltView: View {
             Button(role: .destructive, action: resetOriginal) {
                 Label("Reset Original", systemImage: "arrow.counterclockwise")
             }
+            Button(action: { showBackupImporter = true }) {
+                Label("Import Clean Backup (Plist)", systemImage: "square.and.arrow.down.on.square")
+            }
         }
     }
 
@@ -331,8 +363,8 @@ struct MobileGestaltView: View {
                     store.loadFromPlist(url: modMGURL)
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
-                    showApplyTab = true // Bật giao diện Apply
-                    lastError = "Restored to factory settings successfully. Respring to take effect."
+                    showApplyTab = true
+                    lastError = "Factory settings restored successfully. Respring to take effect."
                     showErrorAlert = true
                 }
             } catch {
@@ -364,7 +396,6 @@ struct MobileGestaltView: View {
             }
             chmod(modMGURL.path, 0o644)
             
-            // KHÔNG TỰ ĐỘNG TẠO BACKUP Ở ĐÂY, ĐỂ HÀM APPLY LO
             if !FileManager.default.fileExists(atPath: origMGURL.path) {
                 FileManager.default.createFile(atPath: origMGURL.path, contents: nil, attributes: nil)
             }
