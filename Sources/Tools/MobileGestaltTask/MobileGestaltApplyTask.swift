@@ -77,7 +77,7 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
-    // THUẬT TOÁN REVERT CHUẨN GESTALTX
+    // THUẬT TOÁN REVERT CHUẨN GESTALTX (Bê nguyên CacheExtra & CacheData từ Backup)
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
@@ -92,7 +92,7 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "No valid backup file found. Please import a clean plist."])
         }
         
-        // Đắp nguyên cục CacheExtra từ backup (bao gồm tên máy, Dynamic Island, Region)
+        // Đắp nguyên cục CacheExtra từ backup (bao gồm tên máy, Dynamic Island, Region, Toggles)
         if let backupExtra = backupDict["CacheExtra"] as? NSMutableDictionary {
             liveDict["CacheExtra"] = backupExtra
         }
@@ -102,7 +102,7 @@ enum MobileGestaltApplyTask {
             liveDict["CacheData"] = backupCacheData
         }
         
-        // Đắp UUID và Version live vào để bypass check
+        // Đắp UUID và Version live vào để bypass check của hệ thống
         if let liveUUID = liveDict["CacheUUID"] as? String {
             backupDict["CacheUUID"] = liveUUID
             liveDict["CacheUUID"] = liveUUID
