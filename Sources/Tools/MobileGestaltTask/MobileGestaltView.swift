@@ -44,6 +44,7 @@ struct MobileGestaltView: View {
     
     // Region List
     let regionPresets: [MGRegionPreset] = [
+        MGRegionPreset(id: "VN", name: "Viet Nam", suffix: "VN/A"),
         MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
         MGRegionPreset(id: "CH", name: "China", suffix: "CH/A"),
         MGRegionPreset(id: "J", name: "Japan", suffix: "J/A"),
