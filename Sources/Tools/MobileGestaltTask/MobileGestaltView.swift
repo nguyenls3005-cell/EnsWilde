@@ -323,11 +323,7 @@ struct MobileGestaltView: View {
     private func resetOriginal() {
         Task {
             do {
-                guard let record = MobileGestaltBackupManager.shared.latestBackup() else {
-                    throw NSError(domain: "MG", code: -12, userInfo: [NSLocalizedDescriptionKey: "No backup found."])
-                }
-                
-                try await MobileGestaltApplyTask.restoreGestalt(record: record) { log in
+                try await MobileGestaltApplyTask.restoreGestalt { log in
                     print(log)
                 }
                 
@@ -340,7 +336,8 @@ struct MobileGestaltView: View {
                     store.loadFromPlist(url: modMGURL)
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
-                    lastError = "Restored successfully. Respring to take effect."
+                    showApplyTab = true // QUAN TRỌNG: Bật giao diện Apply
+                    lastError = "Restored to factory settings successfully. Respring to take effect."
                     showErrorAlert = true
                 }
             } catch {
