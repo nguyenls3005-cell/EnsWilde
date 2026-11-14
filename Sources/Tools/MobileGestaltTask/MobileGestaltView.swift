@@ -55,8 +55,6 @@ struct MobileGestaltView: View {
 
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
-    
-    @State private var showBackupImporter = false
 
     var body: some View {
         Form {
@@ -109,33 +107,6 @@ struct MobileGestaltView: View {
         }
         .onChange(of: customSubtypeValue) { _ in
             if enableCustomSubtype { applyCustomSubtype() }
-        }
-        .fileImporter(
-            isPresented: $showBackupImporter,
-            allowedContentTypes: [.propertyList, .data],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                let stopAccess = url.startAccessingSecurityScopedResource()
-                defer { if stopAccess { url.stopAccessingSecurityScopedResource() } }
-                
-                do {
-                    let data = try Data(contentsOf: url)
-                    try data.write(to: MGURL.savedGestaltURL, options: .atomic)
-                    try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL)
-                    
-                    lastError = "Imported original backup successfully."
-                    showErrorAlert = true
-                } catch {
-                    lastError = "Import failed: \(error.localizedDescription)"
-                    showErrorAlert = true
-                }
-            case .failure(let error):
-                lastError = "Import failed: \(error.localizedDescription)"
-                showErrorAlert = true
-            }
         }
     }
 
@@ -304,24 +275,46 @@ struct MobileGestaltView: View {
                 Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
             }
             Button(role: .destructive, action: resetOriginal) {
-                Label("Reset Original", systemImage: "arrow.counterclockwise")
-            }
-            Button(action: { showBackupImporter = true }) {
-                Label("Import Clean Backup (Plist)", systemImage: "square.and.arrow.down.on.square")
+                Label("Revert Tweaks", systemImage: "arrow.counterclockwise")
             }
         }
     }
 
     private func applyCustomSubtype() {
         if let val = Int(customSubtypeValue) {
-            _ = store.applyDynamicIsland(type: -1, customValue: val)
+            if let ce = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
+                let dict = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+                dict["ArtworkDeviceSubType"] = val
+                ce[MGKey.artwork] = dict
+            }
+            if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
+                let dict = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+                dict["ArtworkDeviceSubType"] = val
+                ce[MGKey.artwork] = dict
+            }
+            store.objectWillChange.send()
         }
     }
 
     private func saveChanges() {
         Task {
             do {
-                store.mgCurrentDict = mobileGestalt
+                // Đồng bộ UI (model, subtype) vào store trước khi ghi, không gán đè toàn bộ dict
+                if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
+                    ce[MGKey.prodType] = productType
+                    
+                    if let artwork = ce[MGKey.artwork] as? NSMutableDictionary {
+                        if enableModelName {
+                            artwork["ArtworkDeviceProductDescription"] = modelName
+                        } else {
+                            artwork.removeObject(forKey: "ArtworkDeviceProductDescription")
+                        }
+                        
+                        if enableCustomSubtype, let val = Int(customSubtypeValue) {
+                            artwork["ArtworkDeviceSubType"] = val
+                        }
+                    }
+                }
                 
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
                     print(log)
@@ -363,13 +356,13 @@ struct MobileGestaltView: View {
                     store.loadFromPlist(url: modMGURL)
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
-                    showApplyTab = true
-                    lastError = "Factory settings restored successfully. Respring to take effect."
+                    showApplyTab = true 
+                    lastError = "All tweaks reverted successfully. Respring to take effect."
                     showErrorAlert = true
                 }
             } catch {
                 await MainActor.run {
-                    lastError = "Restore failed: \(error.localizedDescription)"
+                    lastError = "Revert failed: \(error.localizedDescription)"
                     showErrorAlert = true
                 }
             }
