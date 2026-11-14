@@ -22,10 +22,10 @@ enum MobileGestaltApplyTask {
         // 1. Đọc file MobileGestalt thật đang chạy trên máy
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         
-        // 2. TỰ ĐỘNG BACKUP Ở LẦN ĐẦU TIÊN (Nếu chưa có file backup hoặc file rỗng)
-        if !fm.fileExists(atPath: MGURL.savedGestaltURL.path) || (try? Data(contentsOf: MGURL.savedGestaltURL))?.count ?? 0 < 256 {
+        // 2. TỰ ĐỘNG BACKUP Ở LẦN ĐẦU TIÊN (Dùng thẳng FileManager.default)
+        if !FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) || (try? Data(contentsOf: MGURL.savedGestaltURL))?.count ?? 0 < 256 {
             try? liveData.write(to: MGURL.savedGestaltURL, options: .atomic)
-            try? fm.removeItem(at: MGURL.savedGestaltSHA256URL) // Xóa hash cũ để bypass check
+            try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL)
             onLogUpdate("[MG] 📦 Created pristine backup for the first time.")
         }
         
@@ -46,11 +46,11 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheExtra"] = liveExtra
         
-        // 5. Ghi đè CacheData
+        // 5. Ghi đè CacheData (Dùng var Data thuần Swift)
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
-        let targetCacheData = NSMutableData(data: liveCacheData)
+        var targetCacheData = liveCacheData
         
         if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: liveDict),
            let storeData = store.mgCurrentDict["CacheData"] as? Data {
@@ -65,8 +65,8 @@ enum MobileGestaltApplyTask {
             for key in allToggleKeys {
                 if let slotIdx = layout.featureSlotIndices[key] {
                     let offset = slotIdx * 8
-                    if offset < targetCacheData.length && offset < storeData.count {
-                        targetCacheData[offset] = storeData[offset]
+                    if offset < targetCacheData.count && offset < storeData.count {
+                        targetCacheData[offset] = storeData[offset] // Swift Data hỗ trợ gán subscript
                     }
                 }
             }
@@ -92,12 +92,12 @@ enum MobileGestaltApplyTask {
         
         // Đọc file backup
         guard let backupData = try? Data(contentsOf: MGURL.savedGestaltURL),
-              backupData.count > 256, // Đảm bảo file backup không rỗng
+              backupData.count > 256,
               let backupDict = try? PropertyListSerialization.propertyList(from: backupData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
             throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "No valid backup file found. Please import a clean plist first."])
         }
         
-        // Đắp UUID, Version và ProductType của máy hiện tại vào file backup để bypass check của Erosion-CN
+        // Đắp UUID, Version và ProductType của máy hiện tại vào file backup để bypass check
         if let liveUUID = liveDict["CacheUUID"] as? String {
             backupDict["CacheUUID"] = liveUUID
         }
@@ -111,7 +111,6 @@ enum MobileGestaltApplyTask {
             backupDict["CacheExtra"] = backupExtra
         }
         
-        // Ghi với allowVerifiedFactoryRestore = true để bỏ qua kiểm tra byte-level
         let finalData = try PropertyListSerialization.data(fromPropertyList: backupDict, format: .binary, options: 0)
         let (ok, msg) = mgWriteDetailed(finalData, allowVerifiedFactoryRestore: true)
         guard ok else {
