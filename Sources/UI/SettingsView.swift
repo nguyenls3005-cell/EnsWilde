@@ -621,8 +621,9 @@ struct AboutView: View {
             creditRow(name: "@mak5er", desc: "Airlift-On-Device")
             creditRow(name: "@jailbreakdotparty", desc: "Config tweak , new logic mobilegestalt")
             creditRow(name: "@LikePass888", desc: "Disable Call Recording Sound (iOS 27)")
+            creditRow(name: "@Little_34306", desc: "Original concept of disable call recording sound")
             creditRow(name: "@YiHoooong", desc: "For the silent tone assets and replacement research.")
-            creditRow(name: "@Kianuni", desc: "Erosion-cn Developer - Write & Revert tweaks logic"
+            creditRow(name: "@Kianuni", desc: "Erosion-cn Developer - Write & Revert tweaks logic")
             creditRow(name: "@Cộng đồng LSNguyen & YangJiii và những người bạn chat ⚡️", desc: "For support my project.")
         }
     }
