@@ -55,9 +55,6 @@ struct MobileGestaltView: View {
 
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
-    
-    // State cho Import Plist
-    @State private var showBackupImporter = false
 
     var body: some View {
         Form {
@@ -110,35 +107,6 @@ struct MobileGestaltView: View {
         }
         .onChange(of: customSubtypeValue) { _ in
             if enableCustomSubtype { applyCustomSubtype() }
-        }
-        .fileImporter(
-            isPresented: $showBackupImporter,
-            allowedContentTypes: [.propertyList, .data],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                let stopAccess = url.startAccessingSecurityScopedResource()
-                defer { if stopAccess { url.stopAccessingSecurityScopedResource() } }
-                
-                do {
-                    let data = try Data(contentsOf: url)
-                    // Ghi đè thẳng vào file backup gốc
-                    try data.write(to: MGURL.savedGestaltURL, options: .atomic)
-                    // Xóa hash cũ để hệ thống không check SHA256
-                    try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL)
-                    
-                    lastError = "Imported original backup successfully."
-                    showErrorAlert = true
-                } catch {
-                    lastError = "Import failed: \(error.localizedDescription)"
-                    showErrorAlert = true
-                }
-            case .failure(let error):
-                lastError = "Import failed: \(error.localizedDescription)"
-                showErrorAlert = true
-            }
         }
     }
 
@@ -309,9 +277,6 @@ struct MobileGestaltView: View {
             Button(role: .destructive, action: resetOriginal) {
                 Label("Reset Original", systemImage: "arrow.counterclockwise")
             }
-            Button(action: { showBackupImporter = true }) {
-                Label("Import Clean Backup (Plist)", systemImage: "square.and.arrow.down.on.square")
-            }
         }
     }
 
@@ -399,7 +364,7 @@ struct MobileGestaltView: View {
             }
             chmod(modMGURL.path, 0o644)
             
-            // KHÔNG TỰ ĐỘNG TẠO BACKUP Ở ĐÂY NỮA, HÀM APPLY SẼ LO
+            // KHÔNG TỰ ĐỘNG TẠO BACKUP Ở ĐÂY, ĐỂ HÀM APPLY LO
             if !FileManager.default.fileExists(atPath: origMGURL.path) {
                 FileManager.default.createFile(atPath: origMGURL.path, contents: nil, attributes: nil)
             }
