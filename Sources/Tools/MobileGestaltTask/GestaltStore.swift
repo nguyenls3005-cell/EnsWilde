@@ -24,14 +24,12 @@ enum MGRegionUnlockMode: String, CaseIterable, Identifiable {
 }
 
 enum MGMsg {
-    // warnings
     static var region: String { L("开启后默认把销售地区改为完整美版 (LL + LL/A) 并映射对应美版监管型号 (Axxxx)；你也可在下方子选项切换为「仅改区域代码 LL（保留 CH/A 后缀与双卡兼容）」。请遵守当地法律法规并自行承担使用风险。") }
     static var regionModeInfo: String { L("【地区修改模式细化说明】\n\n1. 完整美版 LL + LL/A（默认）：\n同时将区域代码改为 LL、系统销售地区改为 LL/A，并自动填入对应的美版监管型号 (Axxxx)，跨区域受限特性（海外版 Apple 智能、快门静音、健康区域特性等）一致性最完整。\n\n2. 仅改区域代码 LL（保留 CH/A 后缀与双卡兼容）：\n仅将区域代码 (RegionCode) 改为 LL，完整保留原机的销售地区后缀（如 CH/A）与原厂监管型号。既可满足基础 Apple 智能准入、让「设置 -> 关于本机」型号末尾继续显示 CH/A，也能避免国行双实体卡槽 + eSIM 机型（如 18 Pro / Pro Max）因映射无卡槽美版型号引发基带卡槽冲突。") }
     static var ipadOS: String { L("如果你当前设置了字母数字混合锁屏密码，请切勿开启此项！开启后也切勿关闭“在台前调度中显示程序坞”，否则会导致设备软砖（白苹果循环）。启用 iPadOS 界面后可能出现界面错位、部分应用不兼容等问题。") }
     static var support: String { L("请提前备份重要数据！如果某项修改未按预期生效，请勿向官方仓库提交支持请求。许多功能同时受限于设备硬件与 Apple 服务器策略，所有修改均需自行承担风险。") }
     static var mgReset: String { L("重置 MobileGestalt 将删除系统原始缓存文件并让系统在重启时重新生成。这有助于彻底清除无法还原的修改，但存在极低概率引发异常，请谨慎操作。") }
     
-    // info
     static var liquidGlass: String { L("开启后将使用 iOS 26/27 液态玻璃 (Liquid Glass) 的低性能开销渲染模式，可降低 GPU 负载、减少机身发热并节省电量（注销或重启后生效）。") }
     static var chinaCacheUnlock: String { L("通过从本机内存加载的系统库 (libMobileGestalt.dylib) 实时动态解析二进制 CacheData 槽位偏移，将国行底层限制标记 green-tea 设为 false、not-green-tea 设为 true。\n\n• 可在所有国行设备上解锁 FaceTime 音频（语音通话）与 AI 底层区域准入；\n• 在自带物理 eSIM 芯片的国行机型（如 iPhone Air、iPhone 18 系列等内置 eUICC 芯片机型）上，可解除系统层针对境外 eSIM 的地理围栏拦截（注：常规纯双实体卡槽国行主板物理空焊 eUICC 芯片，无法通过纯软件写入虚拟卡）。\n\n⚠️ 注意：在 iOS 26/27 中，国行特有的单应用三态联网菜单（“关闭 / 无线局域网 / 无线局域网与蜂窝数据”）同样受 green-tea 标记控制。即使保持下方“无线局域网改 Wi-Fi”关闭，开启本项解除国行底层限制后，系统网络权限也会切换为国际版“蜂窝数据”独立开关模式（关闭本项并重启即可随时原样恢复）。\n\n安全策略：仅当本机 CacheUUID、总长度、有效位及填充字节 100% 匹配通过时才允许修改；应用后请手动重启手机生效。") }
     static var wapiToWifi: String { L("通过本机系统库实时动态解析 wapi 布尔槽位偏移并设为 false，将系统“设置”与控制中心里的“无线局域网”统一显示为国际版的“Wi-Fi”。\n\n⚠️ 重要提示：开启后将会【丢失国行特有的“不允许联网”功能】（即“使用无线局域网与蜂窝网络的 App”中的“关闭”选项）！国际版逻辑仅允许单独关闭“蜂窝数据”，无法禁止单个应用使用 Wi-Fi 联网（如第三方输入法或离线应用将无法彻底断网），同时“启用 WAPI”开关也会隐藏。\n\n如需保留应用“不允许联网”权限控制，请保持此项关闭；若已开启，关闭此开关重新应用并手动重启手机即可原样恢复。") }
@@ -68,100 +66,65 @@ enum MGMsg {
     static var revertComp: String { L("已通过 SHA-256 与物理落盘校验恢复本机原厂备份，并已同步清空本地自定义开关残留。建议【手动重启一次手机】以确保所有底层参数彻底复原。") }
     static var revertConfirm: String { L("即将执行本机原厂参数恢复：\n\n1. 严格核对原厂备份的 SHA-256 摘要、系统版本、CacheUUID 与真实硬件型号；\n2. 通过无零字节窗口原位刷盘 (pwrite + F_FULLFSYNC) 恢复 MobileGestalt 并读回验证；\n3. 同步复位本地自定义键值、自定义机型名与越界门禁开关，杜绝残留回写。") }
     static var globalFactoryRestoreConfirm: String { L("即将执行全模块一键恢复原机出厂参数：\n\n1. 恢复并校验本机 MobileGestalt 原厂备份（含 SHA-256 与物理刷盘验证）；\n2. 清除锁屏底部文字、设备资产铭牌及第三方伪监管残留（自动保护真实企业 MDM）；\n3. 清理自定义拨号键盘缓存并复位所有本地偏好状态。") }
-
-    // settings
     static var mgResetSavWarn: String { L("重新生成原始备份前，请确保当前已还原所有修改，否则当前处于开启状态的修改会被写入新的原始备份中！") }
     static var hidTweakWarn: String { L("显示被隐藏的修改项后，你将能看到当前机型本已原生支持或不兼容的底层开关。盲目改动可能导致功能异常甚至数据丢失！") }
 }
 
 enum MGKey {
-    // bindings
     static let ipadosCacheEx = [
-        "uKc7FPnEO++lVhHWHFlGbQ", // ipad
-        "mG0AnH/Vy1veoqoLRAIgTA", // MedusaFloatingLiveAppCapability
-        "UCG5MkVahJxG1YULbbd5Bg", // MedusaOverlayAppCapability
-        "ZYqko/XM5zD3XBfN5RmaXA", // MedusaPinnedAppCapability
-        "nVh/gwNpy7Jv1NOk00CMrw", // MedusaPIPCapability,
-        "qeaj75wk3HF4DwQ8qbIi7g", // DeviceSupportsEnhancedMultitasking
+        "uKc7FPnEO++lVhHWHFlGbQ",
+        "mG0AnH/Vy1veoqoLRAIgTA",
+        "UCG5MkVahJxG1YULbbd5Bg",
+        "ZYqko/XM5zD3XBfN5RmaXA",
+        "nVh/gwNpy7Jv1NOk00CMrw",
+        "qeaj75wk3HF4DwQ8qbIi7g"
     ]
     static let deviceClassNumber = "mtrAoWJ3gsq+I90ZnQ0vQw"
-    
-    // hardware features
-    static let island = "YlEtTtHlNesRBMal1CqRaA" // DeviceSupportsDynamicIsland
-    static let AOTime = "j8/Omm6s1lsmTDFsXjsBfA" // DeviceSupportsAlwaysOnTime
-    static let AOD = "2OOJf1VhaM7NxfRok3HbWQ" // DeviceSupportsAlwaysOnDisplay
-    static let AODVibrancy = "ykpu7qyhqFweVMKtxNylWA" // DeviceSupportsAODVibrancy
-    static let liquidGlassLowPower = "SAGvsp6O6kAQ4fEfDJpC4Q" // Liquid Glass Low-Power Rendering
-    static let chargeLim = "37NVydb//GP/GrhuTN+exg" // DeviceSupports80ChargeLimit
-    static let bootChime = "QHxt+hGLaBPbQJbXiUJX3w" // DeviceSupportsBootChime
-    
-    // internal
-    static let intInstall = "EqrsVvjcYDdxHBiQmGhAWw" // apple-internal-install
-    static let intBuild = "LBJfwOEzExRxzlAnSuI7eg" // InternalBuild
-    
-    // eligibility
-    static let srd = "XYlJKKkj2hztRP1NWWnhlw" // ResearchFuse
-    static let appIntell = "A62OafQ85EJAiiqKn4agtg" // DeviceSupportsGenerativeModelSystems
-    static let photosCleanUp = "XNCjqOupLM/S8fNyxRNQTA" // Photos Clean Up
-    static let handwritingSynth = "YgYIIViDt1kgzyIsIV61vA" // Handwriting Synthesis
-    static let appIntellAllKeys = [
-        "A62OafQ85EJAiiqKn4agtg", // DeviceSupportsGenerativeModelSystems
-        "XNCjqOupLM/S8fNyxRNQTA", // Photos Clean Up
-        "YgYIIViDt1kgzyIsIV61vA", // Handwriting Synthesis
-    ]
-    static let audioIntell = "rb2tKZxlj0Gm2tBmUQSLqQ" // supports-audio-intelligence
-    static let personalTranslator = "M1n2sAqf33NAOgZRGxQYBA" // supports-personal-translator
-    static let advAppIntellKeys = [
-        "rb2tKZxlj0Gm2tBmUQSLqQ", // Audio Intelligence
-        "M1n2sAqf33NAOgZRGxQYBA", // Personal Translator
-    ]
+    static let island = "YlEtTtHlNesRBMal1CqRaA"
+    static let AOTime = "j8/Omm6s1lsmTDFsXjsBfA"
+    static let AOD = "2OOJf1VhaM7NxfRok3HbWQ"
+    static let AODVibrancy = "ykpu7qyhqFweVMKtxNylWA"
+    static let liquidGlassLowPower = "SAGvsp6O6kAQ4fEfDJpC4Q"
+    static let chargeLim = "37NVydb//GP/GrhuTN+exg"
+    static let bootChime = "QHxt+hGLaBPbQJbXiUJX3w"
+    static let intInstall = "EqrsVvjcYDdxHBiQmGhAWw"
+    static let intBuild = "LBJfwOEzExRxzlAnSuI7eg"
+    static let srd = "XYlJKKkj2hztRP1NWWnhlw"
+    static let appIntell = "A62OafQ85EJAiiqKn4agtg"
+    static let photosCleanUp = "XNCjqOupLM/S8fNyxRNQTA"
+    static let handwritingSynth = "YgYIIViDt1kgzyIsIV61vA"
+    static let appIntellAllKeys = ["A62OafQ85EJAiiqKn4agtg", "XNCjqOupLM/S8fNyxRNQTA", "YgYIIViDt1kgzyIsIV61vA"]
+    static let audioIntell = "rb2tKZxlj0Gm2tBmUQSLqQ"
+    static let personalTranslator = "M1n2sAqf33NAOgZRGxQYBA"
+    static let advAppIntellKeys = ["rb2tKZxlj0Gm2tBmUQSLqQ", "M1n2sAqf33NAOgZRGxQYBA"]
     static let advAppIntellRules: [MGSlotRule] = [
         MGSlotRule(key: "rb2tKZxlj0Gm2tBmUQSLqQ", targetValue: true, required: false),
-        MGSlotRule(key: "M1n2sAqf33NAOgZRGxQYBA", targetValue: true, required: false),
+        MGSlotRule(key: "M1n2sAqf33NAOgZRGxQYBA", targetValue: true, required: false)
     ]
-    static let regionCode = "h63QSdBCiT/z0WU6rdQv6Q" // RegionCode
-    static let regionInfo = "zHeENZu+wbg7PUprwNwBWg" // RegionInfo
-    static let regionSysconfig = "yK+xavymRGZ3xWc1tb8XDg" // RegionInfoFromSysconfig
-    static let regModelNumber = "97JDvERpVwO+GHtthIh7hA" // RegulatoryModelNumber
-
-    // media, camera & health (CacheData boolean slots)
-    static let audioMix = "aVL5GE3tx0LSCI/ErfrJGA"            // CameracinematicAudioTrackRendering (Audio Mix)
-    static let spatialAudioRec = "X6NGcYcvHmbqlR8hLXASJA"     // spatial-audio-recording
-    static let spatialFaceTimeAudio = "/EVOCjM/Nmb2roP5ebtEFA"// spatial-facetime-audio
-    static let spatialAudioAllKeys = [
-        "X6NGcYcvHmbqlR8hLXASJA",
-        "/EVOCjM/Nmb2roP5ebtEFA",
-    ]
-    static let responsiveShutter = "gQDt76Te0SPw7N8oTLrBFw"   // ResponsiveShutter
-    static let hypertensionNotif = "4fh9efw4o1yaFqkXNCXoeA"   // HypertensionNotifications
-    static let mediaHealthAllKeys = [
-        "aVL5GE3tx0LSCI/ErfrJGA",
-        "X6NGcYcvHmbqlR8hLXASJA",
-        "/EVOCjM/Nmb2roP5ebtEFA",
-        "gQDt76Te0SPw7N8oTLrBFw",
-        "4fh9efw4o1yaFqkXNCXoeA",
-    ]
-    
-    // prefs
-    static let crashDet = "HCzWusHQwZDea6nNhaKndw" // DeviceSupportsCollisionSOS
-    static let pwm = "6IejgN+1Fmu5/QrZFOIeNw" // DeviceSupportsPulseWidthMaximization
-    static let appPencil = "yhHcB0iH0d1XzPO/CFd3ow" // DeviceSupportsApplePencil
-    static let camButton = "CwvKxM2cEogD3p+HYgaW0Q" // CameraButtonCapability
-    static let grapPefr = "oOV1jhJbdV3AddkcCg0AEA" // apple-graphics-performance-tier
-    static let actButton = "cT44WE1EohiwRzhsZ8xEsw" // RingerButtonCapability
-    static let tapToWake = "yZf3GTRMGTuwSV/lD7Cagw" // DeviceSupportsTapToWake
-    
-    // ipados
-    static let stageMgr = "qeaj75wk3HF4DwQ8qbIi7g" // DeviceSupportsEnhancedMultitasking
-    
-    // lookup
-    static let deviceClass = "+3Uf0Pm5F8Xy7Onyvko0vA" // DeviceClass
-    static let artwork = "oPeik/9e8lQWMszEjbPzng" // ArtworkTraits
-    static let prodType = "h9jDsbgj7xIVeIQ8S3/X3Q" // ProductType
-    static let modelNameOuter1 = "Z/dqyWS6OZTRy10UcmUAhw" // DeviceProductDescription
-    static let modelNameOuter2 = "bbtR9jQx50Fv5Af/affNtA" // MarketingNameString
-
-    // [测试特性] Experimental CacheData Boolean Slot Keys
+    static let regionCode = "h63QSdBCiT/z0WU6rdQv6Q"
+    static let regionInfo = "zHeENZu+wbg7PUprwNwBWg"
+    static let regionSysconfig = "yK+xavymRGZ3xWc1tb8XDg"
+    static let regModelNumber = "97JDvERpVwO+GHtthIh7hA"
+    static let audioMix = "aVL5GE3tx0LSCI/ErfrJGA"
+    static let spatialAudioRec = "X6NGcYcvHmbqlR8hLXASJA"
+    static let spatialFaceTimeAudio = "/EVOCjM/Nmb2roP5ebtEFA"
+    static let spatialAudioAllKeys = ["X6NGcYcvHmbqlR8hLXASJA", "/EVOCjM/Nmb2roP5ebtEFA"]
+    static let responsiveShutter = "gQDt76Te0SPw7N8oTLrBFw"
+    static let hypertensionNotif = "4fh9efw4o1yaFqkXNCXoeA"
+    static let mediaHealthAllKeys = ["aVL5GE3tx0LSCI/ErfrJGA", "X6NGcYcvHmbqlR8hLXASJA", "/EVOCjM/Nmb2roP5ebtEFA", "gQDt76Te0SPw7N8oTLrBFw", "4fh9efw4o1yaFqkXNCXoeA"]
+    static let crashDet = "HCzWusHQwZDea6nNhaKndw"
+    static let pwm = "6IejgN+1Fmu5/QrZFOIeNw"
+    static let appPencil = "yhHcB0iH0d1XzPO/CFd3ow"
+    static let camButton = "CwvKxM2cEogD3p+HYgaW0Q"
+    static let grapPefr = "oOV1jhJbdV3AddkcCg0AEA"
+    static let actButton = "cT44WE1EohiwRzhsZ8xEsw"
+    static let tapToWake = "yZf3GTRMGTuwSV/lD7Cagw"
+    static let stageMgr = "qeaj75wk3HF4DwQ8qbIi7g"
+    static let deviceClass = "+3Uf0Pm5F8Xy7Onyvko0vA"
+    static let artwork = "oPeik/9e8lQWMszEjbPzng"
+    static let prodType = "h9jDsbgj7xIVeIQ8S3/X3Q"
+    static let modelNameOuter1 = "Z/dqyWS6OZTRy10UcmUAhw"
+    static let modelNameOuter2 = "bbtR9jQx50Fv5Af/affNtA"
     static let shutterRelaxation = "P4ZJVy/zYuLy4ejRKP+0DA"
     static let shutterKeyboardMutePreserve = "bGUN8lS6sYzy3xhePubp8A"
     static let shutterLegacyMutePreserve = "Bim3FC83Te8QX1kfSpqYKQ"
@@ -191,37 +154,12 @@ enum MGKey {
     static let siriHub = "waGD2UTpntjbDXD1r3oALQ"
     static let onDeviceSiri = "O/7gbXWA5X2IRPVtDRU+bw"
     static let modelPruning = "m4xs4mhvxnAopYrApoLDMw"
-
     static let experimentalCacheSlotKeys: [String] = [
-        shutterRelaxation,
-        shutterKeyboardMutePreserve,
-        shutterLegacyMutePreserve,
-        concurrentHPLPMics,
-        photosLocalLight,
-        toneMapping,
-        hdrDeferredProcessing,
-        spatialOverCapture,
-        stereoAudioRec,
-        p3VideoRec,
-        touchSensitiveCamControl,
-        hardwareDetents,
-        cameraHaptics,
-        legacyBatteryInfo,
-        legacyDynamicEndOfCharge,
-        highLuminanceAOD,
-        aodFlipbook,
-        carPlay2,
-        touchDelivery120Hz,
-        hearingAidEQ,
-        hearingAidLE,
-        hearingAidPowerRed,
-        breathingDisturbances,
-        usBloodOxygen,
-        workoutUltra,
-        timeInDaylight,
-        siriHub,
-        onDeviceSiri,
-        modelPruning
+        shutterRelaxation, shutterKeyboardMutePreserve, shutterLegacyMutePreserve, concurrentHPLPMics,
+        photosLocalLight, toneMapping, hdrDeferredProcessing, spatialOverCapture, stereoAudioRec, p3VideoRec,
+        touchSensitiveCamControl, hardwareDetents, cameraHaptics, legacyBatteryInfo, legacyDynamicEndOfCharge,
+        highLuminanceAOD, aodFlipbook, carPlay2, touchDelivery120Hz, hearingAidEQ, hearingAidLE, hearingAidPowerRed,
+        breathingDisturbances, usBloodOxygen, workoutUltra, timeInDaylight, siriHub, onDeviceSiri, modelPruning
     ]
 }
 
@@ -260,8 +198,6 @@ final class GestaltStore: ObservableObject {
 
     func disableBooleanExtraKey(_ key: String, enableValue: Int = 1) {
         if let ogVal = originalCacheExtraValue(forKey: key) {
-            // If OriginalGestalt.plist was captured on an already-polluted system (e.g. another tool injected `1`),
-            // strip the polluted key instead of restoring `1` so the user can turn the switch off directly.
             if let ogNum = ogVal as? NSNumber, ogNum.intValue == enableValue {
                 self.cacheExtra.removeObject(forKey: key)
             } else {
@@ -272,7 +208,6 @@ final class GestaltStore: ObservableObject {
         }
     }
     
-    // MARK: actions
     func mgPullKeys(_ keys: [String], enableValue: Int = 1) {
         for key in keys {
             disableBooleanExtraKey(key, enableValue: enableValue)
@@ -306,7 +241,6 @@ final class GestaltStore: ObservableObject {
         return value
     }
     
-    // MARK: bindings
     func mgKeyBinding(_ keys: [String], defaultValue: Int = 0, enableValue: Int = 1) -> Binding<Bool> {
         return Binding(get: {
             guard !keys.isEmpty else {
@@ -322,8 +256,6 @@ final class GestaltStore: ObservableObject {
                     self.disableBooleanExtraKey(key, enableValue: enableValue)
                 }
             }
-            // Dual-write CacheData slot if this key also has a valid boolean slot in CacheData
-            // (bypasses libMobileGestalt's _MGCacheSetValueForKey tbnz validity short-circuit)
             if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
                 let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
                 var touchedSlot = false
@@ -490,7 +422,6 @@ final class GestaltStore: ObservableObject {
             } else {
                 self.cacheExtra.removeObject(forKey: MGKey.regionInfo)
             }
-            // Always prefer true factory hardware ProductType so model spoofing never mismatches US A-model number
             let prodType = originalHardwareProductType()
             let ogRegModel = (self.originalCacheExtraValue(forKey: MGKey.regModelNumber) as? String) ?? (self.cacheExtra[MGKey.regModelNumber] as? String) ?? ""
             if let usModel = usRegulatoryModelNumber(productType: prodType, originalRegModel: ogRegModel) {
@@ -513,9 +444,7 @@ final class GestaltStore: ObservableObject {
     
     func mgRegModelBinding() -> Binding<String> {
         return Binding<String>(
-            get: {
-                return self.cacheExtra[MGKey.regModelNumber] as? String ?? ""
-            },
+            get: { return self.cacheExtra[MGKey.regModelNumber] as? String ?? "" },
             set: { newValue in
                 self.objectWillChange.send()
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -527,8 +456,6 @@ final class GestaltStore: ObservableObject {
             }
         )
     }
-
-    // MARK: - Dynamic CacheData Resolution & Strictly Gated Bindings
 
     func canModifyGreenTeaCache() -> Bool {
         if case .success = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) {
@@ -754,15 +681,10 @@ final class GestaltStore: ObservableObject {
 
     func mgSafeSiriHubGuardrailBinding() -> Binding<Bool> {
         return Binding<Bool>(
-            get: {
-                return self.isSiriHubConflictActive()
-            },
+            get: { return self.isSiriHubConflictActive() },
             set: { enabled in
                 if enabled {
-                    Alertinator.shared.alert(
-                        title: L("安全护栏已拦截冲突开关！"),
-                        body: MGMsg.expSiriHubInfo
-                    )
+                    Alertinator.shared.alert(title: L("安全护栏已拦截冲突开关！"), body: MGMsg.expSiriHubInfo)
                     return
                 }
                 let groupKeys = [MGKey.siriHub, MGKey.onDeviceSiri, MGKey.modelPruning]
@@ -777,7 +699,6 @@ final class GestaltStore: ObservableObject {
                     for k in groupKeys {
                         if let slotIdx = layout.featureSlotIndices[k],
                            layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                            // Never re-enable siriHub on iPhone/iPad even if OriginalGestalt was polluted
                             let origVal: Bool
                             if k == MGKey.siriHub {
                                 origVal = false
@@ -821,13 +742,9 @@ final class GestaltStore: ObservableObject {
     }
 
     func isAdvAppleIntellConflictActive() -> Bool {
-        if isAdvAppleIntellHD() {
-            return false
-        }
+        if isAdvAppleIntellHD() { return false }
         for key in MGKey.advAppIntellKeys {
-            if self.cacheExtra[key] != nil {
-                return true
-            }
+            if self.cacheExtra[key] != nil { return true }
         }
         if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
             let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
@@ -836,9 +753,7 @@ final class GestaltStore: ObservableObject {
                    layout.validateSingleBooleanSlot(slotIdx, in: data) {
                     let curVal = (data[slotIdx * 8] == 1)
                     let nativeVal = isAdvAISlotNativeTrue(key, layout: layout, savedOrig: savedOrig)
-                    if curVal != nativeVal {
-                        return true
-                    }
+                    if curVal != nativeVal { return true }
                 }
             }
         }
@@ -847,15 +762,10 @@ final class GestaltStore: ObservableObject {
 
     func mgSafeAdvAppleIntellGuardrailBinding() -> Binding<Bool> {
         return Binding<Bool>(
-            get: {
-                return self.isAdvAppleIntellConflictActive()
-            },
+            get: { return self.isAdvAppleIntellConflictActive() },
             set: { enabled in
                 if enabled {
-                    Alertinator.shared.alert(
-                        title: L("安全护栏已拦截冲突开关！"),
-                        body: MGMsg.advAppleIntell
-                    )
+                    Alertinator.shared.alert(title: L("安全护栏已拦截冲突开关！"), body: MGMsg.advAppleIntell)
                     return
                 }
                 switch MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
@@ -894,11 +804,9 @@ final class GestaltStore: ObservableObject {
 
     func applyAppleIntelligenceOneClickFix() {
         self.objectWillChange.send()
-        // 1. Apply user's selected region unlock mode (defaults to full US LL + LL/A + Axxxx; respects LL-only mode if selected)
         self.applyRegionUnlock(mode: self.currentRegionUnlockMode)
-        // 2. Clear conflicting InternalInstall / InternalBuild / SiriHub / non-native AdvAI CacheExtra flags
         self.mgPullKeys([MGKey.intInstall, MGKey.intBuild, MGKey.siriHub] + MGKey.advAppIntellKeys)
-        // 3. Unlock Mainland China green-tea / not-green-tea slots if originally restricted, and heal accidental SiriHub / AdvAI toggles
+        
         if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
             let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
             let origFlags = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig)
@@ -921,7 +829,6 @@ final class GestaltStore: ObservableObject {
                     }
                 }
             }
-            // Heal non-native Personal Translator / Audio Intelligence slots while preserving native Audio Intelligence (1) on iPhone 18 Pro series
             if !isAdvAppleIntellHD() {
                 for key in MGKey.advAppIntellKeys {
                     if let slotIdx = layout.featureSlotIndices[key],
@@ -932,7 +839,6 @@ final class GestaltStore: ObservableObject {
                     self.cacheExtra.removeObject(forKey: key)
                 }
             }
-            // 4. For non-native AI hardware, enable AI keys in both CacheExtra & CacheData slots
             if !isAppleIntellHD() {
                 for key in MGKey.appIntellAllKeys {
                     self.cacheExtra[key] = 1
@@ -959,10 +865,8 @@ final class GestaltStore: ObservableObject {
 
     func cacheResolutionFailureReason() -> String? {
         switch MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) {
-        case .success:
-            return nil
-        case .failure(let err):
-            return err.localizedDescription
+        case .success: return nil
+        case .failure(let err): return err.localizedDescription
         }
     }
 
@@ -994,7 +898,6 @@ final class GestaltStore: ObservableObject {
                             data[layout.notGreenTeaOffset] = 0
                         }
                     }
-
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
                     testDict["CacheData"] = data
                     switch layout.validatePlist(testDict) {
@@ -1041,7 +944,6 @@ final class GestaltStore: ObservableObject {
                             data[wOff] = 1
                         }
                     }
-
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
                     testDict["CacheData"] = data
                     switch layout.validatePlist(testDict, checkWapiSlot: true) {
@@ -1060,20 +962,20 @@ final class GestaltStore: ObservableObject {
         )
     }
     
-    // MARK: - iPadOS Hex Mutation Logic (Ported from Erosion-CN and verified via GestaltX)
+    // MARK: - iPadOS Hex Mutation Logic (Dynamic Offset)
     func mgSetiPadOS(enable: Bool) -> Bool {
         guard let cacheData = mgCurrentDict["CacheData"] as? Data else {
             print("❌ Lỗi: Không đọc được CacheData")
             return false
         }
 
-        let ipadKeys = MGKey.ipadosCacheEx
-        let deviceClassKey = MGKey.deviceClassNumber
-
         guard case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() else {
             print("❌ Lỗi: Không thể phân giải layout từ libMobileGestalt")
             return false
         }
+
+        let ipadKeys = MGKey.ipadosCacheEx
+        let deviceClassKey = MGKey.deviceClassNumber
 
         var patchedData = cacheData
         var patchedCount = 0
@@ -1100,6 +1002,8 @@ final class GestaltStore: ObservableObject {
                 for i in 1..<8 { patchedData[classOffset + i] = 0x00 }
                 patchedCount += 1
             }
+        } else {
+            print("⚠️ Không tìm thấy slot cho DeviceClassNumber")
         }
 
         guard patchedCount >= 7 else {
