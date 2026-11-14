@@ -1,3 +1,8 @@
+//
+//  MobileGestaltApplyTask.swift
+//  EnsWilde
+//
+
 import Foundation
 import UIKit
 import Darwin
@@ -27,7 +32,8 @@ enum MobileGestaltApplyTask {
         
         let candidateDict = NSMutableDictionary(dictionary: liveDict)
         
-        onLogUpdate("[MG] Đang đồng bộ CacheData (chỉ vá các byte thay đổi)...")
+        // RAW BYTE DIFF CHO CACHEDATA (Bắt trọn mọi thay đổi từ Hex của iPadOS)
+        onLogUpdate("[MG] Đang đồng bộ CacheData (raw byte diff)...")
         if let liveCacheData = liveDict["CacheData"] as? Data,
            let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
            liveCacheData.count == storeCacheData.count {
@@ -35,21 +41,15 @@ enum MobileGestaltApplyTask {
             var patchedData = liveCacheData
             var patchedBytes = 0
             
-            if let layout = try? MGCacheDataCoordinator.shared.libraryLayout().get() {
-                for (_, slotIdx) in layout.featureSlotIndices {
-                    let offset = slotIdx * 8
-                    if offset + 8 <= patchedData.count {
-                        let liveSlice = patchedData[offset..<offset+8]
-                        let storeSlice = storeCacheData[offset..<offset+8]
-                        if liveSlice != storeSlice {
-                            patchedData.replaceSubrange(offset..<offset+8, with: storeSlice)
-                            patchedBytes += 1
-                        }
-                    }
+            for i in 0..<patchedData.count {
+                if patchedData[i] != storeCacheData[i] {
+                    patchedData[i] = storeCacheData[i]
+                    patchedBytes += 1
                 }
             }
+            
             candidateDict["CacheData"] = patchedData
-            onLogUpdate("[MG] Đã vá \(patchedBytes) slot trong CacheData.")
+            onLogUpdate("[MG] Đã vá \(patchedBytes) byte trong CacheData.")
         } else {
             onLogUpdate("[MG] ⚠️ Kích thước CacheData không khớp, bỏ qua vá CacheData.")
         }
@@ -69,11 +69,17 @@ enum MobileGestaltApplyTask {
             ] + MGKey.appIntellAllKeys + MGKey.ipadosCacheEx
             
             for key in allowedExtraKeys {
-                if let newVal = storeExtra[key] { liveExtra[key] = newVal } else { liveExtra.removeObject(forKey: key) }
+                if let newVal = storeExtra[key] {
+                    liveExtra[key] = newVal
+                } else {
+                    liveExtra.removeObject(forKey: key)
+                }
             }
             
             let blockedKeys = ["RegionInfo", "zHeENZu+wbg7PUprwNwBWg", "green-tea", "not-green-tea", "wapi"]
-            for blocked in blockedKeys { liveExtra.removeObject(forKey: blocked) }
+            for blocked in blockedKeys {
+                liveExtra.removeObject(forKey: blocked)
+            }
             
             candidateDict["CacheExtra"] = liveExtra
         }
