@@ -6,6 +6,12 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+struct MGRegionPreset: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let suffix: String
+}
+
 struct MobileGestaltView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     let origMGURL, modMGURL, featFlagsURL, resolutionURL: URL
@@ -33,13 +39,38 @@ struct MobileGestaltView: View {
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
     
-    // Danh sách Region để chọn
-    @State private var selectedRegion: String = "CH"
+    // Danh sách Region
+    let regionPresets: [MGRegionPreset] = [
+        MGRegionPreset(id: "VN", name: "Việt Nam", suffix: "VN/A"),
+        MGRegionPreset(id: "LL", name: "Mỹ (United States)", suffix: "LL/A"),
+        MGRegionPreset(id: "ZA", name: "Singapore", suffix: "ZA/A"),
+        MGRegionPreset(id: "ZP", name: "Hồng Kông / Ma Cao", suffix: "ZP/A"),
+        MGRegionPreset(id: "J", name: "Nhật Bản", suffix: "J/A"),
+        MGRegionPreset(id: "KH", name: "Hàn Quốc", suffix: "KH/A"),
+        MGRegionPreset(id: "TH", name: "Thái Lan", suffix: "TH/A"),
+        MGRegionPreset(id: "CH", name: "Trung Quốc", suffix: "CH/A"),
+        MGRegionPreset(id: "B", name: "Anh (UK)", suffix: "B/A"),
+        MGRegionPreset(id: "F", name: "Pháp", suffix: "F/A"),
+        MGRegionPreset(id: "T", name: "Ý (Italy)", suffix: "T/A"),
+        MGRegionPreset(id: "C", name: "Canada", suffix: "C/A"),
+        MGRegionPreset(id: "X", name: "Úc (Australia)", suffix: "X/A"),
+        MGRegionPreset(id: "TA", name: "Đài Loan", suffix: "TA/A"),
+        MGRegionPreset(id: "TU", name: "Thổ Nhĩ Kỳ", suffix: "TU/A"),
+        MGRegionPreset(id: "EU", name: "Châu Âu", suffix: "EU/A"),
+        MGRegionPreset(id: "QL", name: "Tây Ban Nha / Ý / Bồ Đào Nha", suffix: "QL/A"),
+        MGRegionPreset(id: "AE", name: "UAE / Ả Rập Xê Út", suffix: "AE/A"),
+        MGRegionPreset(id: "CL", name: "Paraguay", suffix: "CL/A")
+    ]
+    
+    @State private var selectedRegionCode: String = "CH"
 
     var body: some View {
         Form {
             Section(header: Text(L("tool_mobile_gestalt"))) {
                 Toggle(L("enable_tweak"), isOn: $toolStore.replaceMobileGestaltEnabled)
+                    .onChange(of: toolStore.replaceMobileGestaltEnabled) { isEnabled in
+                        if !isEnabled { showApplyTab = false }
+                    }
             }
             
             Section(header: Text(L("section_device_subtype"))) {
@@ -52,10 +83,10 @@ struct MobileGestaltView: View {
                     Text("2622 (iPhone 16 Pro / 17 Pro)").tag(5)
                     Text("2868 (iPhone 16 Pro Max / 17 Pro Max)").tag(6)
                     Text("2736 (iPhone Air)").tag(7)
-                    Text("2662 (iPhone 18 Pro Dynamic Island)").tag(8) // Thêm mới
+                    Text("2662 (iPhone 18 Pro Dynamic Island)").tag(8)
                     Text("Custom Subtype").tag(-1)
                 } label: {
-                    Text("Device Subtype Preset")
+                    Text(L("mg_device_subtype_preset"))
                 }
                 .pickerStyle(.menu)
                 .onChange(of: dynamicIslandType) { newValue in
@@ -108,20 +139,20 @@ struct MobileGestaltView: View {
                     Text(L("mg_install_ipad_apps"))
                 }
                 
-                // Picker chọn quốc gia thay vì Toggle
-                Picker("Region Restriction", selection: $selectedRegion) {
-                    Text("China (CH)").tag("CH")
-                    Text("United States (LL)").tag("LL")
-                    Text("Japan (J)").tag("J")
-                    Text("Hong Kong (ZP)").tag("ZP")
-                    Text("Singapore (ZA)").tag("ZA")
+                // Picker chọn Region
+                Picker(selection: $selectedRegionCode) {
+                    ForEach(regionPresets) { preset in
+                        Text("\(preset.suffix) - \(preset.name)").tag(preset.id)
+                    }
+                } label: {
+                    Text("Region")
                 }
-                .onChange(of: selectedRegion) { newValue in
-                    store.cacheExtra[MGKey.regionCode] = newValue
-                    if newValue == "LL" {
-                        store.cacheExtra[MGKey.regionSysconfig] = "LL/A"
-                    } else if newValue == "CH" {
-                        store.cacheExtra[MGKey.regionSysconfig] = "CH/A"
+                .pickerStyle(.menu)
+                .onChange(of: selectedRegionCode) { newValue in
+                    if let preset = regionPresets.first(where: { $0.id == newValue }) {
+                        store.cacheExtra[MGKey.regionCode] = preset.id
+                        store.cacheExtra[MGKey.regionSysconfig] = preset.suffix
+                        store.cacheExtra[MGKey.regionInfo] = preset.suffix
                     }
                 }
 
@@ -185,7 +216,7 @@ struct MobileGestaltView: View {
             }
             
             if let region = store.cacheExtra[MGKey.regionCode] as? String {
-                self.selectedRegion = region
+                self.selectedRegionCode = region
             }
             
             if initError != nil {
@@ -318,7 +349,7 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "All tweaks reverted successfully. Respring to take effect."
+                    lastError = "All tweaks reverted to factory settings. Respring to take effect."
                     showErrorAlert = true
                 }
             } catch {
