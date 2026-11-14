@@ -288,6 +288,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             runTestSection
+            respringSection // NÚT RESPRING
             connectionStatusSection
             pairingFileSection
             languageSection
@@ -338,6 +339,26 @@ struct SettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 250)
+            }
+        }
+    }
+
+    private var respringSection: some View {
+        Section(header: Text("RESPRING (NeoSpring)")) {
+            Button {
+                do {
+                    try RespringHelper.respring()
+                } catch {
+                    errorMessage = error.localizedDescription
+                    showErrorAlert = true
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(.blue)
+                    Text("Respring Device")
+                        .foregroundStyle(.primary)
+                }
             }
         }
     }
