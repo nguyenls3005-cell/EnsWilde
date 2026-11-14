@@ -77,7 +77,7 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
-    // THUẬT TOÁN REVERT MỚI: Quét sạch các nút đã bật, trả về trạng thái gốc (baseline)
+    // THUẬT TOÁN REVERT CHUẨN GESTALTX
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
@@ -86,68 +86,29 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -10, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
-        // 1. Xóa sạch các key tuỳ chỉnh trong CacheExtra
-        if let extra = liveDict["CacheExtra"] as? NSMutableDictionary {
-            let keysToRemove = MGKey.appIntellAllKeys + MGKey.mediaHealthAllKeys + MGKey.experimentalCacheSlotKeys + [
-                MGKey.island, MGKey.AOD, MGKey.AOTime, MGKey.AODVibrancy,
-                MGKey.chargeLim, MGKey.bootChime, MGKey.crashDet, MGKey.pwm,
-                MGKey.appPencil, MGKey.camButton, MGKey.actButton,
-                MGKey.tapToWake, MGKey.stageMgr
-            ]
-            for key in keysToRemove {
-                extra.removeObject(forKey: key)
-            }
-            
-            // Xóa region và internal
-            extra.removeObject(forKey: MGKey.regionCode)
-            extra.removeObject(forKey: MGKey.regionInfo)
-            extra.removeObject(forKey: MGKey.regionSysconfig)
-            extra.removeObject(forKey: MGKey.regModelNumber)
-            extra.removeObject(forKey: MGKey.intInstall)
-            extra.removeObject(forKey: MGKey.intBuild)
-            
-            // Xóa tên máy custom
-            if let artwork = extra[MGKey.artwork] as? NSMutableDictionary {
-                artwork.removeObject(forKey: "ArtworkDeviceProductDescription")
-            }
+        guard let backupData = try? Data(contentsOf: MGURL.savedGestaltURL),
+              backupData.count > 256,
+              let backupDict = try? PropertyListSerialization.propertyList(from: backupData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
+            throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "No valid backup file found. Please import a clean plist."])
         }
         
-        // 2. Đưa CacheData về trạng thái baseline (gốc)
-        if let layout = try? MGCacheDataCoordinator.shared.libraryLayout().get(),
-           let liveCacheData = liveDict["CacheData"] as? Data {
-            var targetCacheData = liveCacheData
-            let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
-            
-            let allToggleKeys = MGKey.appIntellAllKeys + MGKey.mediaHealthAllKeys + MGKey.experimentalCacheSlotKeys + [
-                MGKey.island, MGKey.AOD, MGKey.AOTime, MGKey.AODVibrancy,
-                MGKey.chargeLim, MGKey.bootChime, MGKey.crashDet, MGKey.pwm,
-                MGKey.appPencil, MGKey.camButton, MGKey.actButton,
-                MGKey.tapToWake, MGKey.stageMgr
-            ]
-            
-            for key in allToggleKeys {
-                if let slotIdx = layout.featureSlotIndices[key] {
-                    let offset = slotIdx * 8
-                    if offset < targetCacheData.count {
-                        let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: key, layout: layout, savedOriginalDict: savedOrig) ?? false
-                        targetCacheData[offset] = origVal ? 1 : 0
-                    }
-                }
-            }
-            
-            // Reset green-tea, not-green-tea, wapi
-            let origFlags = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig)
-            if layout.greenTeaOffset < targetCacheData.count {
-                targetCacheData[layout.greenTeaOffset] = (origFlags?.greenTea ?? false) ? 1 : 0
-            }
-            if layout.notGreenTeaOffset < targetCacheData.count {
-                targetCacheData[layout.notGreenTeaOffset] = (origFlags?.notGreenTea ?? false) ? 1 : 0
-            }
-            if let wOff = layout.wapiOffset, wOff < targetCacheData.count {
-                targetCacheData[wOff] = (origFlags?.wapi ?? false) ? 1 : 0
-            }
-            
-            liveDict["CacheData"] = targetCacheData
+        // Đắp nguyên cục CacheExtra từ backup (bao gồm tên máy, Dynamic Island, Region)
+        if let backupExtra = backupDict["CacheExtra"] as? NSMutableDictionary {
+            liveDict["CacheExtra"] = backupExtra
+        }
+        
+        // Đắp nguyên cục CacheData từ backup
+        if let backupCacheData = backupDict["CacheData"] as? Data {
+            liveDict["CacheData"] = backupCacheData
+        }
+        
+        // Đắp UUID và Version live vào để bypass check
+        if let liveUUID = liveDict["CacheUUID"] as? String {
+            backupDict["CacheUUID"] = liveUUID
+            liveDict["CacheUUID"] = liveUUID
+        }
+        if let liveVersion = liveDict["CacheVersion"] as? String {
+            liveDict["CacheVersion"] = liveVersion
         }
         
         let finalData = try PropertyListSerialization.data(fromPropertyList: liveDict, format: .binary, options: 0)
@@ -155,6 +116,6 @@ enum MobileGestaltApplyTask {
         guard ok else {
             throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: msg])
         }
-        onLogUpdate("[MG] ✅ Reverted all tweaks successfully.")
+        onLogUpdate("[MG] ✅ Reverted to pristine factory settings.")
     }
 }
