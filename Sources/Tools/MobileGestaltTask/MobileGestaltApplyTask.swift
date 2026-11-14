@@ -22,10 +22,10 @@ enum MobileGestaltApplyTask {
         // 1. Đọc file MobileGestalt thật đang chạy trên máy
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         
-        // 2. TỰ ĐỘNG BACKUP Ở LẦN ĐẦU TIÊN (Dùng thẳng FileManager.default)
+        // 2. TỰ ĐỘNG BACKUP Ở LẦN ĐẦU TIÊN (Nếu chưa có file backup hoặc file rỗng)
         if !FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) || (try? Data(contentsOf: MGURL.savedGestaltURL))?.count ?? 0 < 256 {
             try? liveData.write(to: MGURL.savedGestaltURL, options: .atomic)
-            try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL)
+            try? FileManager.default.removeItem(at: MGURL.savedGestaltSHA256URL) // Xóa hash cũ
             onLogUpdate("[MG] 📦 Created pristine backup for the first time.")
         }
         
@@ -46,7 +46,7 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheExtra"] = liveExtra
         
-        // 5. Ghi đè CacheData (Dùng var Data thuần Swift)
+        // 5. Ghi đè CacheData
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
@@ -66,7 +66,7 @@ enum MobileGestaltApplyTask {
                 if let slotIdx = layout.featureSlotIndices[key] {
                     let offset = slotIdx * 8
                     if offset < targetCacheData.count && offset < storeData.count {
-                        targetCacheData[offset] = storeData[offset] // Swift Data hỗ trợ gán subscript
+                        targetCacheData[offset] = storeData[offset]
                     }
                 }
             }
@@ -97,18 +97,12 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "No valid backup file found. Please import a clean plist first."])
         }
         
-        // Đắp UUID, Version và ProductType của máy hiện tại vào file backup để bypass check
+        // Chỉ đắp UUID và Version của máy hiện tại vào để bypass check, TUYỆT ĐỐI KHÔNG đắp ProductType
         if let liveUUID = liveDict["CacheUUID"] as? String {
             backupDict["CacheUUID"] = liveUUID
         }
         if let liveVersion = liveDict["CacheVersion"] as? String {
             backupDict["CacheVersion"] = liveVersion
-        }
-        
-        if let liveProd = (liveDict["CacheExtra"] as? NSDictionary)?[MGKey.prodType] as? String {
-            let backupExtra = backupDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
-            backupExtra[MGKey.prodType] = liveProd
-            backupDict["CacheExtra"] = backupExtra
         }
         
         let finalData = try PropertyListSerialization.data(fromPropertyList: backupDict, format: .binary, options: 0)
