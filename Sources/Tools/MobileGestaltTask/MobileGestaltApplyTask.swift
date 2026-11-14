@@ -62,7 +62,7 @@ enum MobileGestaltApplyTask {
                                 desiredBit = storeBit
                             }
                         }
-                        targetCacheData[offset] = desiredBit
+                        targetCacheData.mutableBytes.assumingMemoryBound(to: UInt8.self)[offset] = desiredBit
                     }
                 }
             }
