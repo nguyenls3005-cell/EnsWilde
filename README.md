@@ -25,7 +25,7 @@ It operates as a standalone on-device application, functioning independently lik
 * **Change Passcode background:** Customize the numeric keypad appearance using the `.passthm` interface.
 * **On-device patching (no PC required):** Operates as a standalone app after the initial setup.
 * **More features coming soon:** Development is ongoing to introduce additional capabilities.
-* **iOS 26 Need to get pairing file on computer and then drop pairing file to setting app.
+* ** iOS 26 Need to get pairing file on computer and then drop pairing file to setting app.
 
 ---
 
