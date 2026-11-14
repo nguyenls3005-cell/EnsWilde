@@ -75,19 +75,21 @@ struct MobileGestaltView: View {
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            // Bắt buộc xin quyền để đọc được file live
             let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
             let dir = liveURL.deletingLastPathComponent().path
             _ = wq.grantAccess(path: dir)
             
-            // Luôn luôn đọc file thật từ máy mỗi khi view xuất hiện
             if let liveData = try? Data(contentsOf: liveURL),
                let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
+                
+                // TỰ ĐỘNG TẠO BACKUP CHUẨN (CÓ SHA256) NẾU CHƯA CÓ
+                // Hàm này sẽ lưu file gốc và tạo mã băm, tránh lỗi "không tìm thấy file backup"
+                _ = try? mgEnsureOriginalBackupWithVault(liveData: liveData)
+                
                 store.mgCurrentDict = liveDict
                 self.mobileGestalt = liveDict
                 try? liveData.write(to: modMGURL)
             } else {
-                // Nếu không đọc được file thật thì fallback về file cũ
                 store.loadFromPlist(url: modMGURL)
                 mobileGestalt = store.mgCurrentDict
             }
@@ -323,11 +325,12 @@ struct MobileGestaltView: View {
     private func resetOriginal() {
         Task {
             do {
+                // Gọi hàm restore chuẩn của Erosion-CN qua MobileGestaltApplyTask
                 try await MobileGestaltApplyTask.restoreGestalt { log in
                     print(log)
                 }
                 
-                // Đọc lại từ máy sau khi restore thành công
+                // Đọc lại file thật từ máy sau khi restore thành công
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 let liveData = try Data(contentsOf: liveURL)
                 try liveData.write(to: modMGURL)
