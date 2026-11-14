@@ -318,7 +318,7 @@ final class GestaltStore: ObservableObject {
         })
     }
     
-    // ĐÃ XÓA BỎ BLOCK CHẶN iPADOS
+    // ĐÃ XÓA BỎ POPUP CHẶN iPADOS
     func mgTrollPadBinding() -> Binding<Bool> {
         return Binding(get: {
             guard let firstKey = MGKey.ipadosCacheEx.first else { return false }
@@ -1028,8 +1028,8 @@ extension GestaltStore {
         return mgKeyBinding([key])
     }
 
-    // CẬP NHẬT CHÍNH XÁC MẢNG SUBTYPES THEO UI
     func applyDynamicIsland(type: Int, customValue: Int? = nil) -> Bool {
+        // CẬP NHẬT CHUẨN XÁC MẢNG SUBTYPES THEO UI CỦA BẠN
         let subtypes = [
             0,      // 0: Tắt / Original
             2436,   // 1: iPhone X / For iPhone SE
@@ -1039,7 +1039,7 @@ extension GestaltStore {
             2622,   // 5: iPhone 16 Pro / 17 Pro
             2868,   // 6: iPhone 16 Pro Max / 17 Pro Max
             2736,   // 7: iPhone Air
-            2662    // 8: iPhone 18 Pro Dynamic Island
+            2662    // 8: iPhone 18 Pro Dynamic Island (ĐÚNG 100% THEO ẢNH)
         ]
         
         guard let ce = mgCurrentDict["CacheExtra"] as? NSMutableDictionary else { return false }
@@ -1050,6 +1050,7 @@ extension GestaltStore {
             let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
             art["ArtworkDeviceSubType"] = subtypes[type]
             ce[MGKey.artwork] = art
+            print("[Store] ✅ Đã gán ArtworkDeviceSubType = \(subtypes[type])")
         }
         objectWillChange.send()
         return true
