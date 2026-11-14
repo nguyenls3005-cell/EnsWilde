@@ -340,16 +340,15 @@ struct MobileGestaltView: View {
                     print(log)
                 }
                 
-                let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
-                let liveData = try Data(contentsOf: liveURL)
-                try liveData.write(to: modMGURL)
+                // File bị xóa thành công, không cần đọc lại từ ổ đĩa
+                try? FileManager.default.removeItem(at: modMGURL)
                 
                 await MainActor.run {
-                    store.loadFromPlist(url: modMGURL)
+                    store.mgCurrentDict = NSMutableDictionary()
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "All tweaks reverted to factory settings. Please REBOOT to fully apply."
+                    lastError = "All tweaks reverted. Please REBOOT your device now to let iOS regenerate the factory cache."
                     showErrorAlert = true
                 }
             } catch {
