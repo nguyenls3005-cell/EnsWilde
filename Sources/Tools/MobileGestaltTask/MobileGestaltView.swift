@@ -42,9 +42,8 @@ struct MobileGestaltView: View {
     // Cảnh báo iOS 27 cho 2662
     @State private var showDIWarning = false
     
-    // Region List
+    // Danh sách Region
     let regionPresets: [MGRegionPreset] = [
-        MGRegionPreset(id: "VN", name: "Viet Nam", suffix: "VN/A"),
         MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
         MGRegionPreset(id: "CH", name: "China", suffix: "CH/A"),
         MGRegionPreset(id: "J", name: "Japan", suffix: "J/A"),
@@ -78,7 +77,7 @@ struct MobileGestaltView: View {
                     Text("2662 (iPhone 18 Pro Dynamic Island)").tag(8)
                     Text("Custom Subtype").tag(-1)
                 } label: {
-                    Text("Device Subtype Preset")
+                    Text(L("mg_device_subtype_preset"))
                 }
                 .pickerStyle(.menu)
                 .onChange(of: dynamicIslandType) { newValue in
@@ -90,7 +89,7 @@ struct MobileGestaltView: View {
                         enableCustomSubtype = true
                     }
                 }
-                .alert("Dynamic Island need iOS 27.0RC+!!", isPresented: $showDIWarning) {
+                .alert("Dynamic Island iPhone 18 Pro required iOS 27RC+", isPresented: $showDIWarning) {
                     Button("Cancel", role: .cancel) { dynamicIslandType = 0 }
                     Button("Accept") { enableCustomSubtype = false }
                 }
@@ -104,36 +103,36 @@ struct MobileGestaltView: View {
                 }
 
                 Toggle(isOn: $enableModelName) {
-                    Text("Change Model Name")
+                    Text(L("mg_change_model_name"))
                 }
                 if enableModelName {
-                    TextField("Enter Custom Model Name", text: $modelName)
+                    TextField(L("mg_model_name_placeholder"), text: $modelName)
                 }
             }
 
             Section(header: Text(L("section_hardware_features"))) {
-                Toggle("Boot Chime", isOn: store.mgByteBinding(key: MGKey.bootChime))
-                Toggle("80% Charge Limit", isOn: store.mgByteBinding(key: MGKey.chargeLim))
+                Toggle(L("mg_boot_chime"), isOn: store.mgByteBinding(key: MGKey.bootChime))
+                Toggle(L("mg_charge_limit"), isOn: store.mgByteBinding(key: MGKey.chargeLim))
                     .disabled(Utils.requiresVersion(17))
                 if UIDevice._hasHomeButton() {
-                    Toggle("Tap to Wake", isOn: store.mgByteBinding(key: MGKey.tapToWake))
+                    Toggle(L("mg_tap_to_wake"), isOn: store.mgByteBinding(key: MGKey.tapToWake))
                 }
-                Toggle("Camera Control Button", isOn: store.mgByteBinding(key: MGKey.camButton))
+                Toggle(L("mg_camera_button"), isOn: store.mgByteBinding(key: MGKey.camButton))
                     .disabled(Utils.requiresVersion(18))
             }
 
             Section(header: Text(L("section_display_and_ui"))) {
-                Toggle("Stage Manager", isOn: store.mgByteBinding(key: MGKey.stageMgr))
-                Toggle("Always-On Display (AOD)", isOn: store.mgByteBinding(key: MGKey.AOD))
+                Toggle(L("mg_stage_manager"), isOn: store.mgByteBinding(key: MGKey.stageMgr))
+                Toggle(L("mg_aod"), isOn: store.mgByteBinding(key: MGKey.AOD))
                     .disabled(Utils.requiresVersion(18))
-                Toggle("AOD Vibrancy", isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
+                Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                     .disabled(Utils.requiresVersion(18))
-                Toggle("Enable iPadOS UI", isOn: store.mgTrollPadBinding())
+                Toggle("Become iPadOS", isOn: store.mgTrollPadBinding())
             }
 
             Section(header: Text(L("section_system_features"))) {
                 Toggle(isOn: bindingForMGKeys(["9MZ5AdH43csAUajl/dU+IQ"], type: [Int].self, defaultValue: [1], enableValue: [1, 2])) {
-                    Text("Install iPad Apps")
+                    Text(L("mg_install_ipad_apps"))
                 }
                 
                 Picker(selection: $selectedRegionCode) {
@@ -145,18 +144,18 @@ struct MobileGestaltView: View {
                 }
                 .pickerStyle(.menu)
 
-                Toggle("Apple Pencil Support", isOn: store.mgByteBinding(key: MGKey.appPencil))
-                Toggle("Action Button", isOn: store.mgByteBinding(key: MGKey.actButton))
+                Toggle(L("mg_apple_pencil"), isOn: store.mgByteBinding(key: MGKey.appPencil))
+                Toggle(L("mg_action_button"), isOn: store.mgByteBinding(key: MGKey.actButton))
                     .disabled(Utils.requiresVersion(17))
-                Toggle("Crash Detection", isOn: store.mgByteBinding(key: MGKey.crashDet))
+                Toggle(L("mg_crash_detection"), isOn: store.mgByteBinding(key: MGKey.crashDet))
             }
 
             Section(header: Text(L("section_internal_features"))) {
-                Toggle("Internal Storage Info", isOn: store.mgByteBinding(key: MGKey.intBuild))
-                Toggle("Internal Install Mode", isOn: store.mgByteBinding(key: MGKey.intInstall))
-                Toggle("Security Research Device (SRD)", isOn: store.mgByteBinding(key: MGKey.srd))
+                Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
+                Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
+                Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
                 Toggle(isOn: bindingForAppleIntelligence()) {
-                    Text("Apple Intelligence")
+                    Text(L("mg_apple_intelligence"))
                 }
                 .disabled(Utils.requiresVersion(18))
                 
@@ -169,14 +168,14 @@ struct MobileGestaltView: View {
                         Text("iPhone 16 Pro Max").tag("iPhone17,2")
                     }
                 } label: {
-                    Text("Device Model")
+                    Text(L("mg_device_model"))
                 }
                 .pickerStyle(.menu)
             }
 
             Section(header: Text(L("section_save_reset"))) {
                 Button(action: saveChanges) {
-                    Label("Save Settings", systemImage: "square.and.arrow.down")
+                    Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
                 }
                 Button(role: .destructive, action: resetOriginal) {
                     Label("Revert Tweaks", systemImage: "arrow.counterclockwise")
