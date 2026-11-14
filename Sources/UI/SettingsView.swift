@@ -46,7 +46,6 @@ final class NativeWorseQuery {
     static let shared = NativeWorseQuery()
     private var activeHandles: [Int64] = []
 
-    // Fix cho Xcode 26.6: RTLD_DEFAULT là ((void *) -2)
     private let RTLD_DEFAULT_HANDLE = UnsafeMutableRawPointer(bitPattern: -2)
 
     private var mcmHandle: UnsafeMutableRawPointer?
@@ -134,7 +133,6 @@ final class NativeWorseQuery {
         let libPath = groupURL.appendingPathComponent("Library").path
         let backupCaches = groupURL.appendingPathComponent("Library/Caches.bqtool").path
 
-        // 1. Tạo symlink
         try? fm.createDirectory(atPath: libPath, withIntermediateDirectories: true)
         try? fm.removeItem(atPath: backupCaches)
         if fm.fileExists(atPath: cachesPath) { try? fm.moveItem(atPath: cachesPath, toPath: backupCaches) }
@@ -145,24 +143,20 @@ final class NativeWorseQuery {
             return (-1, "Tạo symlink thất bại: \(error.localizedDescription)")
         }
 
-        // 2. Setup Query
         guard let query = create() else {
             cleanup(cachesPath, backupCaches)
             return (-2, "Tạo query thất bại")
         }
 
-        setClass(query, 7) // 7 = App Group
+        setClass(query, 7)
         let ident = appGroupID.withCString { strCreate($0) }
         setGroupIds(query, ident)
-        setPart(query, 3) // 3 = Library/Caches
+        setPart(query, 3)
 
         var result: OpaquePointer? = nil
-
-        // Thử flag iOS 27 trước (từ WQFiles/KAMUI)
         setFlags(query, 0x8100000000)
         result = getResult(query)
 
-        // Fallback flag iOS 26/27.0.1 (từ worse_query.m gốc)
         if result == nil {
             setFlags(query, 0x8000000000)
             result = getResult(query)
@@ -175,7 +169,6 @@ final class NativeWorseQuery {
             return (-3, "XPC Error: containermanagerd từ chối cấp token.")
         }
 
-        // 3. Lấy token
         guard let tokenPtr = copyToken(result) else {
             qFree(query)
             xpcRel(ident)
@@ -272,10 +265,8 @@ struct SettingsView: View {
     @State private var vpnActive: Bool = false
     @State private var monitor: NWPathMonitor?
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
-    @State private var hasBackup: Bool = false
-    @State private var backupInfo: MobileGestaltBackupManager.BackupInfo?
+    
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
-    @State private var showImportBackupPicker = false
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
 
@@ -299,13 +290,12 @@ struct SettingsView: View {
             runTestSection
             connectionStatusSection
             pairingFileSection
-            backupSection
             languageSection
             accentColorSection
             appInfoSection
         }
         .navigationTitle(L("nav_settings"))
-        .onAppear { startMonitoringVPN(); refreshBackupInfo() }
+        .onAppear { startMonitoringVPN() }
         .onDisappear { monitor?.cancel() }
         .sheet(isPresented: $showPairingPicker) {
             DocumentPickerView(allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { url in handlePairingImport(url) }
@@ -319,9 +309,6 @@ struct SettingsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showImportBackupPicker) {
-            DocumentPickerView(allowedContentTypes: [.data, .item]) { url in handleBackupImport(url) }
-        }
         .alert(L("pairing_error_title"), isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
         } message: {
@@ -329,13 +316,13 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Extracted Sections (fix type-checker overload)
+    // MARK: - Extracted Sections
 
     private var runTestSection: some View {
         Section(header: Text("RUN TEST (WorseQuery Access)")) {
             Button(action: runMobileGestaltTest) {
                 HStack {
-                    Label("Test quyền đọc/ghi MobileGestalt", systemImage: "doc.badge.plus")
+                    Label("Test MobileGestalt read/write permissions", systemImage: "doc.badge.plus")
                         .foregroundStyle(.primary)
                     Spacer()
                     if isTestingWrite { ProgressView() }
@@ -358,7 +345,7 @@ struct SettingsView: View {
     private var connectionStatusSection: some View {
         Section(header: Text(L("connection_status"))) {
             statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
-            statusRow(title: "LocalDevVPN", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
+            statusRow(title: "Tunnel Connection", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
             if isAirLiftMode { statusRow(title: L("airlift_mode"), subtitle: L("enabled"), ok: true) }
         }
     }
@@ -378,44 +365,6 @@ struct SettingsView: View {
                         Label(L("pair_on_device"), systemImage: "iphone.radiowaves.left.and.right")
                             .foregroundStyle(.orange)
                     }
-                }
-            }
-        }
-    }
-
-    private var backupSection: some View {
-        Section(header: Text(L("backup_section_header"))) {
-            if hasBackup, let info = backupInfo {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Image(systemName: "checkmark.shield.fill").foregroundStyle(.green)
-                        Text(L("backup_available")).font(.subheadline.bold())
-                        Spacer()
-                    }
-                    Text("\(L("backup_date")) \(info.createdAt.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
-                    Text("\(L("backup_size")) \(info.byteCount) bytes").font(.caption).foregroundStyle(.secondary)
-                }.padding(.vertical, 4)
-            } else {
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L("backup_none")).font(.subheadline.bold())
-                        Text(L("backup_none_desc")).font(.caption).foregroundStyle(.secondary)
-                    }
-                }.padding(.vertical, 4)
-            }
-
-            Button { createBackupNow() } label: {
-                Label(L("backup_now"), systemImage: "square.and.arrow.down").foregroundStyle(.primary)
-            }
-
-            Button { showImportBackupPicker = true } label: {
-                Label(L("backup_import"), systemImage: "square.and.arrow.down").foregroundStyle(.primary)
-            }
-
-            if hasBackup {
-                Button(role: .destructive) { deleteBackup() } label: {
-                    Label(L("backup_delete"), systemImage: "trash")
                 }
             }
         }
@@ -444,7 +393,7 @@ struct SettingsView: View {
 
     private var appInfoSection: some View {
         Section(header: Text(L("settings_app_info"))) {
-            HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v\(appVersion)").font(.footnote).foregroundStyle(.secondary) }
+            HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v3.1.3 Beta 2").font(.footnote).foregroundStyle(.secondary) }
             HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
             HStack { Label(L("app_device"), systemImage: "apps.iphone"); Spacer(); Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary) }
             Text(L("app_info_footer")).font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
@@ -456,7 +405,7 @@ struct SettingsView: View {
     private func runMobileGestaltTest() {
         isTestingWrite = true
         writeTestSuccess = nil
-        writeTestLog = "[*] Bắt đầu test quyền (Native MCM & fsgetpath)...\n"
+        writeTestLog = "[*] Starting permission test (Native MCM & fsgetpath)...\n"
 
         let work = DispatchWorkItem {
             let testFile = MobileGestaltApplyTask.onDeviceMGPath
@@ -469,50 +418,47 @@ struct SettingsView: View {
             var finalHandle: Int64 = -1
             var lastError = ""
 
-            // Thử lần lượt các App Group
             for group in runtimeGroups {
                 if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) == nil { continue }
 
-                DispatchQueue.main.async { self.writeTestLog += "[*] Thử xin quyền qua group: \(group)...\n" }
+                DispatchQueue.main.async { self.writeTestLog += "[*] Try requesting permission via App Group: \(group)...\n" }
 
-                // Logic mới: Native MCM Symlink
                 let (handle, error) = bridge.grantAccess(targetPath: targetDir, appGroupID: group)
 
                 if handle > 0 {
                     finalHandle = handle
-                    DispatchQueue.main.async { self.writeTestLog += "✅ Thành công: \(error)\n" }
+                    DispatchQueue.main.async { self.writeTestLog += "✅ Success: \(error)\n" }
                     break
                 } else {
                     lastError = error
-                    DispatchQueue.main.async { self.writeTestLog += " ⚠️ Thất bại: \(error)\n" }
+                    DispatchQueue.main.async { self.writeTestLog += " ⚠️ Failure: \(error)\n" }
                 }
             }
 
-            // Fallback: Nếu MCM thất bại, thử fsgetpath
             if finalHandle <= 0 {
-                DispatchQueue.main.async { self.writeTestLog += "[*] Fallback: Thử fsgetpath inode traversal...\n" }
+                DispatchQueue.main.async { self.writeTestLog += "[*] Fallback: Try fsgetpath inode traversal...\n" }
                 let (handle, error) = bridge.grantViaFsgetpath(targetFile: testFile)
                 if handle > 0 {
                     finalHandle = handle
-                    DispatchQueue.main.async { self.writeTestLog += "✅ Thành công: \(error)\n" }
+                    DispatchQueue.main.async { self.writeTestLog += "✅ Success: \(error)\n" }
                 } else {
                     lastError = error
-                    DispatchQueue.main.async { self.writeTestLog += " ⚠️ Thất bại: \(error)\n" }
+                    DispatchQueue.main.async { self.writeTestLog += " ⚠️ Failure: \(error)\n" }
                 }
             }
 
             guard finalHandle > 0 else {
                 DispatchQueue.main.async {
-                    self.writeTestLog += "\n❌ TẤT CẢ PHƯƠNG PHÁP ĐỀU THẤT BẠI!\n"
-                    self.writeTestLog += "👉 Lỗi cuối cùng: \(lastError)\n"
-                    self.writeTestLog += "👉 CHẨN ĐOÁN:\n"
-                    self.writeTestLog += "   - Cert sign fake hoặc framework AirliftFFI bị lỗi XPC.\n"
+                    self.writeTestLog += "\n❌ ALL METHODS HAVE FAILED!\n"
+                    self.writeTestLog += "👉 The Final Error: \(lastError)\n"
+                    self.writeTestLog += "👉 DIAGNOSE:\n"
+                    self.writeTestLog += "   - Fake certificate signing or an XPC-related flaw in the AirliftFFI framework.\n"
                     self.writeTestSuccess = false; self.isTestingWrite = false
                 }
                 return
             }
 
-            DispatchQueue.main.async { self.writeTestLog += "✅ Đã có token! Đang test ghi file...\n" }
+            DispatchQueue.main.async { self.writeTestLog += "✅ Token acquired! Testing file writing...\n" }
             do {
                 let originalData = try Data(contentsOf: URL(fileURLWithPath: testFile))
                 var st = stat()
@@ -532,13 +478,13 @@ struct SettingsView: View {
                 _ = fcntl(fd, F_FULLFSYNC)
                 bridge.releaseAll()
                 DispatchQueue.main.async {
-                    self.writeTestLog += "✅ GHI FILE THÀNH CÔNG!\n"
+                    self.writeTestLog += "✅ FILE WRITE SUCCESSFULLY!\n"
                     self.writeTestSuccess = true; self.isTestingWrite = false
                 }
             } catch {
                 bridge.releaseAll()
                 DispatchQueue.main.async {
-                    self.writeTestLog += "❌ LỖI GHI: \(error.localizedDescription)\n"
+                    self.writeTestLog += "❌ WRITE ERROR: \(error.localizedDescription)\n"
                     self.writeTestSuccess = false; self.isTestingWrite = false
                 }
             }
@@ -588,32 +534,6 @@ struct SettingsView: View {
         }
     }
 
-    private func handleBackupImport(_ url: URL) {
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        if let data = try? Data(contentsOf: url) {
-            do { try MobileGestaltBackupManager.shared.importBackup(from: data); refreshBackupInfo() } catch { print("Failed to import backup: \(error)") }
-        }
-    }
-
-    private func refreshBackupInfo() {
-        hasBackup = MobileGestaltBackupManager.shared.hasBackup
-        backupInfo = MobileGestaltBackupManager.shared.info
-    }
-
-    private func createBackupNow() {
-        do {
-            let data = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
-            _ = try MobileGestaltBackupManager.shared.ensureBackup(from: data)
-            refreshBackupInfo()
-        } catch { print("Backup failed") }
-    }
-
-    private func deleteBackup() {
-        try? MobileGestaltBackupManager.shared.clearBackup()
-        refreshBackupInfo()
-    }
-
     private func startMonitoringVPN() {
         monitor = NWPathMonitor()
         monitor?.pathUpdateHandler = { path in
@@ -624,7 +544,6 @@ struct SettingsView: View {
         monitor?.start(queue: DispatchQueue(label: "VPNMonitor"))
     }
 
-    private let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
     private func settingsDeviceModelName() -> String {
         var systemInfo = utsname()
         uname(&systemInfo)
@@ -637,7 +556,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - About View (FIXED)
+// MARK: - About View
 struct AboutView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
@@ -656,8 +575,6 @@ struct AboutView: View {
             }
         }
     }
-
-    // MARK: - Extracted Sections
 
     private var aboutHeroSection: some View {
         Section {
@@ -705,6 +622,7 @@ struct AboutView: View {
             creditRow(name: "@jailbreakdotparty", desc: "Config tweak , new logic mobilegestalt")
             creditRow(name: "@LikePass888", desc: "Disable Call Recording Sound (iOS 27)")
             creditRow(name: "@YiHoooong", desc: "For the silent tone assets and replacement research.")
+            creditRow(name: "@Kianuni", desc: "Erosion-cn Developer - Write & Revert tweaks logic"
             creditRow(name: "@Cộng đồng LSNguyen & YangJiii và những người bạn chat ⚡️", desc: "For support my project.")
         }
     }
@@ -717,8 +635,6 @@ struct AboutView: View {
         }
     }
 
-    // Tách filter ra khỏi body — biểu thức boolean optional-chain phức tạp
-    // là "nghi phạm" chính khiến type-checker bị ngộp.
     private var translatorLanguages: [LanguageInfo] {
         localizationManager.availableLanguages.filter { (info: LanguageInfo) -> Bool in
             guard let tr = info.translator else { return false }
