@@ -19,8 +19,8 @@ It operates as a standalone on-device application, functioning independently lik
 
 ---
 ## Exploit
-• Worse_query : Support from iOS 27.0-27.3 Beta 1.
-• Airlift : Support from iOS 26.0-27.2 Beta 2 (24B5089g).
+* **Worse_query : Support from iOS 27.0-27.3 Beta 1.
+* **Airlift : Support from iOS 26.0-27.2 Beta 2 (24B5089g).
 
 ---
 
