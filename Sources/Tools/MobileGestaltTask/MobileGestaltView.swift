@@ -39,10 +39,8 @@ struct MobileGestaltView: View {
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
     
-    // Cảnh báo iOS 27 cho 2662
     @State private var showDIWarning = false
     
-    // Danh sách Region
     let regionPresets: [MGRegionPreset] = [
         MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
         MGRegionPreset(id: "CH", name: "China", suffix: "CH/A"),
@@ -340,7 +338,6 @@ struct MobileGestaltView: View {
                     print(log)
                 }
                 
-                // File bị xóa thành công, không cần đọc lại từ ổ đĩa
                 try? FileManager.default.removeItem(at: modMGURL)
                 
                 await MainActor.run {
@@ -348,7 +345,7 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "All tweaks reverted. Please REBOOT your device now to let iOS regenerate the factory cache."
+                    lastError = "All tweaks reverted. Please RESPIRING or REBOOT your device now to let iOS regenerate the factory cache."
                     showErrorAlert = true
                 }
             } catch {
