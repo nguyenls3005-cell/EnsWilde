@@ -29,6 +29,18 @@ It operates as a standalone on-device application, functioning independently lik
 
 ---
 
+## Preview
+
+<p align="center">
+  <img src="assets/IMG_0209.png" width="245" alt="EnsWilde 3.1.3 Beta 2 Home">
+  &nbsp;
+  <img src="assets/IMG_0212.png" width="245" alt="EnsWilde 3.1.3 Beta 2 2.0 Setting">
+  &nbsp;
+  <img src="assets/IMG_0213.png" width="245" alt="EnsWilde 3.1.3 Beta 2 About">
+</p>
+
+---
+
 ## Usage Guides
 
 ## Setting Airlift
