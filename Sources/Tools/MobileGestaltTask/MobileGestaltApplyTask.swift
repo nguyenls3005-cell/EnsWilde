@@ -25,10 +25,12 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
+        // 1. Đồng bộ UUID
         if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
             liveDict["CacheUUID"] = layout.uuid
         }
         
+        // 2. Ghi đè CacheExtra (Các nút switch thông thường & Region & Tên máy)
         let liveExtra = (liveDict["CacheExtra"] as? NSMutableDictionary) ?? NSMutableDictionary()
         let storeExtra = store.cacheExtra
         for (k, v) in storeExtra {
@@ -36,6 +38,7 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheExtra"] = liveExtra
         
+        // 3. Ghi đè CacheData (Các nút switch dạng slot)
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
@@ -62,6 +65,7 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheData"] = targetCacheData
 
+        // 4. Ghi xuống file (Có cơ chế verify và rollback bên trong mgWriteDetailed)
         let data = try PropertyListSerialization.data(fromPropertyList: liveDict, format: .binary, options: 0)
         let (ok, msg) = mgWriteDetailed(data)
         guard ok else {
@@ -70,10 +74,10 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
+    // CƠ CHẾ REVERT AN TOÀN NHẤT: Xóa file cache, iOS sẽ tự sinh lại từ phần cứng (fuse)
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
-        // Xóa cache để iOS tự rebuild
         let outcome = mgExecuteCleanCacheRebuild(alsoResetConfigAndKeypad: false)
         switch outcome {
         case .success:
