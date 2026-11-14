@@ -57,6 +57,13 @@ struct MGCacheDataLayout: Codable, Equatable, Sendable {
     static let tapToWakeKey = "yZf3GTRMGTuwSV/lD7Cagw"
     static let stageMgrKey = "qeaj75wk3HF4DwQ8qbIi7g"
 
+    // IPadOS Keys
+    static let ipadModeKey = "uKc7FPnEO++lVhHWHFlGbQ"
+    static let medusaFloatingKey = "mG0AnH/Vy1veoqoLRAIgTA"
+    static let medusaOverlayKey = "UCG5MkVahJxG1YULbbd5Bg"
+    static let medusaPinnedKey = "ZYqko/XM5zD3XBfN5RmaXA"
+    static let medusaPipKey = "nVh/gwNpy7Jv1NOk00CMrw"
+
     static let shutterRelaxationKey = "P4ZJVy/zYuLy4ejRKP+0DA"
     static let shutterKeyboardMutePreserveKey = "bGUN8lS6sYzy3xhePubp8A"
     static let shutterLegacyMutePreserveKey = "Bim3FC83Te8QX1kfSpqYKQ"
@@ -92,6 +99,9 @@ struct MGCacheDataLayout: Codable, Equatable, Sendable {
         appIntellKey, photosCleanUpKey, handwritingSynthKey, audioIntellKey, personalTranslatorKey,
         islandKey, aodKey, aoTimeKey, aodVibrancyKey, liquidGlassLowPowerKey, chargeLimKey, bootChimeKey,
         crashDetKey, pwmKey, appPencilKey, camButtonKey, actButtonKey, tapToWakeKey, stageMgrKey,
+        // CÁC KEY iPADOS ĐƯỢC THÊM VÀO ĐÂY
+        ipadModeKey, medusaFloatingKey, medusaOverlayKey, medusaPinnedKey, medusaPipKey,
+        // EXPERIMENTAL
         shutterRelaxationKey, shutterKeyboardMutePreserveKey, shutterLegacyMutePreserveKey, concurrentHPLPMicsKey,
         photosLocalLightKey, toneMappingKey, hdrDeferredProcessingKey, spatialOverCaptureKey, stereoAudioRecKey,
         p3VideoRecKey, touchSensitiveCamControlKey, hardwareDetentsKey, cameraHapticsKey, legacyBatteryInfoKey,
@@ -439,7 +449,7 @@ struct MGCacheDataLayout: Codable, Equatable, Sendable {
             for pad in (valOff + 1)..<(valOff + 8) {
                 guard cacheData[pad] == 0 else {
                     let padHex = String(format: "%X", pad)
-                    return .failure(.slotInvalid("Slot \(slotIndex) padding byte is non-zero (offset 0x\(padHex) = \(cacheData[pad])). Modification denied!"))
+                    return .failure(.slotInvalid("Slot \(slotIdx) padding byte is non-zero (offset 0x\(padHex) = \(cacheData[pad])). Modification denied!"))
                 }
             }
         }
@@ -755,6 +765,11 @@ final class MGCacheDataCoordinator {
         case MGCacheDataLayout.actButtonKey: return ("action-button-slot", "Action Button", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
         case MGCacheDataLayout.tapToWakeKey: return ("tap-to-wake-slot", "Tap to Wake", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
         case MGCacheDataLayout.stageMgrKey: return ("stage-mgr-slot", "Stage Manager", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
+        case MGCacheDataLayout.ipadModeKey: return ("ipad-mode-slot", "iPad Device Mode", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
+        case MGCacheDataLayout.medusaFloatingKey: return ("medusa-floating", "Medusa Floating Live App", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
+        case MGCacheDataLayout.medusaOverlayKey: return ("medusa-overlay", "Medusa Overlay App", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
+        case MGCacheDataLayout.medusaPinnedKey: return ("medusa-pinned", "Medusa Pinned App", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
+        case MGCacheDataLayout.medusaPipKey: return ("medusa-pip", "Medusa PIP", "true (0x01 · Enabled)", "false (0x00 · Disabled)")
         case MGCacheDataLayout.shutterRelaxationKey: return ("shutter-relax-slot", "[Exp] Regional Shutter Relaxation", "true (0x01 · Mute Allowed)", "false (0x00 · Forced Shutter)")
         case MGCacheDataLayout.shutterKeyboardMutePreserveKey: return ("shutter-kb-mute-slot", "[Exp] Preserve Shutter (Keyboard Mute)", "true (0x01 · Force Preserved)", "false (0x00 · Force Removed)")
         case MGCacheDataLayout.shutterLegacyMutePreserveKey: return ("shutter-legacy-mute-slot", "[Exp] Preserve Shutter (Legacy)", "true (0x01 · Force Preserved)", "false (0x00 · Force Removed)")
