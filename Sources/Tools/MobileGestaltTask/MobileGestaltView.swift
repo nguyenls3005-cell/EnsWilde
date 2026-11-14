@@ -39,10 +39,10 @@ struct MobileGestaltView: View {
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
     
-    // Cảnh báo iOS 27
+    // Cảnh báo iOS 27 cho 2662
     @State private var showDIWarning = false
     
-    // Danh sách Region
+    // Region List
     let regionPresets: [MGRegionPreset] = [
         MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
         MGRegionPreset(id: "CH", name: "China", suffix: "CH/A"),
@@ -77,7 +77,7 @@ struct MobileGestaltView: View {
                     Text("2662 (iPhone 18 Pro Dynamic Island)").tag(8)
                     Text("Custom Subtype").tag(-1)
                 } label: {
-                    Text(L("mg_device_subtype_preset"))
+                    Text("Device Subtype Preset")
                 }
                 .pickerStyle(.menu)
                 .onChange(of: dynamicIslandType) { newValue in
@@ -103,36 +103,36 @@ struct MobileGestaltView: View {
                 }
 
                 Toggle(isOn: $enableModelName) {
-                    Text(L("mg_change_model_name"))
+                    Text("Change Model Name")
                 }
                 if enableModelName {
-                    TextField(L("mg_model_name_placeholder"), text: $modelName)
+                    TextField("Enter Custom Model Name", text: $modelName)
                 }
             }
 
             Section(header: Text(L("section_hardware_features"))) {
-                Toggle(L("mg_boot_chime"), isOn: store.mgByteBinding(key: MGKey.bootChime))
-                Toggle(L("mg_charge_limit"), isOn: store.mgByteBinding(key: MGKey.chargeLim))
+                Toggle("Boot Chime", isOn: store.mgByteBinding(key: MGKey.bootChime))
+                Toggle("80% Charge Limit", isOn: store.mgByteBinding(key: MGKey.chargeLim))
                     .disabled(Utils.requiresVersion(17))
                 if UIDevice._hasHomeButton() {
-                    Toggle(L("mg_tap_to_wake"), isOn: store.mgByteBinding(key: MGKey.tapToWake))
+                    Toggle("Tap to Wake", isOn: store.mgByteBinding(key: MGKey.tapToWake))
                 }
-                Toggle(L("mg_camera_button"), isOn: store.mgByteBinding(key: MGKey.camButton))
+                Toggle("Camera Control Button", isOn: store.mgByteBinding(key: MGKey.camButton))
                     .disabled(Utils.requiresVersion(18))
             }
 
             Section(header: Text(L("section_display_and_ui"))) {
-                Toggle(L("mg_stage_manager"), isOn: store.mgByteBinding(key: MGKey.stageMgr))
-                Toggle(L("mg_aod"), isOn: store.mgByteBinding(key: MGKey.AOD))
+                Toggle("Stage Manager", isOn: store.mgByteBinding(key: MGKey.stageMgr))
+                Toggle("Always-On Display (AOD)", isOn: store.mgByteBinding(key: MGKey.AOD))
                     .disabled(Utils.requiresVersion(18))
-                Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
+                Toggle("AOD Vibrancy", isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                     .disabled(Utils.requiresVersion(18))
-                Toggle("Become iPadOS", isOn: store.mgTrollPadBinding())
+                Toggle("Enable iPadOS UI", isOn: store.mgTrollPadBinding())
             }
 
             Section(header: Text(L("section_system_features"))) {
                 Toggle(isOn: bindingForMGKeys(["9MZ5AdH43csAUajl/dU+IQ"], type: [Int].self, defaultValue: [1], enableValue: [1, 2])) {
-                    Text(L("mg_install_ipad_apps"))
+                    Text("Install iPad Apps")
                 }
                 
                 Picker(selection: $selectedRegionCode) {
@@ -144,18 +144,18 @@ struct MobileGestaltView: View {
                 }
                 .pickerStyle(.menu)
 
-                Toggle(L("mg_apple_pencil"), isOn: store.mgByteBinding(key: MGKey.appPencil))
-                Toggle(L("mg_action_button"), isOn: store.mgByteBinding(key: MGKey.actButton))
+                Toggle("Apple Pencil Support", isOn: store.mgByteBinding(key: MGKey.appPencil))
+                Toggle("Action Button", isOn: store.mgByteBinding(key: MGKey.actButton))
                     .disabled(Utils.requiresVersion(17))
-                Toggle(L("mg_crash_detection"), isOn: store.mgByteBinding(key: MGKey.crashDet))
+                Toggle("Crash Detection", isOn: store.mgByteBinding(key: MGKey.crashDet))
             }
 
             Section(header: Text(L("section_internal_features"))) {
-                Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
-                Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
-                Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
+                Toggle("Internal Storage Info", isOn: store.mgByteBinding(key: MGKey.intBuild))
+                Toggle("Internal Install Mode", isOn: store.mgByteBinding(key: MGKey.intInstall))
+                Toggle("Security Research Device (SRD)", isOn: store.mgByteBinding(key: MGKey.srd))
                 Toggle(isOn: bindingForAppleIntelligence()) {
-                    Text(L("mg_apple_intelligence"))
+                    Text("Apple Intelligence")
                 }
                 .disabled(Utils.requiresVersion(18))
                 
@@ -168,14 +168,14 @@ struct MobileGestaltView: View {
                         Text("iPhone 16 Pro Max").tag("iPhone17,2")
                     }
                 } label: {
-                    Text(L("mg_device_model"))
+                    Text("Device Model")
                 }
                 .pickerStyle(.menu)
             }
 
             Section(header: Text(L("section_save_reset"))) {
                 Button(action: saveChanges) {
-                    Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
+                    Label("Save Settings", systemImage: "square.and.arrow.down")
                 }
                 Button(role: .destructive, action: resetOriginal) {
                     Label("Revert Tweaks", systemImage: "arrow.counterclockwise")
