@@ -345,7 +345,7 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "All tweaks reverted. Please RESPIRING or REBOOT your device now to let iOS regenerate the factory cache."
+                    lastError = "All tweaks reverted successfully.\n\nPlease go to the SETTINGS tab and tap 'Respring Device' to apply the changes."
                     showErrorAlert = true
                 }
             } catch {
