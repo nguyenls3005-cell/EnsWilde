@@ -42,7 +42,7 @@ enum MobileGestaltApplyTask {
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
-        let targetCacheData = NSMutableData(data: liveCacheData)
+        var targetCacheData = liveCacheData
         
         if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: liveDict),
            let storeData = store.mgCurrentDict["CacheData"] as? Data {
@@ -57,7 +57,7 @@ enum MobileGestaltApplyTask {
             for key in allToggleKeys {
                 if let slotIdx = layout.featureSlotIndices[key] {
                     let offset = slotIdx * 8
-                    if offset < targetCacheData.length && offset < storeData.count {
+                    if offset < targetCacheData.count && offset < storeData.count {
                         targetCacheData[offset] = storeData[offset]
                     }
                 }
