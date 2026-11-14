@@ -42,13 +42,13 @@ struct MobileGestaltView: View {
     @State private var showDIWarning = false
     
     let regionPresets: [MGRegionPreset] = [
+        MGRegionPreset(id: "VN", name: "Viet Nam", suffix: "VN/A"),
         MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
         MGRegionPreset(id: "CH", name: "China", suffix: "CH/A"),
         MGRegionPreset(id: "J", name: "Japan", suffix: "J/A"),
         MGRegionPreset(id: "ZA", name: "Singapore", suffix: "ZA/A"),
-        MGRegionPreset(id: "B", name: "United Kingdom", suffix: "B/A"),
-        MGRegionPreset(id: "C", name: "Canada", suffix: "C/A"),
-        MGRegionPreset(id: "X", name: "Australia", suffix: "X/A")
+        MGRegionPreset(id: "VC", name: "Canada", suffix: "VC/A"),
+        MGRegionPreset(id: "ZP", name: "Hong Kong", suffix: "ZP/A"),
     ]
     
     @State private var selectedRegionCode: String = "CH"
@@ -65,7 +65,7 @@ struct MobileGestaltView: View {
             Section(header: Text(L("section_device_subtype"))) {
                 Picker(selection: $dynamicIslandType) {
                     Text(L("mg_subtype_none")).tag(0)
-                    Text("2436 (iPhone X / 11 Pro)").tag(1)
+                    Text("2436 (iPhone X / For iPhone SE)").tag(1)
                     Text("2556 (iPhone 14 Pro)").tag(2)
                     Text("2796 (iPhone 14 Pro Max)").tag(3)
                     Text("2976 (iPhone 15 Pro Max / 16 Plus)").tag(4)
@@ -95,7 +95,7 @@ struct MobileGestaltView: View {
                 if enableCustomSubtype {
                     Toggle("Enable Custom Subtype", isOn: $enableCustomSubtype)
                     if enableCustomSubtype {
-                        TextField("Enter ArtworkDeviceSubType (e.g. 3000)", text: $customSubtypeValue)
+                        TextField("Enter ArtworkDeviceSubType (e.g. 2xxx)", text: $customSubtypeValue)
                             .keyboardType(.numberPad)
                     }
                 }
@@ -162,8 +162,12 @@ struct MobileGestaltView: View {
                     if UIDevice.current.userInterfaceIdiom == .pad {
                         Text("iPad Pro 11 inch 5th Gen").tag("iPad16,3")
                     } else {
+                        Text("iPhone 15 Pro").tag("iPhone16,1")
                         Text("iPhone 15 Pro Max").tag("iPhone16,2")
+                        Text("iPhone 16").tag("iPhone17,3")
+                        Text("iPhone 16 Pro").tag("iPhone17,1")
                         Text("iPhone 16 Pro Max").tag("iPhone17,2")
+                        Text("iPhone 18 Pro").tag("iPhone19,2")
                     }
                 } label: {
                     Text(L("mg_device_model"))
