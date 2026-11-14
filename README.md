@@ -18,6 +18,11 @@ It operates as a standalone on-device application, functioning independently lik
 > **Please back up your data before using!**
 
 ---
+## Exploit
+• Worse_query : Support from iOS 27.0-27.3 Beta 1.
+• Airlift : Support from iOS 26.0-27.2 Beta 2 (24B5089g).
+
+---
 
 ## Features
 * **Change Apple Wallet background image:** Customize the background appearance of Wallet passes/cards.
@@ -25,7 +30,8 @@ It operates as a standalone on-device application, functioning independently lik
 * **Change Passcode background:** Customize the numeric keypad appearance using the `.passthm` interface.
 * **On-device patching (no PC required):** Operates as a standalone app after the initial setup.
 * **More features coming soon:** Development is ongoing to introduce additional capabilities.
-* ** iOS 26 Need to get pairing file on computer and then drop pairing file to setting app.
+* **Disable Call Recording Sound:** Disable the beep sound during call recording 
+* For iOS 26, you need to retrieve the pairing file from your computer, then go to the app's settings and import the file you just obtained.
 
 ---
 
@@ -49,9 +55,8 @@ It operates as a standalone on-device application, functioning independently lik
 3. Launch **EnsWilde**.
 4. import Pairing File to setting page . iOS 26 using iloader , iOS 27 on device StikPair . Pairing directly in app on iOS 27 soon
 ## Need to know before continue
-1.You need a cert that have  App Group capabilities 
-2.Worse_query now using app group to get sandbox escape so need a cert that support 
-3.Need Cert? Just buy at [Cert YangJiii](https://cc.dangdi.dev)
+1. Worse_query now uses App Groups, it requires a certificate that supports this feature; `MobileGestalt` will only function if the App Group entitlement is present.
+2. If you need a cert , you can buy at [Cert YangJiii](https://cc.dangdi.dev).
 
 ---
 
