@@ -31,7 +31,7 @@ It operates as a standalone on-device application, functioning independently lik
 * **On-device patching (no PC required):** Operates as a standalone app after the initial setup.
 * **More features coming soon:** Development is ongoing to introduce additional capabilities.
 * **Disable Call Recording Sound:** Disable the beep sound during call recording 
-* For iOS 26, you need to retrieve the pairing file from your computer, then go to the app's settings and import the file you just obtained.
+* **For iOS 26, you need to retrieve the pairing file from your computer, then go to the app's settings and import the file you just obtained.**
 
 ---
 
