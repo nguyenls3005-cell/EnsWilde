@@ -1,7 +1,7 @@
 //
 //  GestaltStore.swift
 //  EnsWilde (Ported from Erosion-CN)
-//  Updated: Removed iPadOS block & Fixed Dynamic Island Subtype array
+//  Updated: Fixed iPadOS CacheData injection
 //
 
 import SwiftUI
@@ -25,14 +25,12 @@ enum MGRegionUnlockMode: String, CaseIterable, Identifiable {
 }
 
 enum MGMsg {
-    // warnings
     static var region: String { L("开启后默认把销售地区改为完整美版 (LL + LL/A) 并映射对应美版监管型号 (Axxxx)；你也可在下方子选项切换为「仅改区域代码 LL（保留 CH/A 后缀与双卡兼容）」。请遵守当地法律法规并自行承担使用风险。") }
     static var regionModeInfo: String { L("【地区修改模式细化说明】\n\n1. 完整美版 LL + LL/A（默认）：\n同时将区域代码改为 LL、系统销售地区改为 LL/A，并自动填入对应的美版监管型号 (Axxxx)，跨区域受限特性（海外版 Apple 智能、快门静音、健康区域特性等）一致性最完整。\n\n2. 仅改区域代码 LL（保留 CH/A 后缀与双卡兼容）：\n仅将区域代码 (RegionCode) 改为 LL，完整保留原机的销售地区后缀（如 CH/A）与原厂监管型号。既可满足基础 Apple 智能准入、让「设置 -> 关于本机」型号末尾继续显示 CH/A，也能避免国行双实体卡槽 + eSIM 机型（如 18 Pro / Pro Max）因映射无卡槽美版型号引发基带卡槽冲突。") }
     static var ipadOS: String { L("如果你当前设置了字母数字混合锁屏密码，请切勿开启此项！开启后也切勿关闭“在台前调度中显示程序坞”，否则会导致设备软砖（白苹果循环）。启用 iPadOS 界面后可能出现界面错位、部分应用不兼容等问题。") }
     static var support: String { L("请提前备份重要数据！如果某项修改未按预期生效，请勿向官方仓库提交支持请求。许多功能同时受限于设备硬件与 Apple 服务器策略，所有修改均需自行承担风险。") }
     static var mgReset: String { L("重置 MobileGestalt 将删除系统原始缓存文件并让系统在重启时重新生成。这有助于彻底清除无法还原的修改，但存在极低概率引发异常，请谨慎操作。") }
     
-    // info
     static var liquidGlass: String { L("开启后将使用 iOS 26/27 液态玻璃 (Liquid Glass) 的低性能开销渲染模式，可降低 GPU 负载、减少机身发热并节省电量（注销或重启后生效）。") }
     static var chinaCacheUnlock: String { L("通过从本机内存加载的系统库 (libMobileGestalt.dylib) 实时动态解析二进制 CacheData 槽位偏移，将国行底层限制标记 green-tea 设为 false、not-green-tea 设为 true。\n\n• 可在所有国行设备上解锁 FaceTime 音频（语音通话）与 AI 底层区域准入；\n• 在自带物理 eSIM 芯片的国行机型（如 iPhone Air、iPhone 18 系列等内置 eUICC 芯片机型）上，可解除系统层针对境外 eSIM 的地理围栏拦截（注：常规纯双实体卡槽国行主板物理空焊 eUICC 芯片，无法通过纯软件写入虚拟卡）。\n\n⚠️ 注意：在 iOS 26/27 中，国行特有的单应用三态联网菜单（“关闭 / 无线局域网 / 无线局域网与蜂窝数据”）同样受 green-tea 标记控制。即使保持下方“无线局域网改 Wi-Fi”关闭，开启本项解除国行底层限制后，系统网络权限也会切换为国际版“蜂窝数据”独立开关模式（关闭本项并重启即可随时原样恢复）。\n\n安全策略：仅当本机 CacheUUID、总长度、有效位及填充字节 100% 匹配通过时才允许修改；应用后请手动重启手机生效。") }
     static var wapiToWifi: String { L("通过本机系统库实时动态解析 wapi 布尔槽位偏移并设为 false，将系统“设置”与控制中心里的“无线局域网”统一显示为国际版的“Wi-Fi”。\n\n⚠️ 重要提示：开启后将会【丢失国行特有的“不允许联网”功能】（即“使用无线局域网与蜂窝网络的 App”中的“关闭”选项）！国际版逻辑仅允许单独关闭“蜂窝数据”，无法禁止单个应用使用 Wi-Fi 联网（如第三方输入法或离线应用将无法彻底断网），同时“启用 WAPI”开关也会隐藏。\n\n如需保留应用“不允许联网”权限控制，请保持此项关闭；若已开启，关闭此开关重新应用并手动重启手机即可原样恢复。") }
@@ -69,20 +67,16 @@ enum MGMsg {
     static var revertComp: String { L("已通过 SHA-256 与物理落盘校验恢复本机原厂备份，并已同步清空本地自定义开关残留。建议【手动重启一次手机】以确保所有底层参数彻底复原。") }
     static var revertConfirm: String { L("即将执行本机原厂参数恢复：\n\n1. 严格核对原厂备份的 SHA-256 摘要、系统版本、CacheUUID 与真实硬件型号；\n2. 通过无零字节窗口原位刷盘 (pwrite + F_FULLFSYNC) 恢复 MobileGestalt 并读回验证；\n3. 同步复位本地自定义键值、自定义机型名与越界门禁开关，杜绝残留回写。") }
     static var globalFactoryRestoreConfirm: String { L("即将执行全模块一键恢复原机出厂参数：\n\n1. 恢复并校验本机 MobileGestalt 原厂备份（含 SHA-256 与物理刷盘验证）；\n2. 清除锁屏底部文字、设备资产铭牌及第三方伪监管残留（自动保护真实企业 MDM）；\n3. 清理自定义拨号键盘缓存并复位所有本地偏好状态。") }
-
-    // settings
     static var mgResetSavWarn: String { L("重新生成原始备份前，请确保当前已还原所有修改，否则当前处于开启状态的修改会被写入新的原始备份中！") }
     static var hidTweakWarn: String { L("显示被隐藏的修改项后，你将能看到当前机型本已原生支持或不兼容的底层开关。盲目改动可能导致功能异常甚至数据丢失！") }
 }
 
 enum MGKey {
-    // bindings
     static let ipadosCacheEx = [
         "uKc7FPnEO++lVhHWHFlGbQ", "mG0AnH/Vy1veoqoLRAIgTA", "UCG5MkVahJxG1YULbbd5Bg",
         "ZYqko/XM5zD3XBfN5RmaXA", "nVh/gwNpy7Jv1NOk00CMrw", "qeaj75wk3HF4DwQ8qbIi7g"
     ]
     
-    // hardware features
     static let island = "YlEtTtHlNesRBMal1CqRaA"
     static let AOTime = "j8/Omm6s1lsmTDFsXjsBfA"
     static let AOD = "2OOJf1VhaM7NxfRok3HbWQ"
@@ -90,27 +84,16 @@ enum MGKey {
     static let liquidGlassLowPower = "SAGvsp6O6kAQ4fEfDJpC4Q"
     static let chargeLim = "37NVydb//GP/GrhuTN+exg"
     static let bootChime = "QHxt+hGLaBPbQJbXiUJX3w"
-    
-    // internal
     static let intInstall = "EqrsVvjcYDdxHBiQmGhAWw"
     static let intBuild = "LBJfwOEzExRxzlAnSuI7eg"
-    
-    // eligibility
     static let srd = "XYlJKKkj2hztRP1NWWnhlw"
     static let appIntell = "A62OafQ85EJAiiqKn4agtg"
     static let photosCleanUp = "XNCjqOupLM/S8fNyxRNQTA"
     static let handwritingSynth = "YgYIIViDt1kgzyIsIV61vA"
-    static let appIntellAllKeys = [
-        "A62OafQ85EJAiiqKn4agtg",
-        "XNCjqOupLM/S8fNyxRNQTA",
-        "YgYIIViDt1kgzyIsIV61vA"
-    ]
+    static let appIntellAllKeys = ["A62OafQ85EJAiiqKn4agtg", "XNCjqOupLM/S8fNyxRNQTA", "YgYIIViDt1kgzyIsIV61vA"]
     static let audioIntell = "rb2tKZxlj0Gm2tBmUQSLqQ"
     static let personalTranslator = "M1n2sAqf33NAOgZRGxQYBA"
-    static let advAppIntellKeys = [
-        "rb2tKZxlj0Gm2tBmUQSLqQ",
-        "M1n2sAqf33NAOgZRGxQYBA"
-    ]
+    static let advAppIntellKeys = ["rb2tKZxlj0Gm2tBmUQSLqQ", "M1n2sAqf33NAOgZRGxQYBA"]
     static let advAppIntellRules: [MGSlotRule] = [
         MGSlotRule(key: "rb2tKZxlj0Gm2tBmUQSLqQ", targetValue: true, required: false),
         MGSlotRule(key: "M1n2sAqf33NAOgZRGxQYBA", targetValue: true, required: false)
@@ -119,26 +102,13 @@ enum MGKey {
     static let regionInfo = "zHeENZu+wbg7PUprwNwBWg"
     static let regionSysconfig = "yK+xavymRGZ3xWc1tb8XDg"
     static let regModelNumber = "97JDvERpVwO+GHtthIh7hA"
-
-    // media, camera & health (CacheData boolean slots)
     static let audioMix = "aVL5GE3tx0LSCI/ErfrJGA"
     static let spatialAudioRec = "X6NGcYcvHmbqlR8hLXASJA"
     static let spatialFaceTimeAudio = "/EVOCjM/Nmb2roP5ebtEFA"
-    static let spatialAudioAllKeys = [
-        "X6NGcYcvHmbqlR8hLXASJA",
-        "/EVOCjM/Nmb2roP5ebtEFA"
-    ]
+    static let spatialAudioAllKeys = ["X6NGcYcvHmbqlR8hLXASJA", "/EVOCjM/Nmb2roP5ebtEFA"]
     static let responsiveShutter = "gQDt76Te0SPw7N8oTLrBFw"
     static let hypertensionNotif = "4fh9efw4o1yaFqkXNCXoeA"
-    static let mediaHealthAllKeys = [
-        "aVL5GE3tx0LSCI/ErfrJGA",
-        "X6NGcYcvHmbqlR8hLXASJA",
-        "/EVOCjM/Nmb2roP5ebtEFA",
-        "gQDt76Te0SPw7N8oTLrBFw",
-        "4fh9efw4o1yaFqkXNCXoeA"
-    ]
-    
-    // prefs
+    static let mediaHealthAllKeys = ["aVL5GE3tx0LSCI/ErfrJGA", "X6NGcYcvHmbqlR8hLXASJA", "/EVOCjM/Nmb2roP5ebtEFA", "gQDt76Te0SPw7N8oTLrBFw", "4fh9efw4o1yaFqkXNCXoeA"]
     static let crashDet = "HCzWusHQwZDea6nNhaKndw"
     static let pwm = "6IejgN+1Fmu5/QrZFOIeNw"
     static let appPencil = "yhHcB0iH0d1XzPO/CFd3ow"
@@ -146,18 +116,12 @@ enum MGKey {
     static let grapPefr = "oOV1jhJbdV3AddkcCg0AEA"
     static let actButton = "cT44WE1EohiwRzhsZ8xEsw"
     static let tapToWake = "yZf3GTRMGTuwSV/lD7Cagw"
-    
-    // ipados
     static let stageMgr = "qeaj75wk3HF4DwQ8qbIi7g"
-    
-    // lookup
     static let deviceClass = "+3Uf0Pm5F8Xy7Onyvko0vA"
     static let artwork = "oPeik/9e8lQWMszEjbPzng"
     static let prodType = "h9jDsbgj7xIVeIQ8S3/X3Q"
     static let modelNameOuter1 = "Z/dqyWS6OZTRy10UcmUAhw"
     static let modelNameOuter2 = "bbtR9jQx50Fv5Af/affNtA"
-
-    // [测试特性] Experimental CacheData Boolean Slot Keys
     static let shutterRelaxation = "P4ZJVy/zYuLy4ejRKP+0DA"
     static let shutterKeyboardMutePreserve = "bGUN8lS6sYzy3xhePubp8A"
     static let shutterLegacyMutePreserve = "Bim3FC83Te8QX1kfSpqYKQ"
@@ -187,15 +151,12 @@ enum MGKey {
     static let siriHub = "waGD2UTpntjbDXD1r3oALQ"
     static let onDeviceSiri = "O/7gbXWA5X2IRPVtDRU+bw"
     static let modelPruning = "m4xs4mhvxnAopYrApoLDMw"
-
     static let experimentalCacheSlotKeys: [String] = [
-        shutterRelaxation, shutterKeyboardMutePreserve, shutterLegacyMutePreserve,
-        concurrentHPLPMics, photosLocalLight, toneMapping, hdrDeferredProcessing,
-        spatialOverCapture, stereoAudioRec, p3VideoRec, touchSensitiveCamControl,
-        hardwareDetents, cameraHaptics, legacyBatteryInfo, legacyDynamicEndOfCharge,
-        highLuminanceAOD, aodFlipbook, carPlay2, touchDelivery120Hz, hearingAidEQ,
-        hearingAidLE, hearingAidPowerRed, breathingDisturbances, usBloodOxygen,
-        workoutUltra, timeInDaylight, siriHub, onDeviceSiri, modelPruning
+        shutterRelaxation, shutterKeyboardMutePreserve, shutterLegacyMutePreserve, concurrentHPLPMics,
+        photosLocalLight, toneMapping, hdrDeferredProcessing, spatialOverCapture, stereoAudioRec, p3VideoRec,
+        touchSensitiveCamControl, hardwareDetents, cameraHaptics, legacyBatteryInfo, legacyDynamicEndOfCharge,
+        highLuminanceAOD, aodFlipbook, carPlay2, touchDelivery120Hz, hearingAidEQ, hearingAidLE, hearingAidPowerRed,
+        breathingDisturbances, usBloodOxygen, workoutUltra, timeInDaylight, siriHub, onDeviceSiri, modelPruning
     ]
 }
 
@@ -215,92 +176,48 @@ final class GestaltStore: ObservableObject {
     
     init() {}
     
-    // MARK: helpers
     func originalCacheExtraValue(forKey key: String) -> Any? {
-        guard let ogDict = NSDictionary(contentsOf: MGURL.savedGestaltURL),
-              let ogCacheExtra = ogDict["CacheExtra"] as? NSDictionary else {
-            return nil
-        }
+        guard let ogDict = NSDictionary(contentsOf: MGURL.savedGestaltURL), let ogCacheExtra = ogDict["CacheExtra"] as? NSDictionary else { return nil }
         return ogCacheExtra[key]
     }
     
     func restoreOrRemoveKey(_ key: String) {
-        if let ogVal = originalCacheExtraValue(forKey: key) {
-            self.cacheExtra[key] = ogVal
-        } else {
-            self.cacheExtra.removeObject(forKey: key)
-        }
+        if let ogVal = originalCacheExtraValue(forKey: key) { self.cacheExtra[key] = ogVal } else { self.cacheExtra.removeObject(forKey: key) }
     }
-
     func disableBooleanExtraKey(_ key: String, enableValue: Int = 1) {
         if let ogVal = originalCacheExtraValue(forKey: key) {
-            if let ogNum = ogVal as? NSNumber, ogNum.intValue == enableValue {
-                self.cacheExtra.removeObject(forKey: key)
-            } else {
-                self.cacheExtra[key] = ogVal
-            }
-        } else {
-            self.cacheExtra.removeObject(forKey: key)
-        }
+            if let ogNum = ogVal as? NSNumber, ogNum.intValue == enableValue { self.cacheExtra.removeObject(forKey: key) } else { self.cacheExtra[key] = ogVal }
+        } else { self.cacheExtra.removeObject(forKey: key) }
     }
-    
-    // MARK: actions
-    func mgPullKeys(_ keys: [String], enableValue: Int = 1) {
-        for key in keys {
-            disableBooleanExtraKey(key, enableValue: enableValue)
-        }
-    }
+    func mgPullKeys(_ keys: [String], enableValue: Int = 1) { for key in keys { disableBooleanExtraKey(key, enableValue: enableValue) } }
     
     func isKeyEnabled(_ key: String, enableValue: Int = 1) -> Bool {
-        if let num = self.cacheExtra[key] as? NSNumber, num.intValue == enableValue {
-            return true
-        }
+        if let num = self.cacheExtra[key] as? NSNumber, num.intValue == enableValue { return true }
         if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict),
-           let slotIdx = layout.slotIndex(forKey: key),
-           layout.validateSingleBooleanSlot(slotIdx, in: data),
-           data[slotIdx * 8] == 1 {
+           let slotIdx = layout.slotIndex(forKey: key), layout.validateSingleBooleanSlot(slotIdx, in: data), data[slotIdx * 8] == 1 {
             let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
             let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: key, layout: layout, savedOriginalDict: savedOrig) ?? false
-            if !origVal {
-                return true
-            }
+            if !origVal { return true }
         }
         return false
     }
 
-    func isEnabled(_ keys: [String], enableValue: Int = 1) -> Bool {
-        guard !keys.isEmpty else { return false }
-        return keys.allSatisfy { self.isKeyEnabled($0, enableValue: enableValue) }
-    }
+    func isEnabled(_ keys: [String], enableValue: Int = 1) -> Bool { guard !keys.isEmpty else { return false }; return keys.allSatisfy { self.isKeyEnabled($0, enableValue: enableValue) } }
+    func strVal(forKey key: String) -> String { return self.cacheExtra[key] as? String ?? "" }
     
-    func strVal(forKey key: String) -> String {
-        let value = self.cacheExtra[key] as? String ?? ""
-        return value
-    }
-    
-    // MARK: bindings
     func mgKeyBinding(_ keys: [String], defaultValue: Int = 0, enableValue: Int = 1) -> Binding<Bool> {
         return Binding(get: {
             guard !keys.isEmpty else { return false }
             return keys.allSatisfy { self.isKeyEnabled($0, enableValue: enableValue) }
         }, set: { enabled in
             self.objectWillChange.send()
-            for key in keys {
-                if enabled {
-                    self.cacheExtra[key] = enableValue
-                } else {
-                    self.disableBooleanExtraKey(key, enableValue: enableValue)
-                }
-            }
+            for key in keys { if enabled { self.cacheExtra[key] = enableValue } else { self.disableBooleanExtraKey(key, enableValue: enableValue) } }
             if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
                 let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
                 var touchedSlot = false
                 for key in keys {
-                    if let slotIdx = layout.featureSlotIndices[key],
-                       layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                        if enabled {
-                            data[slotIdx * 8] = (enableValue != 0) ? 1 : 0
-                        } else {
+                    if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                        if enabled { data[slotIdx * 8] = (enableValue != 0) ? 1 : 0 } else {
                             let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: key, layout: layout, savedOriginalDict: savedOrig) ?? false
                             data[slotIdx * 8] = origVal ? 1 : 0
                         }
@@ -310,54 +227,60 @@ final class GestaltStore: ObservableObject {
                 if touchedSlot {
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
                     testDict["CacheData"] = data
-                    if case .success = layout.validatePlist(testDict) {
-                        self.mgCurrentDict["CacheData"] = data
-                    }
+                    if case .success = layout.validatePlist(testDict) { self.mgCurrentDict["CacheData"] = data }
                 }
             }
         })
     }
     
-    // ĐÃ XÓA BỎ POPUP CHẶN iPADOS
+    // FIX iPADOS BINDING
     func mgTrollPadBinding() -> Binding<Bool> {
         return Binding(get: {
             guard let firstKey = MGKey.ipadosCacheEx.first else { return false }
+            if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
+                if let slotIdx = layout.featureSlotIndices[firstKey], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                    return data[slotIdx * 8] == 1
+                }
+            }
             return (self.cacheExtra[firstKey] as? NSNumber)?.intValue == 1
         }, set: { enabled in
             self.objectWillChange.send()
             for key in MGKey.ipadosCacheEx {
-                if enabled {
-                    self.cacheExtra[key] = 1
-                } else {
-                    self.disableBooleanExtraKey(key, enableValue: 1)
+                if enabled { self.cacheExtra[key] = 1 } else { self.disableBooleanExtraKey(key, enableValue: 1) }
+            }
+            
+            // VÁ TRỰC TIẾP VÀO CACHEDATA
+            if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
+                var touchedSlot = false
+                for key in MGKey.ipadosCacheEx {
+                    if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                        data[slotIdx * 8] = enabled ? 1 : 0
+                        touchedSlot = true
+                    }
+                }
+                if touchedSlot {
+                    let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
+                    testDict["CacheData"] = data
+                    if case .success = layout.validatePlist(testDict) { self.mgCurrentDict["CacheData"] = data }
                 }
             }
         })
     }
     
     var preferredRegionUnlockMode: MGRegionUnlockMode {
-        get {
-            let raw = UserDefaults.standard.string(forKey: MGRegionUnlockMode.defaultsKey) ?? MGRegionUnlockMode.fullUS.rawValue
-            return MGRegionUnlockMode(rawValue: raw) ?? .fullUS
-        }
-        set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: MGRegionUnlockMode.defaultsKey)
-        }
+        get { let raw = UserDefaults.standard.string(forKey: MGRegionUnlockMode.defaultsKey) ?? MGRegionUnlockMode.fullUS.rawValue; return MGRegionUnlockMode(rawValue: raw) ?? .fullUS }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: MGRegionUnlockMode.defaultsKey) }
     }
 
     var currentRegionUnlockMode: MGRegionUnlockMode {
-        if (self.cacheExtra[MGKey.regionCode] as? String) == "LL" {
-            return ((self.cacheExtra[MGKey.regionSysconfig] as? String) == "LL/A") ? .fullUS : .regionCodeOnly
-        }
+        if (self.cacheExtra[MGKey.regionCode] as? String) == "LL" { return ((self.cacheExtra[MGKey.regionSysconfig] as? String) == "LL/A") ? .fullUS : .regionCodeOnly }
         return preferredRegionUnlockMode
     }
 
     func isConfirmedChinaHardwareFromCacheData() -> Bool {
         let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
         if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict, checkWapiSlot: true) {
-            if let origFlags = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig) {
-                if origFlags.greenTea || origFlags.wapi == true { return true }
-            }
+            if let origFlags = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig) { if origFlags.greenTea || origFlags.wapi == true { return true } }
             if let wOff = layout.wapiOffset, data[wOff] == 1 { return true }
         }
         return false
@@ -365,35 +288,19 @@ final class GestaltStore: ObservableObject {
 
     private func restoreNonUSRegionSysconfig() {
         if let ogSys = originalCacheExtraValue(forKey: MGKey.regionSysconfig) as? String, !ogSys.isEmpty {
-            if ogSys == "LL/A" && isConfirmedChinaHardwareFromCacheData() {
-                self.cacheExtra[MGKey.regionSysconfig] = "CH/A"
-            } else {
-                self.cacheExtra[MGKey.regionSysconfig] = ogSys
-            }
-        } else if isConfirmedChinaHardwareFromCacheData() {
-            self.cacheExtra[MGKey.regionSysconfig] = "CH/A"
-        } else {
-            self.cacheExtra.removeObject(forKey: MGKey.regionSysconfig)
-        }
+            if ogSys == "LL/A" && isConfirmedChinaHardwareFromCacheData() { self.cacheExtra[MGKey.regionSysconfig] = "CH/A" } else { self.cacheExtra[MGKey.regionSysconfig] = ogSys }
+        } else if isConfirmedChinaHardwareFromCacheData() { self.cacheExtra[MGKey.regionSysconfig] = "CH/A" } else { self.cacheExtra.removeObject(forKey: MGKey.regionSysconfig) }
     }
 
     private func restoreNonUSRegulatoryModel() {
         let prodType = originalHardwareProductType()
         if let ogReg = originalCacheExtraValue(forKey: MGKey.regModelNumber) as? String, !ogReg.isEmpty {
-            if let usModel = usRegulatoryModelNumber(productType: prodType, originalRegModel: ""),
-               ogReg == usModel,
-               isConfirmedChinaHardwareFromCacheData(),
-               let cnModel = chinaRegulatoryModelNumber(productType: prodType) {
+            if let usModel = usRegulatoryModelNumber(productType: prodType, originalRegModel: ""), ogReg == usModel, isConfirmedChinaHardwareFromCacheData(), let cnModel = chinaRegulatoryModelNumber(productType: prodType) {
                 self.cacheExtra[MGKey.regModelNumber] = cnModel
-            } else {
-                self.cacheExtra[MGKey.regModelNumber] = ogReg
-            }
-        } else if isConfirmedChinaHardwareFromCacheData(),
-                  let cnModel = chinaRegulatoryModelNumber(productType: prodType) {
+            } else { self.cacheExtra[MGKey.regModelNumber] = ogReg }
+        } else if isConfirmedChinaHardwareFromCacheData(), let cnModel = chinaRegulatoryModelNumber(productType: prodType) {
             self.cacheExtra[MGKey.regModelNumber] = cnModel
-        } else {
-            self.cacheExtra.removeObject(forKey: MGKey.regModelNumber)
-        }
+        } else { self.cacheExtra.removeObject(forKey: MGKey.regModelNumber) }
     }
 
     func mgRegionRestrictionsBinding() -> Binding<Bool> {
@@ -406,21 +313,9 @@ final class GestaltStore: ObservableObject {
                     self.applyRegionUnlock(mode: self.preferredRegionUnlockMode)
                 } else {
                     if let ogCode = self.originalCacheExtraValue(forKey: MGKey.regionCode) as? String, !ogCode.isEmpty {
-                        if ogCode == "LL" && self.isConfirmedChinaHardwareFromCacheData() {
-                            self.cacheExtra[MGKey.regionCode] = "CH"
-                        } else {
-                            self.cacheExtra[MGKey.regionCode] = ogCode
-                        }
-                    } else if self.isConfirmedChinaHardwareFromCacheData() {
-                        self.cacheExtra[MGKey.regionCode] = "CH"
-                    } else {
-                        self.cacheExtra.removeObject(forKey: MGKey.regionCode)
-                    }
-                    if raveSupported() {
-                        self.cacheExtra.removeObject(forKey: MGKey.regionInfo)
-                    } else {
-                        self.restoreOrRemoveKey(MGKey.regionInfo)
-                    }
+                        if ogCode == "LL" && self.isConfirmedChinaHardwareFromCacheData() { self.cacheExtra[MGKey.regionCode] = "CH" } else { self.cacheExtra[MGKey.regionCode] = ogCode }
+                    } else if self.isConfirmedChinaHardwareFromCacheData() { self.cacheExtra[MGKey.regionCode] = "CH" } else { self.cacheExtra.removeObject(forKey: MGKey.regionCode) }
+                    if raveSupported() { self.cacheExtra.removeObject(forKey: MGKey.regionInfo) } else { self.restoreOrRemoveKey(MGKey.regionInfo) }
                     self.restoreNonUSRegionSysconfig()
                     self.restoreNonUSRegulatoryModel()
                 }
@@ -434,9 +329,7 @@ final class GestaltStore: ObservableObject {
             set: { newMode in
                 self.objectWillChange.send()
                 self.preferredRegionUnlockMode = newMode
-                if (self.cacheExtra[MGKey.regionCode] as? String) == "LL" {
-                    self.applyRegionUnlock(mode: newMode)
-                }
+                if (self.cacheExtra[MGKey.regionCode] as? String) == "LL" { self.applyRegionUnlock(mode: newMode) }
             }
         )
     }
@@ -446,30 +339,18 @@ final class GestaltStore: ObservableObject {
         switch mode {
         case .fullUS:
             self.cacheExtra[MGKey.regionSysconfig] = "LL/A"
-            if !raveSupported(), self.originalCacheExtraValue(forKey: MGKey.regionInfo) != nil {
-                self.cacheExtra[MGKey.regionInfo] = "LL/A"
-            } else {
-                self.cacheExtra.removeObject(forKey: MGKey.regionInfo)
-            }
+            if !raveSupported(), self.originalCacheExtraValue(forKey: MGKey.regionInfo) != nil { self.cacheExtra[MGKey.regionInfo] = "LL/A" } else { self.cacheExtra.removeObject(forKey: MGKey.regionInfo) }
             let prodType = originalHardwareProductType()
             let ogRegModel = (self.originalCacheExtraValue(forKey: MGKey.regModelNumber) as? String) ?? (self.cacheExtra[MGKey.regModelNumber] as? String) ?? ""
-            if let usModel = usRegulatoryModelNumber(productType: prodType, originalRegModel: ogRegModel) {
-                self.cacheExtra[MGKey.regModelNumber] = usModel
-            }
+            if let usModel = usRegulatoryModelNumber(productType: prodType, originalRegModel: ogRegModel) { self.cacheExtra[MGKey.regModelNumber] = usModel }
         case .regionCodeOnly:
-            if raveSupported() {
-                self.cacheExtra.removeObject(forKey: MGKey.regionInfo)
-            } else {
-                self.restoreOrRemoveKey(MGKey.regionInfo)
-            }
+            if raveSupported() { self.cacheExtra.removeObject(forKey: MGKey.regionInfo) } else { self.restoreOrRemoveKey(MGKey.regionInfo) }
             self.restoreNonUSRegionSysconfig()
             self.restoreNonUSRegulatoryModel()
         }
     }
 
-    func applyUSRegionAndRegulatoryModel() {
-        applyRegionUnlock(mode: .fullUS)
-    }
+    func applyUSRegionAndRegulatoryModel() { applyRegionUnlock(mode: .fullUS) }
     
     func mgRegModelBinding() -> Binding<String> {
         return Binding<String>(
@@ -477,108 +358,60 @@ final class GestaltStore: ObservableObject {
             set: { newValue in
                 self.objectWillChange.send()
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    self.restoreOrRemoveKey(MGKey.regModelNumber)
-                } else {
-                    self.cacheExtra[MGKey.regModelNumber] = trimmed
-                }
+                if trimmed.isEmpty { self.restoreOrRemoveKey(MGKey.regModelNumber) } else { self.cacheExtra[MGKey.regModelNumber] = trimmed }
             }
         )
     }
 
-    // MARK: - Dynamic CacheData Resolution & Strictly Gated Bindings
-
-    func canModifyGreenTeaCache() -> Bool {
-        if case .success = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) {
-            return true
-        }
-        return false
-    }
-
+    func canModifyGreenTeaCache() -> Bool { if case .success = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) { return true }; return false }
     func canModifyWapiCache() -> Bool {
-        if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict, checkWapiSlot: true),
-           layout.wapiOffset != nil {
-            return true
-        }
+        if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict, checkWapiSlot: true), layout.wapiOffset != nil { return true }
         return false
     }
-
     func canModifyFeatureSlot(_ keys: [String]) -> Bool {
-        guard !keys.isEmpty,
-              case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else {
-            return false
-        }
-        return keys.allSatisfy { key in
-            guard let slotIdx = layout.featureSlotIndices[key] else { return false }
-            return layout.validateSingleBooleanSlot(slotIdx, in: data)
-        }
+        guard !keys.isEmpty, case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else { return false }
+        return keys.allSatisfy { key in guard let slotIdx = layout.featureSlotIndices[key] else { return false }; return layout.validateSingleBooleanSlot(slotIdx, in: data) }
     }
-
     func isFeatureSlotNativeEnabled(_ keys: [String]) -> Bool {
-        guard !keys.isEmpty,
-              case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else {
-            return false
-        }
+        guard !keys.isEmpty, case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else { return false }
         let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
         return keys.allSatisfy { key in
-            guard let slotIdx = layout.featureSlotIndices[key],
-                  layout.validateSingleBooleanSlot(slotIdx, in: data) else {
-                return false
-            }
+            guard let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) else { return false }
             return MGCacheDataCoordinator.shared.originalSlotValue(forKey: key, layout: layout, savedOriginalDict: savedOrig) == true
         }
     }
-
     func mgFeatureSlotBinding(_ keys: [String], infoTitle: String? = nil, infoMessage: String? = nil) -> Binding<Bool> {
         return Binding<Bool>(
             get: {
-                guard !keys.isEmpty,
-                      case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) else {
-                    return false
-                }
+                guard !keys.isEmpty, case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) else { return false }
                 return keys.allSatisfy { key in
-                    guard let slotIdx = layout.featureSlotIndices[key],
-                          layout.validateSingleBooleanSlot(slotIdx, in: data) else {
-                        return false
-                    }
+                    guard let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) else { return false }
                     return data[slotIdx * 8] == 1
                 }
             },
             set: { enabled in
                 switch MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
-                case .failure(let err):
-                    Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
+                case .failure(let err): Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
                 case .success((let layout, var data)):
                     let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
                     for key in keys {
-                        guard let slotIdx = layout.featureSlotIndices[key],
-                              layout.validateSingleBooleanSlot(slotIdx, in: data) else {
+                        guard let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) else {
                             Alertinator.shared.alert(title: L("当前系统不支持该槽位！"), body: L("未能在当前系统库与缓存中验证槽位 \(key) 的有效性，已拒绝修改。"))
                             return
                         }
-                        if enabled {
-                            data[slotIdx * 8] = 1
-                        } else {
+                        if enabled { data[slotIdx * 8] = 1 } else {
                             let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: key, layout: layout, savedOriginalDict: savedOrig) ?? false
                             data[slotIdx * 8] = origVal ? 1 : 0
                         }
                     }
-
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
-                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary {
-                        for key in keys {
-                            testExtra.removeObject(forKey: key)
-                        }
-                    }
+                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary { for key in keys { testExtra.removeObject(forKey: key) } }
                     testDict["CacheData"] = data
                     switch layout.validatePlist(testDict) {
-                    case .failure(let err):
-                        Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
+                    case .failure(let err): Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
                     case .success:
                         self.objectWillChange.send()
-                        for key in keys {
-                            self.cacheExtra.removeObject(forKey: key)
-                        }
+                        for key in keys { self.cacheExtra.removeObject(forKey: key) }
                         self.mgCurrentDict["CacheData"] = data
                     }
                 }
@@ -587,107 +420,63 @@ final class GestaltStore: ObservableObject {
     }
 
     func canModifySlotRules(_ rules: [MGSlotRule]) -> Bool {
-        guard !rules.isEmpty,
-              case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else {
-            return false
-        }
+        guard !rules.isEmpty, case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else { return false }
         var matchedCount = 0
         for rule in rules {
-            if let slotIdx = layout.featureSlotIndices[rule.key],
-               layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                matchedCount += 1
-            } else if rule.required {
-                return false
-            }
+            if let slotIdx = layout.featureSlotIndices[rule.key], layout.validateSingleBooleanSlot(slotIdx, in: data) { matchedCount += 1 } else if rule.required { return false }
         }
         return matchedCount > 0
     }
-
     func isSlotRulesNativeSatisfied(_ rules: [MGSlotRule]) -> Bool {
-        guard !rules.isEmpty,
-              case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else {
-            return false
-        }
+        guard !rules.isEmpty, case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) else { return false }
         let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
         var resolvedAny = false
         for rule in rules {
-            guard let slotIdx = layout.featureSlotIndices[rule.key],
-                  layout.validateSingleBooleanSlot(slotIdx, in: data) else {
-                if rule.required { return false }
-                continue
-            }
+            guard let slotIdx = layout.featureSlotIndices[rule.key], layout.validateSingleBooleanSlot(slotIdx, in: data) else { if rule.required { return false }; continue }
             resolvedAny = true
-            guard let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: rule.key, layout: layout, savedOriginalDict: savedOrig),
-                  origVal == rule.targetValue else {
-                return false
-            }
+            guard let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: rule.key, layout: layout, savedOriginalDict: savedOrig), origVal == rule.targetValue else { return false }
         }
         return resolvedAny
     }
-
     func mgSlotRulesBinding(_ rules: [MGSlotRule]) -> Binding<Bool> {
         return Binding<Bool>(
             get: {
-                guard !rules.isEmpty,
-                      case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) else {
-                    return false
-                }
+                guard !rules.isEmpty, case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) else { return false }
                 var resolvedAny = false
                 for rule in rules {
-                    guard let slotIdx = layout.featureSlotIndices[rule.key],
-                          layout.validateSingleBooleanSlot(slotIdx, in: data) else {
-                        if rule.required { return false }
-                        continue
-                    }
+                    guard let slotIdx = layout.featureSlotIndices[rule.key], layout.validateSingleBooleanSlot(slotIdx, in: data) else { if rule.required { return false }; continue }
                     resolvedAny = true
                     let currentBit = (data[slotIdx * 8] == 1)
-                    if currentBit != rule.targetValue {
-                        return false
-                    }
+                    if currentBit != rule.targetValue { return false }
                 }
                 return resolvedAny
             },
             set: { enabled in
                 switch MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
-                case .failure(let err):
-                    Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
+                case .failure(let err): Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
                 case .success((let layout, var data)):
                     let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
                     var touchedKeys: [String] = []
                     for rule in rules {
-                        guard let slotIdx = layout.featureSlotIndices[rule.key],
-                              layout.validateSingleBooleanSlot(slotIdx, in: data) else {
-                            if rule.required {
-                                Alertinator.shared.alert(title: L("当前系统不支持该实验性槽位！"), body: L("未能在当前系统库与缓存中验证槽位 \(rule.key) 的有效性，已拒绝修改。"))
-                                return
-                            }
+                        guard let slotIdx = layout.featureSlotIndices[rule.key], layout.validateSingleBooleanSlot(slotIdx, in: data) else {
+                            if rule.required { Alertinator.shared.alert(title: L("当前系统不支持该实验性槽位！"), body: L("未能在当前系统库与缓存中验证槽位 \(rule.key) 的有效性，已拒绝修改。")); return }
                             continue
                         }
-                        if enabled {
-                            data[slotIdx * 8] = rule.targetValue ? 1 : 0
-                        } else {
+                        if enabled { data[slotIdx * 8] = rule.targetValue ? 1 : 0 } else {
                             let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: rule.key, layout: layout, savedOriginalDict: savedOrig) ?? (!rule.targetValue)
                             data[slotIdx * 8] = origVal ? 1 : 0
                         }
                         touchedKeys.append(rule.key)
                     }
                     guard !touchedKeys.isEmpty else { return }
-
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
-                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary {
-                        for key in touchedKeys {
-                            testExtra.removeObject(forKey: key)
-                        }
-                    }
+                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary { for key in touchedKeys { testExtra.removeObject(forKey: key) } }
                     testDict["CacheData"] = data
                     switch layout.validatePlist(testDict) {
-                    case .failure(let err):
-                        Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
+                    case .failure(let err): Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
                     case .success:
                         self.objectWillChange.send()
-                        for key in touchedKeys {
-                            self.cacheExtra.removeObject(forKey: key)
-                        }
+                        for key in touchedKeys { self.cacheExtra.removeObject(forKey: key) }
                         self.mgCurrentDict["CacheData"] = data
                     }
                 }
@@ -696,92 +485,57 @@ final class GestaltStore: ObservableObject {
     }
 
     func isSiriHubConflictActive() -> Bool {
-        if (self.cacheExtra[MGKey.siriHub] as? NSNumber)?.intValue == 1 {
-            return true
-        }
-        if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict),
-           let slotIdx = layout.featureSlotIndices[MGKey.siriHub],
-           layout.validateSingleBooleanSlot(slotIdx, in: data),
-           data[slotIdx * 8] == 1 {
+        if (self.cacheExtra[MGKey.siriHub] as? NSNumber)?.intValue == 1 { return true }
+        if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict), let slotIdx = layout.featureSlotIndices[MGKey.siriHub], layout.validateSingleBooleanSlot(slotIdx, in: data), data[slotIdx * 8] == 1 {
             let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
             let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: MGKey.siriHub, layout: layout, savedOriginalDict: savedOrig) ?? false
             return !origVal
         }
         return false
     }
-
     func mgSafeSiriHubGuardrailBinding() -> Binding<Bool> {
         return Binding<Bool>(
             get: { return self.isSiriHubConflictActive() },
             set: { enabled in
-                if enabled {
-                    Alertinator.shared.alert(title: L("安全护栏已拦截冲突开关！"), body: MGMsg.expSiriHubInfo)
-                    return
-                }
+                if enabled { Alertinator.shared.alert(title: L("安全护栏已拦截冲突开关！"), body: MGMsg.expSiriHubInfo); return }
                 let groupKeys = [MGKey.siriHub, MGKey.onDeviceSiri, MGKey.modelPruning]
                 switch MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
                 case .failure:
                     self.objectWillChange.send()
-                    for k in groupKeys {
-                        self.disableBooleanExtraKey(k, enableValue: 1)
-                    }
+                    for k in groupKeys { self.disableBooleanExtraKey(k, enableValue: 1) }
                 case .success((let layout, var data)):
                     let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
                     for k in groupKeys {
-                        if let slotIdx = layout.featureSlotIndices[k],
-                           layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                            let origVal: Bool
-                            if k == MGKey.siriHub {
-                                origVal = false
-                            } else {
-                                origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: k, layout: layout, savedOriginalDict: savedOrig) ?? false
-                            }
+                        if let slotIdx = layout.featureSlotIndices[k], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                            let origVal: Bool = (k == MGKey.siriHub) ? false : (MGCacheDataCoordinator.shared.originalSlotValue(forKey: k, layout: layout, savedOriginalDict: savedOrig) ?? false)
                             data[slotIdx * 8] = origVal ? 1 : 0
                         }
                     }
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
-                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary {
-                        for k in groupKeys {
-                            testExtra.removeObject(forKey: k)
-                        }
-                    }
+                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary { for k in groupKeys { testExtra.removeObject(forKey: k) } }
                     testDict["CacheData"] = data
                     if case .success = layout.validatePlist(testDict) {
                         self.objectWillChange.send()
-                        for k in groupKeys {
-                            self.cacheExtra.removeObject(forKey: k)
-                        }
+                        for k in groupKeys { self.cacheExtra.removeObject(forKey: k) }
                         self.mgCurrentDict["CacheData"] = data
                     }
                 }
             }
         )
     }
-
     func isPersonalTranslatorAccidentallyDisabled() -> Bool {
         guard isNativePersonalTranslatorHD() else { return false }
-        if let num = self.cacheExtra[MGKey.personalTranslator] as? NSNumber, num.intValue == 0 {
-            return true
-        }
-        if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict),
-           let slotIdx = layout.featureSlotIndices[MGKey.personalTranslator],
-           layout.validateSingleBooleanSlot(slotIdx, in: data),
-           data[slotIdx * 8] == 0 {
-            return true
-        }
+        if let num = self.cacheExtra[MGKey.personalTranslator] as? NSNumber, num.intValue == 0 { return true }
+        if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict), let slotIdx = layout.featureSlotIndices[MGKey.personalTranslator], layout.validateSingleBooleanSlot(slotIdx, in: data), data[slotIdx * 8] == 0 { return true }
         return false
     }
-
     func isAdvAppleIntellConflictActive() -> Bool {
         if isAdvAppleIntellHD() { return false }
-        for key in MGKey.advAppIntellKeys {
-            if self.cacheExtra[key] != nil { return true }
-        }
+        for key in MGKey.advAppIntellKeys { if self.cacheExtra[key] != nil { return true } }
         if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
             let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
             for key in MGKey.advAppIntellKeys {
-                if let slotIdx = layout.featureSlotIndices[key],
-                   layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
                     let curVal = (data[slotIdx * 8] == 1)
                     let nativeVal = isAdvAISlotNativeTrue(key, layout: layout, savedOrig: savedOrig)
                     if curVal != nativeVal { return true }
@@ -790,54 +544,39 @@ final class GestaltStore: ObservableObject {
         }
         return false
     }
-
     func mgSafeAdvAppleIntellGuardrailBinding() -> Binding<Bool> {
         return Binding<Bool>(
             get: { return self.isAdvAppleIntellConflictActive() },
             set: { enabled in
-                if enabled {
-                    Alertinator.shared.alert(title: L("安全护栏已拦截冲突开关！"), body: MGMsg.advAppleIntell)
-                    return
-                }
+                if enabled { Alertinator.shared.alert(title: L("安全护栏已拦截冲突开关！"), body: MGMsg.advAppleIntell); return }
                 switch MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
                 case .failure:
                     self.objectWillChange.send()
-                    for k in MGKey.advAppIntellKeys {
-                        self.disableBooleanExtraKey(k, enableValue: 1)
-                    }
+                    for k in MGKey.advAppIntellKeys { self.disableBooleanExtraKey(k, enableValue: 1) }
                 case .success((let layout, var data)):
                     let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
                     for k in MGKey.advAppIntellKeys {
-                        if let slotIdx = layout.featureSlotIndices[k],
-                           layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                        if let slotIdx = layout.featureSlotIndices[k], layout.validateSingleBooleanSlot(slotIdx, in: data) {
                             let nativeVal = isAdvAISlotNativeTrue(k, layout: layout, savedOrig: savedOrig)
                             data[slotIdx * 8] = nativeVal ? 1 : 0
                         }
                     }
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
-                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary {
-                        for k in MGKey.advAppIntellKeys {
-                            testExtra.removeObject(forKey: k)
-                        }
-                    }
+                    if let testExtra = testDict["CacheExtra"] as? NSMutableDictionary { for k in MGKey.advAppIntellKeys { testExtra.removeObject(forKey: k) } }
                     testDict["CacheData"] = data
                     if case .success = layout.validatePlist(testDict) {
                         self.objectWillChange.send()
-                        for k in MGKey.advAppIntellKeys {
-                            self.cacheExtra.removeObject(forKey: k)
-                        }
+                        for k in MGKey.advAppIntellKeys { self.cacheExtra.removeObject(forKey: k) }
                         self.mgCurrentDict["CacheData"] = data
                     }
                 }
             }
         )
     }
-
     func applyAppleIntelligenceOneClickFix() {
         self.objectWillChange.send()
         self.applyRegionUnlock(mode: self.currentRegionUnlockMode)
         self.mgPullKeys([MGKey.intInstall, MGKey.intBuild, MGKey.siriHub] + MGKey.advAppIntellKeys)
-        
         if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
             let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
             let origFlags = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig)
@@ -846,9 +585,7 @@ final class GestaltStore: ObservableObject {
                 data[layout.greenTeaOffset] = 0
                 data[layout.notGreenTeaOffset] = 1
             }
-            if let siriHubSlot = layout.featureSlotIndices[MGKey.siriHub],
-               layout.validateSingleBooleanSlot(siriHubSlot, in: data),
-               data[siriHubSlot * 8] == 1 {
+            if let siriHubSlot = layout.featureSlotIndices[MGKey.siriHub], layout.validateSingleBooleanSlot(siriHubSlot, in: data), data[siriHubSlot * 8] == 1 {
                 let origSiriHub = MGCacheDataCoordinator.shared.originalSlotValue(forKey: MGKey.siriHub, layout: layout, savedOriginalDict: savedOrig) ?? false
                 if !origSiriHub {
                     data[siriHubSlot * 8] = 0
@@ -862,8 +599,7 @@ final class GestaltStore: ObservableObject {
             }
             if !isAdvAppleIntellHD() {
                 for key in MGKey.advAppIntellKeys {
-                    if let slotIdx = layout.featureSlotIndices[key],
-                       layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                    if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
                         let nativeVal = isAdvAISlotNativeTrue(key, layout: layout, savedOrig: savedOrig)
                         data[slotIdx * 8] = nativeVal ? 1 : 0
                     }
@@ -873,184 +609,103 @@ final class GestaltStore: ObservableObject {
             if !isAppleIntellHD() {
                 for key in MGKey.appIntellAllKeys {
                     self.cacheExtra[key] = 1
-                    if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                        data[slotIdx * 8] = 1
-                    }
+                    if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) { data[slotIdx * 8] = 1 }
                 }
             }
             let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
             testDict["CacheData"] = data
-            if case .success = layout.validatePlist(testDict) {
-                self.mgCurrentDict["CacheData"] = data
-            }
+            if case .success = layout.validatePlist(testDict) { self.mgCurrentDict["CacheData"] = data }
         } else if !isAppleIntellHD() {
-            for key in MGKey.appIntellAllKeys {
-                self.cacheExtra[key] = 1
-            }
+            for key in MGKey.appIntellAllKeys { self.cacheExtra[key] = 1 }
         }
     }
-
-    func isAdvAppleIntellStagedOrActive() -> Bool {
-        return isAdvAppleIntellConflictActive()
-    }
-
+    func isAdvAppleIntellStagedOrActive() -> Bool { return isAdvAppleIntellConflictActive() }
     func cacheResolutionFailureReason() -> String? {
-        switch MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) {
-        case .success: return nil
-        case .failure(let err): return err.localizedDescription
-        }
+        switch MGCacheDataCoordinator.shared.resolveValidated(for: mgCurrentDict) { case .success: return nil; case .failure(let err): return err.localizedDescription }
     }
-
     func mgChinaRestrictionCacheBinding() -> Binding<Bool> {
         return Binding<Bool>(
             get: {
-                guard case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) else {
-                    return false
-                }
+                guard case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) else { return false }
                 return data[layout.greenTeaOffset] == 0 && data[layout.notGreenTeaOffset] == 1
             },
             set: { enabled in
                 switch MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
-                case .failure(let err):
-                    print(L("[!] (mg-cache) 拒绝修改 green-tea：\(err.localizedDescription)"))
-                    Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
+                case .failure(let err): Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
                 case .success((let layout, var data)):
                     let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
-                    if enabled {
-                        data[layout.greenTeaOffset] = 0
-                        data[layout.notGreenTeaOffset] = 1
-                    } else {
-                        if let orig = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig),
-                           !(orig.greenTea == false && orig.notGreenTea == true) {
+                    if enabled { data[layout.greenTeaOffset] = 0; data[layout.notGreenTeaOffset] = 1 }
+                    else {
+                        if let orig = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig), !(orig.greenTea == false && orig.notGreenTea == true) {
                             data[layout.greenTeaOffset] = orig.greenTea ? 1 : 0
                             data[layout.notGreenTeaOffset] = orig.notGreenTea ? 1 : 0
-                        } else {
-                            data[layout.greenTeaOffset] = 1
-                            data[layout.notGreenTeaOffset] = 0
-                        }
+                        } else { data[layout.greenTeaOffset] = 1; data[layout.notGreenTeaOffset] = 0 }
                     }
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
                     testDict["CacheData"] = data
                     switch layout.validatePlist(testDict) {
-                    case .failure(let err):
-                        print(L("[!] (mg-cache) 修改后自检未通过，拒绝修改：\(err.localizedDescription)"))
-                        Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
-                    case .success:
-                        self.objectWillChange.send()
-                        self.mgCurrentDict["CacheData"] = data
+                    case .failure(let err): Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
+                    case .success: self.objectWillChange.send(); self.mgCurrentDict["CacheData"] = data
                     }
                 }
             }
         )
     }
-
     func mgWapiWifiBinding() -> Binding<Bool> {
         return Binding<Bool>(
             get: {
-                guard case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict, checkWapiSlot: true),
-                      let wOff = layout.wapiOffset else {
-                    return false
-                }
+                guard case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict, checkWapiSlot: true), let wOff = layout.wapiOffset else { return false }
                 return data[wOff] == 0
             },
             set: { enabled in
                 switch MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict, checkWapiSlot: true) {
-                case .failure(let err):
-                    print(L("[!] (mg-cache) 拒绝修改 wapi：\(err.localizedDescription)"))
-                    Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
+                case .failure(let err): Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: err.localizedDescription)
                 case .success((let layout, var data)):
-                    guard let wOff = layout.wapiOffset else {
-                        Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: L("当前系统库未能唯一解析 wapi 槽位偏移。"))
-                        return
-                    }
+                    guard let wOff = layout.wapiOffset else { Alertinator.shared.alert(title: L("动态解析失败，已拒绝修改！"), body: L("当前系统库未能唯一解析 wapi 槽位偏移。")); return }
                     let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
-                    if enabled {
-                        data[wOff] = 0
-                    } else {
-                        if let orig = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig),
-                           let origWapi = orig.wapi,
-                           origWapi == true {
-                            data[wOff] = 1
-                        } else {
-                            data[wOff] = 1
-                        }
+                    if enabled { data[wOff] = 0 } else {
+                        if let orig = MGCacheDataCoordinator.shared.originalFlags(for: layout, savedOriginalDict: savedOrig), let origWapi = orig.wapi, origWapi == true { data[wOff] = 1 } else { data[wOff] = 1 }
                     }
                     let testDict = NSMutableDictionary(dictionary: self.mgCurrentDict)
                     testDict["CacheData"] = data
                     switch layout.validatePlist(testDict, checkWapiSlot: true) {
-                    case .failure(let err):
-                        print(L("[!] (mg-cache) 修改后自检未通过，拒绝修改：\(err.localizedDescription)"))
-                        Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
+                    case .failure(let err): Alertinator.shared.alert(title: L("缓存数据校验未通过，已拒绝修改！"), body: err.localizedDescription)
                     case .success:
-                        self.objectWillChange.send()
-                        self.mgCurrentDict["CacheData"] = data
-                        if enabled {
-                            Alertinator.shared.alert(title: L("无线局域网改 Wi-Fi 重要提示"), body: MGMsg.wapiToWifi)
-                        }
+                        self.objectWillChange.send(); self.mgCurrentDict["CacheData"] = data
+                        if enabled { Alertinator.shared.alert(title: L("无线局域网改 Wi-Fi 重要提示"), body: MGMsg.wapiToWifi) }
                     }
                 }
             }
         )
     }
-    
-    // ĐÃ XÓA BỎ HOÀN TOÀN BLOCK CHẶN
     func mgSetiPadOS(enable: Bool) -> Bool {
         self.objectWillChange.send()
-        for key in MGKey.ipadosCacheEx {
-            if enable {
-                self.cacheExtra[key] = 1
-            } else {
-                self.disableBooleanExtraKey(key, enableValue: 1)
+        for key in MGKey.ipadosCacheEx { if enable { self.cacheExtra[key] = 1 } else { self.disableBooleanExtraKey(key, enableValue: 1) } }
+        if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
+            for key in MGKey.ipadosCacheEx {
+                if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) { data[slotIdx * 8] = enable ? 1 : 0 }
             }
+            self.mgCurrentDict["CacheData"] = data
         }
         return true
     }
 }
 
-// MARK: - EnsWilde Compat
 extension GestaltStore {
     static func loadMutableDict(from url: URL) -> NSMutableDictionary? {
-        guard let data = try? Data(contentsOf: url),
-              let d = try? PropertyListSerialization.propertyList(from: data, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
-            return nil
-        }
+        guard let data = try? Data(contentsOf: url), let d = try? PropertyListSerialization.propertyList(from: data, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else { return nil }
         return d
     }
-
-    func loadFromPlist(url: URL) {
-        if let d = Self.loadMutableDict(from: url) {
-            mgCurrentDict = d
-            objectWillChange.send()
-        }
-    }
-
-    func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> {
-        return mgKeyBinding([key])
-    }
-
+    func loadFromPlist(url: URL) { if let d = Self.loadMutableDict(from: url) { mgCurrentDict = d; objectWillChange.send() } }
+    func mgByteBinding(key: String, enableValue: UInt8 = 1, disableValue: UInt8 = 0) -> Binding<Bool> { return mgKeyBinding([key]) }
     func applyDynamicIsland(type: Int, customValue: Int? = nil) -> Bool {
-        // CẬP NHẬT CHUẨN XÁC MẢNG SUBTYPES THEO UI CỦA BẠN
-        let subtypes = [
-            0,      // 0: Tắt / Original
-            2436,   // 1: iPhone X / For iPhone SE
-            2556,   // 2: iPhone 14 Pro
-            2796,   // 3: iPhone 14 Pro Max
-            2976,   // 4: iPhone 15 Pro Max / 16 Plus
-            2622,   // 5: iPhone 16 Pro / 17 Pro
-            2868,   // 6: iPhone 16 Pro Max / 17 Pro Max
-            2736,   // 7: iPhone Air
-            2662    // 8: iPhone 18 Pro Dynamic Island (ĐÚNG 100% THEO ẢNH)
-        ]
-        
+        let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
         guard let ce = mgCurrentDict["CacheExtra"] as? NSMutableDictionary else { return false }
-        
-        if type == 0 {
-            (ce[MGKey.artwork] as? NSMutableDictionary)?.removeObject(forKey: "ArtworkDeviceSubType")
-        } else if type > 0 && type < subtypes.count {
+        if type == 0 { (ce[MGKey.artwork] as? NSMutableDictionary)?.removeObject(forKey: "ArtworkDeviceSubType") }
+        else if type > 0 && type < subtypes.count {
             let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
             art["ArtworkDeviceSubType"] = subtypes[type]
             ce[MGKey.artwork] = art
-            print("[Store] ✅ Đã gán ArtworkDeviceSubType = \(subtypes[type])")
         }
         objectWillChange.send()
         return true
