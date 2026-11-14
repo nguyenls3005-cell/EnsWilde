@@ -99,9 +99,7 @@ struct MGCacheDataLayout: Codable, Equatable, Sendable {
         appIntellKey, photosCleanUpKey, handwritingSynthKey, audioIntellKey, personalTranslatorKey,
         islandKey, aodKey, aoTimeKey, aodVibrancyKey, liquidGlassLowPowerKey, chargeLimKey, bootChimeKey,
         crashDetKey, pwmKey, appPencilKey, camButtonKey, actButtonKey, tapToWakeKey, stageMgrKey,
-        // CÁC KEY iPADOS ĐƯỢC THÊM VÀO ĐÂY
         ipadModeKey, medusaFloatingKey, medusaOverlayKey, medusaPinnedKey, medusaPipKey,
-        // EXPERIMENTAL
         shutterRelaxationKey, shutterKeyboardMutePreserveKey, shutterLegacyMutePreserveKey, concurrentHPLPMicsKey,
         photosLocalLightKey, toneMappingKey, hdrDeferredProcessingKey, spatialOverCaptureKey, stereoAudioRecKey,
         p3VideoRecKey, touchSensitiveCamControlKey, hardwareDetentsKey, cameraHapticsKey, legacyBatteryInfoKey,
