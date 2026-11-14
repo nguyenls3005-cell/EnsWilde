@@ -70,14 +70,14 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
-    // Logic Revert chuẩn GestaltX: Xóa file Cache, bắt iOS tự tạo lại
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
+        // Xóa cache để iOS tự rebuild
         let outcome = mgExecuteCleanCacheRebuild(alsoResetConfigAndKeypad: false)
         switch outcome {
         case .success:
-            onLogUpdate("[MG] ✅ Cleared cache. Please REBOOT your device to regenerate factory settings.")
+            onLogUpdate("[MG] ✅ Cleared cache. Please REBOOT to regenerate factory settings.")
         case .failure(let err):
             throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: "Clean rebuild failed: \(err.localizedDescription)"])
         }
