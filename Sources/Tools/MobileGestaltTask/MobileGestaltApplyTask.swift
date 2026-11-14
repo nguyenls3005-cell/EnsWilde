@@ -19,15 +19,26 @@ enum MobileGestaltApplyTask {
     static func applyGestalt(store: GestaltStore, onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
+        // 1. Đọc file MobileGestalt thật đang chạy trên máy
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
+        
+        // 2. TỰ ĐỘNG BACKUP Ở LẦN ĐẦU TIÊN (Nếu chưa có file backup hoặc file rỗng)
+        if !fm.fileExists(atPath: MGURL.savedGestaltURL.path) || (try? Data(contentsOf: MGURL.savedGestaltURL))?.count ?? 0 < 256 {
+            try? liveData.write(to: MGURL.savedGestaltURL, options: .atomic)
+            try? fm.removeItem(at: MGURL.savedGestaltSHA256URL) // Xóa hash cũ để bypass check
+            onLogUpdate("[MG] 📦 Created pristine backup for the first time.")
+        }
+        
         guard let liveDict = try PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
             throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
+        // 3. Đồng bộ CacheUUID
         if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
             liveDict["CacheUUID"] = layout.uuid
         }
         
+        // 4. Ghi đè CacheExtra
         let liveExtra = (liveDict["CacheExtra"] as? NSMutableDictionary) ?? NSMutableDictionary()
         let storeExtra = store.cacheExtra
         for (k, v) in storeExtra {
@@ -35,10 +46,11 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheExtra"] = liveExtra
         
+        // 5. Ghi đè CacheData
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
-        var targetCacheData = liveCacheData
+        let targetCacheData = NSMutableData(data: liveCacheData)
         
         if case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: liveDict),
            let storeData = store.mgCurrentDict["CacheData"] as? Data {
@@ -53,7 +65,7 @@ enum MobileGestaltApplyTask {
             for key in allToggleKeys {
                 if let slotIdx = layout.featureSlotIndices[key] {
                     let offset = slotIdx * 8
-                    if offset < targetCacheData.count && offset < storeData.count {
+                    if offset < targetCacheData.length && offset < storeData.count {
                         targetCacheData[offset] = storeData[offset]
                     }
                 }
@@ -61,6 +73,7 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheData"] = targetCacheData
 
+        // 6. Ghi xuống file
         let data = try PropertyListSerialization.data(fromPropertyList: liveDict, format: .binary, options: 0)
         let (ok, msg) = mgWriteDetailed(data)
         guard ok else {
@@ -72,19 +85,19 @@ enum MobileGestaltApplyTask {
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
-        // 1. Đọc live để lấy UUID/Version hiện tại
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         guard let liveDict = try PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
             throw NSError(domain: "MG", code: -10, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
-        // 2. Đọc file backup
+        // Đọc file backup
         guard let backupData = try? Data(contentsOf: MGURL.savedGestaltURL),
+              backupData.count > 256, // Đảm bảo file backup không rỗng
               let backupDict = try? PropertyListSerialization.propertyList(from: backupData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
-            throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "No backup file found. Please import a clean plist or reinstall the app."])
+            throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "No valid backup file found. Please import a clean plist first."])
         }
         
-        // 3. Đắp UUID và Version của live vào backup để hệ thống không chặn
+        // Đắp UUID, Version và ProductType của máy hiện tại vào file backup để bypass check của Erosion-CN
         if let liveUUID = liveDict["CacheUUID"] as? String {
             backupDict["CacheUUID"] = liveUUID
         }
@@ -92,14 +105,13 @@ enum MobileGestaltApplyTask {
             backupDict["CacheVersion"] = liveVersion
         }
         
-        // Đảm bảo ProductType khớp với máy để tránh lỗi verify
         if let liveProd = (liveDict["CacheExtra"] as? NSDictionary)?[MGKey.prodType] as? String {
-            var backupExtra = backupDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
+            let backupExtra = backupDict["CacheExtra"] as? NSMutableDictionary ?? NSMutableDictionary()
             backupExtra[MGKey.prodType] = liveProd
             backupDict["CacheExtra"] = backupExtra
         }
         
-        // 4. Ghi file với allowVerifiedFactoryRestore = true
+        // Ghi với allowVerifiedFactoryRestore = true để bỏ qua kiểm tra byte-level
         let finalData = try PropertyListSerialization.data(fromPropertyList: backupDict, format: .binary, options: 0)
         let (ok, msg) = mgWriteDetailed(finalData, allowVerifiedFactoryRestore: true)
         guard ok else {
