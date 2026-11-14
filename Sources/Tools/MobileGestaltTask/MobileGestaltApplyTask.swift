@@ -1,6 +1,6 @@
 //
 //  MobileGestaltApplyTask.swift
-//  EnsWilde (Ported 1:1 from Erosion-CN logic)
+//  EnsWilde (Ported 1:1 from Erosion-CN - No Hardcode)
 //
 
 import Foundation
@@ -30,19 +30,26 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
-        // 2. Lấy nguyên khối dữ liệu từ Store (Đã bao gồm cả độ phân giải ArtworkDeviceSubType bạn đã chọn)
+        // 2. Đồng bộ CacheUUID
+        if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
+            liveDict["CacheUUID"] = layout.uuid
+        }
+        
+        // 3. COPY Y CHANG TỪ EROSION: Lấy nguyên khối CacheData và CacheExtra từ GestaltStore
+        // (GestaltStore đã tự động tính toán offset chuẩn xác dựa trên lựa chọn của bạn)
         if let storeCacheData = store.mgCurrentDict["CacheData"] as? Data {
             liveDict["CacheData"] = storeCacheData
         }
         
         if let storeExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary {
+            // GHI ĐÈ NGUYÊN BẢN CACHE EXTRA (Không ép cứng bất kỳ độ phân giải nào ở đây)
             liveDict["CacheExtra"] = storeExtra
         }
         
-        // 3. Serialize
+        // 4. Serialize ra binary plist
         let data = try PropertyListSerialization.data(fromPropertyList: liveDict, format: .binary, options: 0)
         
-        // 4. GHI ĐÈ TRỰC TIẾP (PWRITE + F_FULLFSYNC) - Chuẩn Erosion-CN
+        // 5. GHI ĐÈ TRỰC TIẾP (PWRITE + F_FULLFSYNC)
         let fd = open(onDeviceMGPath, O_RDWR)
         guard fd >= 0 else {
             throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: "Cannot open MobileGestalt for writing."])
@@ -64,7 +71,6 @@ enum MobileGestaltApplyTask {
             ftruncate(fd, off_t(data.count))
         }
         
-        // Ép xuống ổ cứng
         if fcntl(fd, F_FULLFSYNC) == -1 {
             fsync(fd)
         }
@@ -75,9 +81,12 @@ enum MobileGestaltApplyTask {
 
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
+        
         if FileManager.default.fileExists(atPath: onDeviceMGPath) {
             try FileManager.default.removeItem(atPath: onDeviceMGPath)
             onLogUpdate("[MG] ✅ Deleted MobileGestalt cache. Please RESPIRING to regenerate.")
+        } else {
+            onLogUpdate("[MG] ✅ Cache already deleted. Please RESPIRING to regenerate.")
         }
     }
 }
