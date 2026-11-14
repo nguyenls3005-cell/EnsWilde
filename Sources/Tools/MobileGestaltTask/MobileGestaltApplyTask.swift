@@ -20,15 +20,12 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
         }
         
-        // 2. Tự động lưu backup nếu chưa có
-        _ = try? MobileGestaltBackupManager.shared.ensureBackup(from: liveData)
-        
-        // 3. Đồng bộ CacheUUID
+        // 2. Đồng bộ CacheUUID
         if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
             liveDict["CacheUUID"] = layout.uuid
         }
         
-        // 4. Ghi đè CacheExtra
+        // 3. Ghi đè CacheExtra
         let liveExtra = (liveDict["CacheExtra"] as? NSMutableDictionary) ?? NSMutableDictionary()
         let storeExtra = store.cacheExtra
         for (k, v) in storeExtra {
@@ -36,7 +33,7 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheExtra"] = liveExtra
         
-        // 5. Ghi đè CacheData (Chỉ lấy đúng trạng thái trên UI của mày đè vào)
+        // 4. Ghi đè CacheData (Chỉ lấy đúng trạng thái trên UI của mày đè vào)
         guard let liveCacheData = liveDict["CacheData"] as? Data else {
             throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: "Live MobileGestalt missing CacheData"])
         }
@@ -63,7 +60,7 @@ enum MobileGestaltApplyTask {
         }
         liveDict["CacheData"] = targetCacheData
 
-        // 6. Ghi xuống file
+        // 5. Ghi xuống file
         let data = try PropertyListSerialization.data(fromPropertyList: liveDict, format: .binary, options: 0)
         let (ok, msg) = mgWriteDetailed(data)
         guard ok else {
@@ -72,22 +69,19 @@ enum MobileGestaltApplyTask {
         onLogUpdate("[MG] ✅ Applied successfully.")
     }
 
-    static func restoreGestalt(record: MobileGestaltBackupManager.BackupRecord, onLogUpdate: @escaping (String) -> Void) async throws {
+    // SỬA LẠI: Bỏ tham số record, dùng thẳng Factory Restore của Erosion-CN để đảm bảo lấy file gốc xịn
+    static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         
-        let backupData = try MobileGestaltBackupManager.shared.backupData(record)
-        guard let backupDict = try PropertyListSerialization.propertyList(from: backupData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
-            throw NSError(domain: "MG", code: -11, userInfo: [NSLocalizedDescriptionKey: "Failed to parse backup data"])
-        }
+        let outcome = mgExecuteFactoryRestore(alsoResetConfigAndKeypad: false)
         
-        // Lấy UUID hiện tại của máy đắp vào file backup để bypass check
-        if case .success(let layout) = MGCacheDataCoordinator.shared.libraryLayout() {
-            backupDict["CacheUUID"] = layout.uuid
+        switch outcome {
+        case .restoredSuccessfully(let details):
+            onLogUpdate("[MG] ✅ Restored successfully. \(details)")
+        case .blockedNeedsCleanRebuild(_, let reason):
+            throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: reason])
+        case .failed(let reason):
+            throw NSError(domain: "MG", code: -4, userInfo: [NSLocalizedDescriptionKey: reason])
         }
-        
-        let finalData = try PropertyListSerialization.data(fromPropertyList: backupDict, format: .binary, options: 0)
-        let (ok, msg) = mgWriteDetailed(finalData, allowVerifiedFactoryRestore: true)
-        guard ok else { throw NSError(domain: "MG", code: -3, userInfo: [NSLocalizedDescriptionKey: msg]) }
-        onLogUpdate("[MG] ✅ Restored successfully.")
     }
 }
