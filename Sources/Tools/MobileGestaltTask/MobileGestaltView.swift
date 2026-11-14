@@ -1,6 +1,6 @@
 //
 //  MobileGestaltView.swift
-//  EnsWilde (Rebuilt with Erosion-CN Logic)
+//  EnsWilde
 //
 
 import SwiftUI
@@ -75,16 +75,29 @@ struct MobileGestaltView: View {
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            if store.mgCurrentDict.count == 0 {
+            // Bắt buộc xin quyền để đọc được file live
+            let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+            let dir = liveURL.deletingLastPathComponent().path
+            _ = wq.grantAccess(path: dir)
+            
+            // Luôn luôn đọc file thật từ máy mỗi khi view xuất hiện
+            if let liveData = try? Data(contentsOf: liveURL),
+               let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
+                store.mgCurrentDict = liveDict
+                self.mobileGestalt = liveDict
+                try? liveData.write(to: modMGURL)
+            } else {
+                // Nếu không đọc được file thật thì fallback về file cũ
                 store.loadFromPlist(url: modMGURL)
+                mobileGestalt = store.mgCurrentDict
             }
+            
             if initError != nil {
                 lastError = initError
                 initError = nil
                 showErrorAlert.toggle()
                 return
             }
-            mobileGestalt = store.mgCurrentDict
             hydrateFromDict()
         }
         .onChange(of: enableModelName) { enabled in if enabled { applyModelName() } else { removeModelName() } }
@@ -279,16 +292,15 @@ struct MobileGestaltView: View {
     private func saveChanges() {
         Task {
             do {
-                // Đồng bộ UI state sang Store trước khi ghi
                 store.mgCurrentDict = mobileGestalt
                 
-                // Gọi hàm ghi chuẩn Erosion-CN qua MobileGestaltApplyTask
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
                     print(log)
                 }
                 
-                // Cập nhật lại local file để đồng bộ UI
-                let expectedData = try Data(contentsOf: URL(fileURLWithPath: MobileGestaltApplyTask.onDeviceMGPath))
+                // Đọc lại từ máy sau khi apply thành công để đồng bộ UI
+                let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+                let expectedData = try Data(contentsOf: liveURL)
                 try expectedData.write(to: modMGURL)
                 
                 await MainActor.run {
@@ -296,7 +308,7 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "Đã lưu và ghi thành công. Respring để áp dụng."
+                    lastError = "Saved and applied successfully. Respring to take effect."
                     showErrorAlert = true
                 }
             } catch {
@@ -312,23 +324,23 @@ struct MobileGestaltView: View {
         Task {
             do {
                 guard let record = MobileGestaltBackupManager.shared.latestBackup() else {
-                    throw NSError(domain: "MG", code: -12, userInfo: [NSLocalizedDescriptionKey: "Không tìm thấy bản backup nào."])
+                    throw NSError(domain: "MG", code: -12, userInfo: [NSLocalizedDescriptionKey: "No backup found."])
                 }
                 
-                // Gọi hàm restore chuẩn Erosion-CN
                 try await MobileGestaltApplyTask.restoreGestalt(record: record) { log in
                     print(log)
                 }
                 
-                // Cập nhật lại local file để đồng bộ UI
-                let backupData = try MobileGestaltBackupManager.shared.backupData(record)
-                try backupData.write(to: modMGURL)
+                // Đọc lại từ máy sau khi restore thành công
+                let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+                let liveData = try Data(contentsOf: liveURL)
+                try liveData.write(to: modMGURL)
                 
                 await MainActor.run {
                     store.loadFromPlist(url: modMGURL)
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
-                    lastError = "Đã restore thành công. Respring để áp dụng."
+                    lastError = "Restored successfully. Respring to take effect."
                     showErrorAlert = true
                 }
             } catch {
@@ -347,16 +359,27 @@ struct MobileGestaltView: View {
         origMGURL      = docs.appendingPathComponent("OriginalMobileGestalt.plist", conformingTo: .data)
         modMGURL       = docs.appendingPathComponent("ModifiedMobileGestalt.plist", conformingTo: .data)
         resolutionURL  = docs.appendingPathComponent("Resolution.plist", conformingTo: .data)
+        
+        let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+        
+        // Xin quyền truy cập từ worse_query ngay trong init
+        _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
+        
         do {
-            if !FileManager.default.fileExists(atPath: origMGURL.path) {
-                let url = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
-                try FileManager.default.copyItem(at: url, to: origMGURL)
-            }
-            chmod(origMGURL.path, 0o644)
-            if !FileManager.default.fileExists(atPath: modMGURL.path) {
+            // Luôn luôn pull file thật đè vào file mod
+            if FileManager.default.fileExists(atPath: liveURL.path) {
+                try? FileManager.default.removeItem(at: modMGURL)
+                try FileManager.default.copyItem(at: liveURL, to: modMGURL)
+            } else if !FileManager.default.fileExists(atPath: modMGURL.path) {
                 try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
             }
             chmod(modMGURL.path, 0o644)
+            
+            if !FileManager.default.fileExists(atPath: origMGURL.path) {
+                try FileManager.default.copyItem(at: liveURL, to: origMGURL)
+            }
+            chmod(origMGURL.path, 0o644)
+            
             if let mutable = GestaltStore.loadMutableDict(from: modMGURL) {
                 _mobileGestalt = State(initialValue: mutable)
             } else {
@@ -370,12 +393,10 @@ struct MobileGestaltView: View {
         }
     }
 
-    // FIX: Dùng chuẩn mgKeyBinding của Erosion-CN, bỏ logic ghi eligibility thủ công
     func bindingForAppleIntelligence() -> Binding<Bool> {
         return store.mgKeyBinding(MGKey.appIntellAllKeys)
     }
 
-    // Giữ nguyên hàm này nếu UI cũ cần binding mảng
     func bindingForMGKeys<T: Equatable>(_ keys: [String], type: T.Type = Int.self, defaultValue: T? = 0, enableValue: T? = 1) -> Binding<Bool> {
         guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return .constant(false) }
         return Binding(
