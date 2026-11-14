@@ -55,6 +55,9 @@ struct MobileGestaltView: View {
 
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
+    
+    // State cho Import Plist
+    @State private var showBackupImporter = false
 
     var body: some View {
         Form {
@@ -81,11 +84,6 @@ struct MobileGestaltView: View {
             
             if let liveData = try? Data(contentsOf: liveURL),
                let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
-                
-                // TỰ ĐỘNG TẠO BACKUP CHUẨN (CÓ SHA256) NẾU CHƯA CÓ
-                // Hàm này sẽ lưu file gốc và tạo mã băm, tránh lỗi "không tìm thấy file backup"
-                _ = try? mgEnsureOriginalBackupWithVault(liveData: liveData)
-                
                 store.mgCurrentDict = liveDict
                 self.mobileGestalt = liveDict
                 try? liveData.write(to: modMGURL)
@@ -112,6 +110,35 @@ struct MobileGestaltView: View {
         }
         .onChange(of: customSubtypeValue) { _ in
             if enableCustomSubtype { applyCustomSubtype() }
+        }
+        .fileImporter(
+            isPresented: $showBackupImporter,
+            allowedContentTypes: [.propertyList, .data],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                let stopAccess = url.startAccessingSecurityScopedResource()
+                defer { if stopAccess { url.stopAccessingSecurityScopedResource() } }
+                
+                do {
+                    let data = try Data(contentsOf: url)
+                    // Ghi đè thẳng vào file backup gốc
+                    try data.write(to: MGURL.savedGestaltURL, options: .atomic)
+                    // Xóa hash cũ để hệ thống không check SHA256
+                    try? fm.removeItem(at: MGURL.savedGestaltSHA256URL)
+                    
+                    lastError = "Imported original backup successfully."
+                    showErrorAlert = true
+                } catch {
+                    lastError = "Import failed: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            case .failure(let error):
+                lastError = "Import failed: \(error.localizedDescription)"
+                showErrorAlert = true
+            }
         }
     }
 
@@ -282,6 +309,9 @@ struct MobileGestaltView: View {
             Button(role: .destructive, action: resetOriginal) {
                 Label("Reset Original", systemImage: "arrow.counterclockwise")
             }
+            Button(action: { showBackupImporter = true }) {
+                Label("Import Clean Backup (Plist)", systemImage: "square.and.arrow.down.on.square")
+            }
         }
     }
 
@@ -300,7 +330,6 @@ struct MobileGestaltView: View {
                     print(log)
                 }
                 
-                // Đọc lại từ máy sau khi apply thành công để đồng bộ UI
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 let expectedData = try Data(contentsOf: liveURL)
                 try expectedData.write(to: modMGURL)
@@ -325,12 +354,10 @@ struct MobileGestaltView: View {
     private func resetOriginal() {
         Task {
             do {
-                // Gọi hàm restore chuẩn của Erosion-CN qua MobileGestaltApplyTask
                 try await MobileGestaltApplyTask.restoreGestalt { log in
                     print(log)
                 }
                 
-                // Đọc lại file thật từ máy sau khi restore thành công
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 let liveData = try Data(contentsOf: liveURL)
                 try liveData.write(to: modMGURL)
@@ -339,7 +366,7 @@ struct MobileGestaltView: View {
                     store.loadFromPlist(url: modMGURL)
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
-                    showApplyTab = true // QUAN TRỌNG: Bật giao diện Apply
+                    showApplyTab = true // Bật giao diện Apply
                     lastError = "Restored to factory settings successfully. Respring to take effect."
                     showErrorAlert = true
                 }
@@ -361,12 +388,9 @@ struct MobileGestaltView: View {
         resolutionURL  = docs.appendingPathComponent("Resolution.plist", conformingTo: .data)
         
         let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
-        
-        // Xin quyền truy cập từ worse_query ngay trong init
         _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
         
         do {
-            // Luôn luôn pull file thật đè vào file mod
             if FileManager.default.fileExists(atPath: liveURL.path) {
                 try? FileManager.default.removeItem(at: modMGURL)
                 try FileManager.default.copyItem(at: liveURL, to: modMGURL)
@@ -375,8 +399,9 @@ struct MobileGestaltView: View {
             }
             chmod(modMGURL.path, 0o644)
             
+            // KHÔNG TỰ ĐỘNG TẠO BACKUP Ở ĐÂY NỮA, HÀM APPLY SẼ LO
             if !FileManager.default.fileExists(atPath: origMGURL.path) {
-                try FileManager.default.copyItem(at: liveURL, to: origMGURL)
+                FileManager.default.createFile(atPath: origMGURL.path, contents: nil, attributes: nil)
             }
             chmod(origMGURL.path, 0o644)
             
