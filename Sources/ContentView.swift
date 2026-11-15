@@ -69,6 +69,13 @@ struct ContentView: View {
                 isEnabled: toolStore.replaceMobileGestaltEnabled
             )
             toolNavigationLink(
+                value: "ManualCacheEditor",
+                title: "CacheExtra Editor",
+                subtitle: "Manually edit MobileGestalt keys",
+                icon: "pencil.and.list.clipboard",
+                isEnabled: toolStore.replaceMobileGestaltEnabled
+            )
+            toolNavigationLink(
                 value: "ConfigTweaks",
                 title: L("tool_config_tweaks"),
                 subtitle: L("tool_config_tweaks_desc"),
@@ -102,6 +109,7 @@ struct ContentView: View {
     @ViewBuilder
     private func destinationView(for route: String) -> some View {
         if route == "MobileGestalt" { MobileGestaltView(toolStore: toolStore) }
+        else if route == "ManualCacheEditor" { ManualCacheExtraEditorView(store: GestaltStore.shared) }
         else if route == "ConfigTweaks" { ConfigView(toolStore: toolStore) }
         else if route == "AppleWallet" { AppleWalletView(walletStore: walletStore) }
         else if route == "PasscodeTheme" { PasscodeThemeView(themeStore: themeStore) }
