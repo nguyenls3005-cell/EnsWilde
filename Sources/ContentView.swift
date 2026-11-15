@@ -72,8 +72,8 @@ struct ContentView: View {
             )
             toolNavigationLink(
                 value: "ManualCacheEditor",
-                title: "CacheExtra Editor",
-                subtitle: "Manually edit MobileGestalt keys",
+                title: L("manual_editor_title"),
+                subtitle: L("manual_editor_subtitle"),
                 icon: "pencil.and.list.clipboard",
                 isEnabled: manualCacheEditorEnabled
             )
