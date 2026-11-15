@@ -56,36 +56,6 @@ struct MobileGestaltView: View {
 
     var body: some View {
         Form {
-            // MARK: - HƯỚNG DẪN SỬ DỤNG
-            Section(header: Text("📖 Hướng Dẫn Bật Apple Intelligence & Siri AI")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Để bật AI thành công, hãy làm theo đúng các bước sau:")
-                        .font(.subheadline).fontWeight(.semibold)
-                    
-                    Group {
-                        Text("Bước 1: Cuộn xuống mục **Device Model (Spoof)**, chọn dòng máy từ **iPhone 15 Pro Max** đến **iPhone Duo**.")
-                        Text("Bước 2: Đảm bảo công tắc **Apple Intelligence** đã được bật (màu cam).")
-                        Text("Bước 3: Bấm **Save** ở góc trên bên phải.")
-                        Text("Bước 4: Bật **Respring after apply** và bấm **Apply**.")
-                        Text("Bước 5: **TẮT NGUỒN HOÀN TOÀN (Hard Reboot)** thiết bị, đợi 10 giây và bật lại.")
-                        Text("Bước 6: Kết nối Wi-Fi, tắt chế độ tiết kiệm pin, đăng nhập **Apple ID vùng Mỹ**. Chờ 5-10 phút (máy sẽ ấm lên khi đang tải model AI).")
-                        Text("Bước 7: Vào Cài đặt -> Apple Intelligence & Siri để kiểm tra.")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    
-                    Divider().padding(.vertical, 4)
-                    
-                    Text("⚠️ LƯU Ý QUAN TRỌNG:")
-                        .font(.footnote).fontWeight(.bold).foregroundStyle(.red)
-                    Text("- Nếu Spoof sang dòng máy khác, **Face ID có thể bị vô hiệu hóa**. Nếu bạn quan trọng Face ID, hãy chọn đúng dòng máy gần nhất (ví dụ iPhone 17 -> 17 Pro).")
-                        .font(.caption).foregroundStyle(.red)
-                    Text("- Sau khi đã bật AI thành công, **TUYỆT ĐỐI KHÔNG VÀO CÀI ĐẶT -> SIRI** (trừ khi bạn chưa spoof). Việc vào đó có thể khiến hệ thống check lại phần cứng và thu hồi AI của bạn.")
-                        .font(.caption).foregroundStyle(.red)
-                }
-                .padding(.vertical, 4)
-            }
-
             Section(header: Text(L("tool_mobile_gestalt"))) {
                 Toggle(L("enable_tweak"), isOn: $toolStore.replaceMobileGestaltEnabled)
                     .onChange(of: toolStore.replaceMobileGestaltEnabled) { isEnabled in
