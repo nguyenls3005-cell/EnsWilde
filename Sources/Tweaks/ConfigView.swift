@@ -12,17 +12,17 @@ struct ConfigView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("Config Tweaks")) {
-                Toggle("Enable Tweak", isOn: $toolStore.configTweaksEnabled)
+            Section(header: Text(L("config_tweaks_title"))) {
+                Toggle(L("config_enable_tweak"), isOn: $toolStore.configTweaksEnabled)
             }
 
-            Section(header: Text("Lock Screen Footnote")) {
-                TextField("Nhập chữ cho màn hình khoá...", text: $footnoteText)
+            Section(header: Text(L("config_lock_screen_footnote"))) {
+                TextField(L("config_footnote_placeholder"), text: $footnoteText)
                     .autocorrectionDisabled()
                 
                 if !footnoteText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Preview:").font(.caption).foregroundStyle(.secondary)
+                        Text(L("config_preview")).font(.caption).foregroundStyle(.secondary)
                         Text(footnoteText)
                             .font(.body)
                             .padding(8)
@@ -33,16 +33,16 @@ struct ConfigView: View {
                 }
             }
 
-            Section(header: Text("Supervision")) {
-                Toggle("Enable Supervision", isOn: $supervised)
+            Section(header: Text(L("config_supervision_title"))) {
+                Toggle(L("config_enable_supervision"), isOn: $supervised)
                 
                 if supervised {
-                    TextField("Nhập tên tổ chức (Organization Name)...", text: $orgName)
+                    TextField(L("config_org_placeholder"), text: $orgName)
                         .autocorrectionDisabled()
                     
                     if !orgName.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Preview:").font(.caption).foregroundStyle(.secondary)
+                            Text(L("config_preview")).font(.caption).foregroundStyle(.secondary)
                             Text(orgName)
                                 .font(.body)
                                 .padding(8)
@@ -61,13 +61,11 @@ struct ConfigView: View {
                 } label: {
                     HStack {
                         Image(systemName: "square.and.arrow.down")
-                        Text("Apply Save Changes").font(.headline)
+                        Text(L("config_apply_save")).font(.headline)
                     }.frame(maxWidth: .infinity)
                 }
 
                 Button(role: .destructive) {
-                    // 🔥 FIX: KHÔNG tắt toolStore.configTweaksEnabled
-                    // Chỉ clear các field. Toggle giữ ON để Apply vẫn chạy → xoá file trên máy.
                     footnoteText = ""
                     supervised = false
                     orgName = ""
@@ -76,21 +74,21 @@ struct ConfigView: View {
                 } label: {
                     HStack {
                         Image(systemName: "arrow.counterclockwise")
-                        Text("Restore Save Changes").font(.headline)
+                        Text(L("config_restore_save")).font(.headline)
                     }.frame(maxWidth: .infinity)
                 }
             }
         }
-        .navigationTitle("Config Tweaks")
-        .alert("Saved", isPresented: $showSavedAlert) {
-            Button("OK") {}
+        .navigationTitle(L("config_tweaks_title"))
+        .alert(L("saved_title"), isPresented: $showSavedAlert) {
+            Button(L("alert_ok")) {}
         } message: {
-            Text("Đã lưu. Chuyển sang tab Apply để áp dụng.")
+            Text(L("config_saved_message"))
         }
-        .alert("Restored", isPresented: $showRestoredAlert) {
-            Button("OK") {}
+        .alert(L("config_restored_title"), isPresented: $showRestoredAlert) {
+            Button(L("alert_ok")) {}
         } message: {
-            Text("Đã xoá toàn bộ cấu hình. Hãy sang tab Apply để hoàn tất việc xoá trên thiết bị.")
+            Text(L("config_restored_message"))
         }
     }
 }
