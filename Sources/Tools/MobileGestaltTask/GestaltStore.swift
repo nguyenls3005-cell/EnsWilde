@@ -1,11 +1,12 @@
 //
 //  GestaltStore.swift
-//  EnsWilde
+//  EnsWilde (Integrated YumEdit Older Device Flow)
 //
 
 import SwiftUI
 import Combine
 import CoreFoundation
+import MachO
 
 enum MGURL {
     static let fsGestaltURL = URL(fileURLWithPath: "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches/com.apple.MobileGestalt.plist")
@@ -71,12 +72,10 @@ enum MGMsg {
 
 enum MGKey {
     static let ipadosCacheEx = [
-        "mG0AnH/Vy1veoqoLRAIgTA",
-        "UCG5MkVahJxG1YULbbd5Bg",
-        "ZYqko/XM5zD3XBfN5RmaXA",
-        "nVh/gwNpy7Jv1NOk00CMrw",
-        "uKc7FPnEO++lVhHWHFlGbQ"
+        "uKc7FPnEO++lVhHWHFlGbQ", "mG0AnH/Vy1veoqoLRAIgTA", "UCG5MkVahJxG1YULbbd5Bg",
+        "ZYqko/XM5zD3XBfN5RmaXA", "nVh/gwNpy7Jv1NOk00CMrw", "qeaj75wk3HF4DwQ8qbIi7g"
     ]
+    static let deviceClassNumber = "mtrAoWJ3gsq+I90ZnQ0vQw"
     static let island = "YlEtTtHlNesRBMal1CqRaA"
     static let AOTime = "j8/Omm6s1lsmTDFsXjsBfA"
     static let AOD = "2OOJf1VhaM7NxfRok3HbWQ"
@@ -337,35 +336,43 @@ final class GestaltStore: ObservableObject {
         return true
     }
     
-    // MARK: - Port 1:1 từ Gester (BQAIModelOptions & advancedSwitchChanged)
-    func applyDuoSpoofAndAI() {
-        // Key lấy chuẩn từ file GestaltVC.m của Gester
-        let kProductTypeKey = "h9jDsbgj7xIVeIQ8S3/X3Q"
-        let kHardwareKey = "oYicEKzVTz4/CxxE05pEgQ"
-        let kCPUKey = "5pYKlGnYYBzGvAlIU8RjEQ"
-        let kRegulatoryKey = "97JDvERpVwO+GHtthIh7hA"
-        let kSiriRegionKey = "h63QSdBCiT/z0WU6rdQv6Q"
-        let kSiriRegionCodeKey = "yK+xavymRGZ3xWc1tb8XDg"
-        let kAIKey = "A62OafQ85EJAiiqKn4agtg"
+    // MARK: - YUMEDIT TWO-STAGE FLOW (Dành cho máy không hỗ trợ)
+
+    /// Giai đoạn 1: Tạm thời Spoof máy xịn + Bật AI + Ép Region LL để tải model
+    func yumBeginStageOne(spoofProduct: String) {
+        // 1. Ép Region Mỹ + Bật AI tổng
+        self.cacheExtra["h63QSdBCiT/z0WU6rdQv6Q"] = "LL" // RegionCode
+        self.cacheExtra["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A" // Sales Region
+        self.cacheExtra["A62OafQ85EJAiiqKn4agtg"] = 1 // AI Toggle
         
-        // Cấu hình iPhone Duo (D48AP và t8150 là giả định cho phần cứng mới, giữ nguyên Reg của Duo)
-        self.cacheExtra[kProductTypeKey] = "iPhone19,4"
-        self.cacheExtra[kHardwareKey] = "D48AP"
-        self.cacheExtra[kCPUKey] = "t8150"
-        self.cacheExtra[kRegulatoryKey] = "A3447" // Mã giả định US của Duo
+        // 2. Bật SiriMode (Key quan trọng của YumEdit)
+        self.cacheExtra["a3n5T9sFtlyQ74NEp9ESxg"] = 2
         
-        // Mở khóa AI & Siri Region
-        self.cacheExtra[kAIKey] = 1
-        self.cacheExtra[kSiriRegionKey] = "LL"
-        self.cacheExtra[kSiriRegionCodeKey] = "LL/A"
+        // 3. Spoof ProductType (Chỉ đổi tên, giữ nguyên Board để tránh bootloop)
+        self.cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] = spoofProduct
         
-        // Dọn dẹp xung đột
-        self.cacheExtra.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw") // intInstall
-        self.cacheExtra.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg") // intBuild
-        self.cacheExtra.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ") // siriHub
-        
+        // 4. Bật các slot AI trong CacheData
+        if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
+            for key in MGKey.appIntellAllKeys {
+                if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                    data[slotIdx * 8] = 1
+                }
+            }
+            data[layout.greenTeaOffset] = 0
+            data[layout.notGreenTeaOffset] = 1
+            self.mgCurrentDict["CacheData"] = data
+        }
         self.objectWillChange.send()
-        print("✅ Đã Spoof iPhone Duo + Ép Region LL + Bật AI (Gester logic)")
+    }
+    
+    /// Giai đoạn 2: Khôi phục lại máy thật (để Face ID không hỏng), nhưng vẫn giữ AI
+    func yumFinishStageTwo() {
+        // 1. Lấy lại ProductType thật từ file backup
+        if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary,
+           let ogProd = ogCE["h9jDsbgj7xIVeIQ8S3/X3Q"] as? String {
+            self.cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] = ogProd
+        }
+        self.objectWillChange.send()
     }
     
     var preferredRegionUnlockMode: MGRegionUnlockMode {
@@ -790,7 +797,6 @@ final class GestaltStore: ObservableObject {
     }
 }
 
-// MARK: - EnsWilde Compat
 extension GestaltStore {
     static func loadMutableDict(from url: URL) -> NSMutableDictionary? {
         guard let data = try? Data(contentsOf: url), let d = try? PropertyListSerialization.propertyList(from: data, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else { return nil }
