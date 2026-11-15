@@ -3,10 +3,6 @@ import UIKit
 import UserNotifications
 import AirliftFFI
 
-extension Notification.Name {
-    static let switchToApplyTab = Notification.Name("EnsWilde.switchToApplyTab")
-}
-
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
@@ -43,12 +39,6 @@ struct MainViewWithNavigation: View {
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
         .onAppear { applyTintColor() }
-        .onReceive(NotificationCenter.default.publisher(for: .switchToApplyTab)) { _ in
-            // Tự động chuyển sang tab Apply sau khi Save hoặc Revert ở Editor
-            if showApplyTab {
-                selectedTab = .apply
-            }
-        }
     }
 
     private func applyTintColor() {
@@ -91,7 +81,6 @@ struct ApplyTabView: View {
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         
-        // Thêm dòng này để nhận diện Editor đang bật
         if manualCacheEditorEnabled { list.append(("CacheExtra Editor", "pencil.and.list.clipboard")) }
         
         if toolStore.configTweaksEnabled { list.append((L("tool_config_tweaks"), "textformat")) }
