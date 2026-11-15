@@ -5,18 +5,22 @@
 
 import Foundation
 
-/// Manager for handling localized strings (Hardcoded version - No JSON required)
+/// Manager for handling localized strings
 final class LocalizationManager: ObservableObject {
     static let shared = LocalizationManager()
 
     @Published var currentLanguage: String {
         didSet {
             UserDefaults.standard.set(currentLanguage, forKey: "SelectedLanguage")
+            loadStrings()
             objectWillChange.send()
         }
     }
 
     @Published var availableLanguages: [LanguageInfo] = []
+
+    private var strings: [String: String] = [:]
+    private var englishStrings: [String: String] = [:]
 
     // BỘ TỪ ĐIỂN CHUẨN 100% - KHÔNG BAO GIỜ LỖI
     private let dict: [String: [String: String]] = [
@@ -90,30 +94,79 @@ final class LocalizationManager: ObservableObject {
 
     private init() {
         self.currentLanguage = UserDefaults.standard.string(forKey: "SelectedLanguage") ?? "vi"
+        loadStrings()
     }
 
     /// Get localized string for key
     func string(for key: String) -> String {
-        // Lấy ngôn ngữ hiện tại, nếu không phải vi thì mặc định là en
-        let lang = (currentLanguage == "vi") ? "vi" : "en"
+        // FIX: Xử lý mã ngôn ngữ dạng "vi-VN", "vi_US" thành "vi"
+        let langCode = currentLanguage.components(separatedBy: CharacterSet(charactersIn: "-_")).first?.lowercased() ?? "en"
         
-        // 1. Tìm trong từ điển của ngôn ngữ hiện tại
-        if let val = dict[lang]?[key] {
+        // 1. Ưu tiên tìm trong Hardcoded Dictionary của ngôn ngữ hiện tại
+        if let val = dict[langCode]?[key] {
             return val
         }
         
-        // 2. Fallback về tiếng Anh nếu không có
+        // 2. Tìm trong file JSON (nếu có tải về từ mạng)
+        if let value = strings[key], !value.isEmpty {
+            return value
+        }
+        
+        // 3. Fallback về tiếng Anh trong Hardcoded
         if let val = dict["en"]?[key] {
             return val
         }
         
-        // 3. Nếu chịu chết không có thì trả về key gốc (không tự động humanize nữa)
+        // 4. Fallback về file JSON tiếng Anh
+        if let value = englishStrings[key], !value.isEmpty {
+            return value
+        }
+        
+        // 5. Trả về key gốc nếu không tìm thấy
         return key
+    }
+
+    /// Load strings for current language (Only for downloaded languages)
+    private func loadStrings() {
+        strings = [:]
+        englishStrings = [:]
+        
+        let langCode = currentLanguage.components(separatedBy: CharacterSet(charactersIn: "-_")).first?.lowercased() ?? "en"
+        
+        // Load English JSON for fallback
+        if let bundlePath = Bundle.main.path(forResource: "en", ofType: "json"),
+           let data = try? Data(contentsOf: URL(fileURLWithPath: bundlePath)),
+           let loaded = try? JSONDecoder().decode([String: String].self, from: data) {
+            englishStrings = loaded
+        }
+        
+        // Nếu là tiếng Anh hoặc tiếng Việt thì không cần đọc JSON vì đã có Hardcoded
+        guard langCode != "en" && langCode != "vi" else { return }
+
+        // Đọc file JSON cho các ngôn ngữ tải về khác (ví dụ: Pháp, Nga...)
+        let documentsPath = URL.documentsDirectory
+            .appendingPathComponent("Languages")
+            .appendingPathComponent("\(currentLanguage).json")
+            
+        if let data = try? Data(contentsOf: documentsPath),
+           let loaded = try? JSONDecoder().decode([String: String].self, from: data) {
+            strings = loaded
+            return
+        }
+        
+        if let bundlePath = Bundle.main.path(forResource: currentLanguage, ofType: "json"),
+           let data = try? Data(contentsOf: URL(fileURLWithPath: bundlePath)),
+           let loaded = try? JSONDecoder().decode([String: String].self, from: data) {
+            strings = loaded
+            return
+        }
     }
 
     /// Check if a language file exists locally
     func hasLanguage(_ code: String) -> Bool {
-        return dict[code] != nil
+        let langCode = code.components(separatedBy: CharacterSet(charactersIn: "-_")).first?.lowercased() ?? "en"
+        if langCode == "en" || langCode == "vi" { return true }
+        return LanguageFileUtility.hasLanguageFile(code)
     }
 }
 
