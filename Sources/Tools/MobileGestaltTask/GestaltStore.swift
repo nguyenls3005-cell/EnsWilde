@@ -1,6 +1,6 @@
 //
 //  GestaltStore.swift
-//  EnsWilde (Integrated YumEdit Older Device Flow)
+//  EnsWilde
 //
 
 import SwiftUI
@@ -334,45 +334,6 @@ final class GestaltStore: ObservableObject {
 
         print("✅ Đã áp dụng vá iPadOS CacheData (enable = \(enable))")
         return true
-    }
-    
-    // MARK: - YUMEDIT TWO-STAGE FLOW (Dành cho máy không hỗ trợ)
-
-    /// Giai đoạn 1: Tạm thời Spoof máy xịn + Bật AI + Ép Region LL để tải model
-    func yumBeginStageOne(spoofProduct: String) {
-        // 1. Ép Region Mỹ + Bật AI tổng
-        self.cacheExtra["h63QSdBCiT/z0WU6rdQv6Q"] = "LL" // RegionCode
-        self.cacheExtra["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A" // Sales Region
-        self.cacheExtra["A62OafQ85EJAiiqKn4agtg"] = 1 // AI Toggle
-        
-        // 2. Bật SiriMode (Key quan trọng của YumEdit)
-        self.cacheExtra["a3n5T9sFtlyQ74NEp9ESxg"] = 2
-        
-        // 3. Spoof ProductType (Chỉ đổi tên, giữ nguyên Board để tránh bootloop)
-        self.cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] = spoofProduct
-        
-        // 4. Bật các slot AI trong CacheData
-        if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict) {
-            for key in MGKey.appIntellAllKeys {
-                if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                    data[slotIdx * 8] = 1
-                }
-            }
-            data[layout.greenTeaOffset] = 0
-            data[layout.notGreenTeaOffset] = 1
-            self.mgCurrentDict["CacheData"] = data
-        }
-        self.objectWillChange.send()
-    }
-    
-    /// Giai đoạn 2: Khôi phục lại máy thật (để Face ID không hỏng), nhưng vẫn giữ AI
-    func yumFinishStageTwo() {
-        // 1. Lấy lại ProductType thật từ file backup
-        if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary,
-           let ogProd = ogCE["h9jDsbgj7xIVeIQ8S3/X3Q"] as? String {
-            self.cacheExtra["h9jDsbgj7xIVeIQ8S3/X3Q"] = ogProd
-        }
-        self.objectWillChange.send()
     }
     
     var preferredRegionUnlockMode: MGRegionUnlockMode {
