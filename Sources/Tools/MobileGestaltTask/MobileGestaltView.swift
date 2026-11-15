@@ -67,45 +67,73 @@ struct MobileGestaltView: View {
             Section(header: Text(L("section_device_subtype"))) {
                 Picker(selection: $dynamicIslandType) {
                     Text(L("mg_subtype_none")).tag(0)
-                    Text("2436 (iPhone X)").tag(1)
+                    Text("2436 (iPhone X / For iPhone SE)").tag(1)
                     Text("2556 (iPhone 14 Pro)").tag(2)
                     Text("2796 (iPhone 14 Pro Max)").tag(3)
-                    Text("2976 (iPhone 15 Pro Max)").tag(4)
-                    Text("2622 (iPhone 16 Pro)").tag(5)
-                    Text("2868 (iPhone 16 Pro Max)").tag(6)
+                    Text("2976 (iPhone 15 Pro Max / 16 Plus)").tag(4)
+                    Text("2622 (iPhone 16 Pro / 17 Pro)").tag(5)
+                    Text("2868 (iPhone 16 Pro Max / 17 Pro Max)").tag(6)
                     Text("2736 (iPhone Air)").tag(7)
-                    Text("2662 (iPhone 18 Pro)").tag(8)
+                    Text("2662 (iPhone 18 Pro Dynamic Island)").tag(8)
                     Text("Custom Subtype").tag(-1)
-                } label: { Text(L("mg_device_subtype_preset")) }
+                } label: {
+                    Text(L("mg_device_subtype_preset"))
+                }
                 .pickerStyle(.menu)
                 .onChange(of: dynamicIslandType) { newValue in
-                    if newValue == 8 { showDIWarning = true } 
-                    else if newValue != -1 { enableCustomSubtype = false } 
-                    else { enableCustomSubtype = true }
+                    if newValue == 8 {
+                        showDIWarning = true
+                    } else if newValue != -1 {
+                        enableCustomSubtype = false
+                    } else {
+                        enableCustomSubtype = true
+                    }
+                }
+                .alert("Dynamic Island iPhone 18 Pro required iOS 27RC+", isPresented: $showDIWarning) {
+                    Button("Cancel", role: .cancel) { dynamicIslandType = 0 }
+                    Button("Accept") { enableCustomSubtype = false }
                 }
 
                 if enableCustomSubtype {
-                    TextField("Enter ArtworkDeviceSubType", text: $customSubtypeValue).keyboardType(.numberPad)
+                    Toggle("Enable Custom Subtype", isOn: $enableCustomSubtype)
+                    if enableCustomSubtype {
+                        TextField("Enter ArtworkDeviceSubType (e.g. 2xxx)", text: $customSubtypeValue)
+                            .keyboardType(.numberPad)
+                    }
                 }
 
-                Toggle(isOn: $enableModelName) { Text(L("mg_change_model_name")) }
-                if enableModelName { TextField(L("mg_model_name_placeholder"), text: $modelName) }
+                Toggle(isOn: $enableModelName) {
+                    Text(L("mg_change_model_name"))
+                }
+                if enableModelName {
+                    TextField(L("mg_model_name_placeholder"), text: $modelName)
+                }
             }
 
             Section(header: Text(L("section_hardware_features"))) {
                 Toggle(L("mg_boot_chime"), isOn: store.mgByteBinding(key: MGKey.bootChime))
-                Toggle(L("mg_charge_limit"), isOn: store.mgByteBinding(key: MGKey.chargeLim)).disabled(Utils.requiresVersion(17))
-                if UIDevice._hasHomeButton() { Toggle(L("mg_tap_to_wake"), isOn: store.mgByteBinding(key: MGKey.tapToWake)) }
-                Toggle(L("mg_camera_button"), isOn: store.mgByteBinding(key: MGKey.camButton)).disabled(Utils.requiresVersion(18))
+                Toggle(L("mg_charge_limit"), isOn: store.mgByteBinding(key: MGKey.chargeLim))
+                    .disabled(Utils.requiresVersion(17))
+                if UIDevice._hasHomeButton() {
+                    Toggle(L("mg_tap_to_wake"), isOn: store.mgByteBinding(key: MGKey.tapToWake))
+                }
+                Toggle(L("mg_camera_button"), isOn: store.mgByteBinding(key: MGKey.camButton))
+                    .disabled(Utils.requiresVersion(18))
             }
 
             Section(header: Text(L("section_display_and_ui"))) {
                 Toggle(L("mg_stage_manager"), isOn: store.mgByteBinding(key: MGKey.stageMgr))
-                Toggle(L("mg_aod"), isOn: store.mgByteBinding(key: MGKey.AOD)).disabled(Utils.requiresVersion(18))
-                Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy)).disabled(Utils.requiresVersion(18))
+                Toggle(L("mg_aod"), isOn: store.mgByteBinding(key: MGKey.AOD))
+                    .disabled(Utils.requiresVersion(18))
+                Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
+                    .disabled(Utils.requiresVersion(18))
+                
                 Toggle("Become iPadOS", isOn: Binding(
-                    get: { store.mgTrollPadBinding().wrappedValue },
-                    set: { val in _ = store.mgSetiPadOS(enable: val); store.objectWillChange.send() }
+                    get: { return store.mgTrollPadBinding().wrappedValue },
+                    set: { newValue in
+                        _ = store.mgSetiPadOS(enable: newValue)
+                        store.objectWillChange.send()
+                    }
                 ))
             }
 
@@ -130,7 +158,8 @@ struct MobileGestaltView: View {
                 }
 
                 Toggle(L("mg_apple_pencil"), isOn: store.mgByteBinding(key: MGKey.appPencil))
-                Toggle(L("mg_action_button"), isOn: store.mgByteBinding(key: MGKey.actButton)).disabled(Utils.requiresVersion(17))
+                Toggle(L("mg_action_button"), isOn: store.mgByteBinding(key: MGKey.actButton))
+                    .disabled(Utils.requiresVersion(17))
                 Toggle(L("mg_crash_detection"), isOn: store.mgByteBinding(key: MGKey.crashDet))
             }
 
@@ -138,7 +167,10 @@ struct MobileGestaltView: View {
                 Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
                 Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
                 Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
-                Toggle(isOn: bindingForAppleIntelligence()) { Text(L("mg_apple_intelligence")) }.disabled(Utils.requiresVersion(18))
+                Toggle(isOn: bindingForAppleIntelligence()) {
+                    Text(L("mg_apple_intelligence"))
+                }
+                .disabled(Utils.requiresVersion(18))
                 
                 Picker(selection: $productType) {
                     Text(L("mg_device_model_unchanged")).tag(MobileGestaltView.machineName())
@@ -146,22 +178,44 @@ struct MobileGestaltView: View {
                         Text("iPad Pro 11 inch 5th Gen").tag("iPad16,3")
                     } else {
                         Text("iPhone 15 Pro").tag("iPhone16,1")
+                        Text("iPhone 15 Pro Max").tag("iPhone16,2")
+                        Text("iPhone 16").tag("iPhone17,3")
+                        Text("iPhone 16 Plus").tag("iPhone17,4")
+                        Text("iPhone 16e").tag("iPhone17,5")
+                        Text("iPhone 16 Pro").tag("iPhone17,1")
                         Text("iPhone 16 Pro Max").tag("iPhone17,2")
+                        Text("iPhone 17").tag("iPhone18,3")
+                        Text("iPhone 17 Pro").tag("iPhone18,1")
+                        Text("iPhone 17 Pro Max").tag("iPhone18,2")
+                        Text("iPhone Air").tag("iPhone18,4")
+                        Text("iPhone 17e").tag("iPhone18,5")
+                        Text("iPhone 18 Pro").tag("iPhone19,2")
+                        Text("iPhone 18 Pro Max (US)").tag("iPhone19,3")
                         Text("iPhone 18 Pro Max (Global)").tag("iPhone19,7")
+                        Text("iPhone Duo").tag("iPhone19,4")
                     }
-                } label: { Text(L("mg_device_model")) }.pickerStyle(.menu)
+                } label: {
+                    Text(L("mg_device_model"))
+                }
+                .pickerStyle(.menu)
             }
 
             Section(header: Text(L("section_save_reset"))) {
-                Button(action: saveChanges) { Label(L("mg_save_settings"), systemImage: "square.and.arrow.down") }
-                Button(role: .destructive, action: resetOriginal) { Label("Revert Tweaks", systemImage: "arrow.counterclockwise") }
+                Button(action: saveChanges) {
+                    Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
+                }
+                Button(role: .destructive, action: resetOriginal) {
+                    Label("Revert Tweaks", systemImage: "arrow.counterclockwise")
+                }
             }
         }
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
         .alert("Message", isPresented: $showErrorAlert) {
             Button("OK") {}
-        } message: { Text(lastError ?? "???") }
+        } message: {
+            Text(lastError ?? "???")
+        }
         .onAppear {
             let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
             _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
@@ -175,19 +229,33 @@ struct MobileGestaltView: View {
                 store.loadFromPlist(url: modMGURL)
                 mobileGestalt = store.mgCurrentDict
             }
-            if initError != nil { lastError = initError; initError = nil; showErrorAlert.toggle(); return }
+            
+            if initError != nil {
+                lastError = initError
+                initError = nil
+                showErrorAlert.toggle()
+                return
+            }
             hydrateFromDict()
         }
+        // Lắng nghe sự thay đổi từ store để tự động cập nhật UI
         .onReceive(store.$mgCurrentDict) { newDict in
             if newDict.count > 0 {
                 self.mobileGestalt = newDict
                 self.hydrateFromDict()
             }
         }
-        .onChange(of: enableModelName) { e in if e { applyModelName() } else { removeModelName() } }
+        .onChange(of: enableModelName) { enabled in if enabled { applyModelName() } else { removeModelName() } }
         .onChange(of: modelName) { _ in if enableModelName && !modelName.isEmpty { applyModelName() } }
-        .onChange(of: enableCustomSubtype) { e in if e { dynamicIslandType = -1; applyCustomSubtype() } }
-        .onChange(of: customSubtypeValue) { _ in if enableCustomSubtype { applyCustomSubtype() } }
+        .onChange(of: enableCustomSubtype) { enabled in
+            if enabled {
+                dynamicIslandType = -1
+                applyCustomSubtype()
+            }
+        }
+        .onChange(of: customSubtypeValue) { _ in
+            if enableCustomSubtype { applyCustomSubtype() }
+        }
     }
 
     private func hydrateFromDict() {
@@ -201,7 +269,7 @@ struct MobileGestaltView: View {
         if let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
             productType = cacheExtra[MGKey.prodType] as? String ?? productType
             
-            // ĐỒNG BỘ REGION: Đọc cả Sysconfig và Code
+            // Đồng bộ Region Code và Hậu tố
             let sysconfig = cacheExtra[MGKey.regionSysconfig] as? String ?? ""
             let regionCode = cacheExtra[MGKey.regionCode] as? String ?? ""
             
@@ -209,7 +277,6 @@ struct MobileGestaltView: View {
                 self.selectedRegionCode = preset.id
                 self.regionCustomSuffix = nil
             } else {
-                // Nếu không khớp preset nào (do user tự nhập), hiển thị Custom
                 self.selectedRegionCode = "CUSTOM"
                 self.regionCustomSuffix = sysconfig.isEmpty ? "\(regionCode) - Custom" : sysconfig
             }
@@ -224,7 +291,10 @@ struct MobileGestaltView: View {
                 case 2868: dynamicIslandType = 6
                 case 2736: dynamicIslandType = 7
                 case 2662: dynamicIslandType = 8
-                default: dynamicIslandType = -1; enableCustomSubtype = true; customSubtypeValue = "\(subtype)"
+                default:
+                    dynamicIslandType = -1
+                    enableCustomSubtype = true
+                    customSubtypeValue = "\(subtype)"
                 }
             }
             if let artwork = cacheExtra[MGKey.artwork] as? NSDictionary, let name = artwork["ArtworkDeviceProductDescription"] as? String, !name.isEmpty {
@@ -257,14 +327,22 @@ struct MobileGestaltView: View {
                     let targetProductType = productType
                     
                     let spoofMap: [String: (hw: String, cpu: String, reg: String)] = [
-                        "iPhone16,1": ("D83AP", "t8130", "A2848"), "iPhone16,2": ("D84AP", "t8130", "A2849"),
-                        "iPhone17,3": ("D47AP", "t8140", "A3081"), "iPhone17,4": ("D48AP", "t8140", "A3082"),
-                        "iPhone17,1": ("D93AP", "t8140", "A3083"), "iPhone17,2": ("D94AP", "t8140", "A3084"),
-                        "iPhone17,5": ("V59AP", "t8140", "A3212"), "iPhone18,3": ("V57AP", "t8150", "A3258"),
-                        "iPhone18,1": ("V53AP", "t8150", "A3256"), "iPhone18,2": ("V54AP", "t8150", "A3257"),
-                        "iPhone18,4": ("D23AP", "t8150", "A3260"), "iPhone18,5": ("V59AP", "t8150", "A3575"),
-                        "iPhone19,2": ("V63AP", "t8160", "A3472"), "iPhone19,3": ("V64AP", "t8160", "A3473"),
-                        "iPhone19,7": ("V64sAP", "t8160", "A3717"), "iPhone19,4": ("V68AP", "t8160", "A3447")
+                        "iPhone16,1": ("D83AP", "t8130", "A2848"),
+                        "iPhone16,2": ("D84AP", "t8130", "A2849"),
+                        "iPhone17,3": ("D47AP", "t8140", "A3081"),
+                        "iPhone17,4": ("D48AP", "t8140", "A3082"),
+                        "iPhone17,1": ("D93AP", "t8140", "A3083"),
+                        "iPhone17,2": ("D94AP", "t8140", "A3084"),
+                        "iPhone17,5": ("V59AP", "t8140", "A3212"),
+                        "iPhone18,3": ("V57AP", "t8150", "A3258"),
+                        "iPhone18,1": ("V53AP", "t8150", "A3256"),
+                        "iPhone18,2": ("V54AP", "t8150", "A3257"),
+                        "iPhone18,4": ("D23AP", "t8150", "A3260"),
+                        "iPhone18,5": ("V59AP", "t8150", "A3575"),
+                        "iPhone19,2": ("V63AP", "t8160", "A3472"),
+                        "iPhone19,3": ("V64AP", "t8160", "A3473"),
+                        "iPhone19,7": ("V64sAP", "t8160", "A3717"),
+                        "iPhone19,4": ("V68AP", "t8160", "A3447")
                     ]
                     
                     if targetProductType != ogMachineName, let info = spoofMap[targetProductType] {
@@ -272,6 +350,7 @@ struct MobileGestaltView: View {
                         ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
                         ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
                         ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
+                        
                         ce["A62OafQ85EJAiiqKn4agtg"] = 1
                         ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2
                         ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
@@ -304,7 +383,9 @@ struct MobileGestaltView: View {
                             
                             let testDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
                             testDict["CacheData"] = data
-                            if case .success = layout.validatePlist(testDict) { store.mgCurrentDict["CacheData"] = data }
+                            if case .success = layout.validatePlist(testDict) {
+                                store.mgCurrentDict["CacheData"] = data
+                            }
                         }
                     }
                     
@@ -327,7 +408,10 @@ struct MobileGestaltView: View {
                     }
                 }
                 
-                try await MobileGestaltApplyTask.applyGestalt(store: store) { log in print(log) }
+                try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
+                    print(log)
+                }
+                
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 let expectedData = try Data(contentsOf: liveURL)
                 try expectedData.write(to: modMGURL)
@@ -341,7 +425,10 @@ struct MobileGestaltView: View {
                     showErrorAlert = true
                 }
             } catch {
-                await MainActor.run { lastError = "Save failed: \(error.localizedDescription)"; showErrorAlert = true }
+                await MainActor.run {
+                    lastError = "Save failed: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
             }
         }
     }
@@ -349,7 +436,10 @@ struct MobileGestaltView: View {
     private func resetOriginal() {
         Task {
             do {
-                try await MobileGestaltApplyTask.restoreGestalt { log in print(log) }
+                try await MobileGestaltApplyTask.restoreGestalt { log in
+                    print(log)
+                }
+                
                 try? FileManager.default.removeItem(at: modMGURL)
                 
                 await MainActor.run {
@@ -361,7 +451,10 @@ struct MobileGestaltView: View {
                     showErrorAlert = true
                 }
             } catch {
-                await MainActor.run { lastError = "Revert failed: \(error.localizedDescription)"; showErrorAlert = true }
+                await MainActor.run {
+                    lastError = "Revert failed: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
             }
         }
     }
@@ -385,6 +478,7 @@ struct MobileGestaltView: View {
                 try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
             }
             chmod(modMGURL.path, 0o644)
+            
             if !FileManager.default.fileExists(atPath: origMGURL.path) {
                 FileManager.default.createFile(atPath: origMGURL.path, contents: nil, attributes: nil)
             }
