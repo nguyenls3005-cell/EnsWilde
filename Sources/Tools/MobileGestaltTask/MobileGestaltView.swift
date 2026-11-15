@@ -40,12 +40,6 @@ struct MobileGestaltView: View {
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
     
-    // Biến cho YumEdit 2-Stage
-    @State private var yumSelectedSpoof = "iPhone16,1" 
-    @State private var yumDownloadConfirmed = false
-    @State private var yumStageOneBusy = false
-    @State private var yumStageTwoBusy = false
-    
     @State private var showDIWarning = false
     
     let regionPresets: [MGRegionPreset] = [
@@ -207,61 +201,6 @@ struct MobileGestaltView: View {
                     Label("Revert Tweaks", systemImage: "arrow.counterclockwise")
                 }
             }
-
-            // MARK: - YUMEDIT 2-STAGE FLOW
-            Section(header: Text("Apple Intelligence (YumEdit 2-Stage Flow)")) {
-                if yumDownloadConfirmed {
-                    Text("Bạn đã hoàn thành Giai đoạn 1. Hãy Hard Reboot, chờ máy tải AI xong (5-10 phút). Sau đó bấm nút bên dưới để khôi phục lại máy thật (tránh hỏng Face ID).")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    
-                    Button(role: .destructive) {
-                        yumStageTwoBusy = true
-                        store.yumFinishStageTwo()
-                        Task {
-                            try? await MobileGestaltApplyTask.applyGestalt(store: store) { print($0) }
-                            await MainActor.run {
-                                yumStageTwoBusy = false
-                                yumDownloadConfirmed = false
-                                lastError = "Đã khôi phục máy thật (Giai đoạn 2). Hãy Hard Reboot lại ngay. TUYỆT ĐỐI KHÔNG VÀO CÀI ĐẶT -> SIRI!"
-                                showErrorAlert = true
-                            }
-                        }
-                    } label: {
-                        Label(yumStageTwoBusy ? "Đang xử lý..." : "Giai đoạn 2: Khôi phục máy thật (Giữ AI)", systemImage: "2.circle")
-                    }
-                    .disabled(yumStageTwoBusy)
-                    
-                    Text("⚠️ SAU KHI BẤM NÚT NÀY VÀ REBOOT: TUYỆT ĐỐI KHÔNG VÀO CÀI ĐẶT -> SIRI. Hãy test AI bằng cách nói 'Hey Siri' hoặc mở app Photos.")
-                        .font(.caption).foregroundStyle(.red)
-                } else {
-                    Picker("Chọn máy để Spoof tạm thời:", selection: $yumSelectedSpoof) {
-                        Text("iPhone 15 Pro").tag("iPhone16,1")
-                        Text("iPhone 15 Pro Max").tag("iPhone16,2")
-                        Text("iPhone 16 Pro").tag("iPhone17,1")
-                        Text("iPhone 16 Pro Max").tag("iPhone17,2")
-                    }
-                    
-                    Button {
-                        yumStageOneBusy = true
-                        store.yumBeginStageOne(spoofProduct: yumSelectedSpoof)
-                        Task {
-                            try? await MobileGestaltApplyTask.applyGestalt(store: store) { print($0) }
-                            await MainActor.run {
-                                yumStageOneBusy = false
-                                yumDownloadConfirmed = true
-                                lastError = "Đã Apply Giai đoạn 1. Hãy Hard Reboot ngay. Sau khi bật lại, chờ 5-10 phút (máy ấm lên là đang tải AI) rồi quay lại bấm Giai đoạn 2."
-                                showErrorAlert = true
-                            }
-                        }
-                    } label: {
-                        Label(yumStageOneBusy ? "Đang xử lý..." : "Giai đoạn 1: Spoof + Bật AI + Tải Model", systemImage: "1.circle")
-                    }
-                    .disabled(yumStageOneBusy)
-                    
-                    Text("Hướng dẫn: Bấm nút trên -> Bật Respring -> Apply -> TẮT NGUỒN HOÀN TOÀN -> Bật lại -> Chờ 5-10 phút -> Quay lại đây bấm Giai đoạn 2.")
-                        .font(.caption).foregroundStyle(.blue)
-                }
-            }
         }
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
@@ -383,46 +322,55 @@ struct MobileGestaltView: View {
                         "iPhone19,4": ("V68AP", "t8160", "A3447")
                     ]
                     
-                    if let info = spoofMap[targetProductType] {
+                    // Nếu là máy hỗ trợ (khác Original), tự động Spoof + Bật AI
+                    if targetProductType != ogMachineName, let info = spoofMap[targetProductType] {
                         ce[MGKey.prodType] = targetProductType
                         ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
                         ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
                         ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
-                        ce["A62OafQ85EJAiiqKn4agtg"] = 1
+                        
+                        // Bật toàn bộ cờ AI (YumEdit Logic)
+                        ce["A62OafQ85EJAiiqKn4agtg"] = 1 // AI Toggle
+                        ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2 // SiriMode
                         ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
                         ce["YgYIIViDt1kgzyIsIV61vA"] = 1
                         ce["h63QSdBCiT/z0WU6rdQv6Q"] = "LL"
                         ce["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A"
                         
-                        ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw")
-                        ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg")
-                        ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ")
+                        ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw") // InternalInstall
+                        ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg") // InternalBuild
+                        ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ") // SiriHub
                         
                         self.selectedRegionCode = "LL"
                     } else if targetProductType == ogMachineName {
+                        // Khôi phục lại máy thật nếu chọn Original
                         if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
-                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA", "A62OafQ85EJAiiqKn4agtg"] {
+                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA", "A62OafQ85EJAiiqKn4agtg", "a3n5T9sFtlyQ74NEp9ESxg"] {
                                 if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
                             }
                         }
                     }
                     
-                    if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict) {
-                        for key in MGKey.appIntellAllKeys {
-                            if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                                data[slotIdx * 8] = 1
+                    // Vá trực tiếp AI vào CacheData
+                    if targetProductType != ogMachineName {
+                        if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict) {
+                            for key in MGKey.appIntellAllKeys {
+                                if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                                    data[slotIdx * 8] = 1
+                                }
                             }
-                        }
-                        data[layout.greenTeaOffset] = 0
-                        data[layout.notGreenTeaOffset] = 1
-                        
-                        let testDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
-                        testDict["CacheData"] = data
-                        if case .success = layout.validatePlist(testDict) {
-                            store.mgCurrentDict["CacheData"] = data
+                            data[layout.greenTeaOffset] = 0
+                            data[layout.notGreenTeaOffset] = 1
+                            
+                            let testDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
+                            testDict["CacheData"] = data
+                            if case .success = layout.validatePlist(testDict) {
+                                store.mgCurrentDict["CacheData"] = data
+                            }
                         }
                     }
                     
+                    // Lưu Artwork
                     let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
                     if dynamicIslandType == 0 { art.removeObject(forKey: "ArtworkDeviceSubType") }
                     else if dynamicIslandType > 0 {
@@ -455,7 +403,7 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "Saved and applied successfully. Respring to take effect."
+                    lastError = "Saved and applied successfully. Hãy Hard Reboot để iOS nhận cấu hình mới."
                     showErrorAlert = true
                 }
             } catch {
