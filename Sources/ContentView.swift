@@ -5,7 +5,9 @@ import UIKit
 struct ContentView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
     @State private var path = NavigationPath()
-    
+
+    @AppStorage("manualCacheEditorEnabled") private var manualCacheEditorEnabled: Bool = false
+
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
     @ObservedObject var walletStore: AppleWalletStore
@@ -73,7 +75,7 @@ struct ContentView: View {
                 title: "CacheExtra Editor",
                 subtitle: "Manually edit MobileGestalt keys",
                 icon: "pencil.and.list.clipboard",
-                isEnabled: toolStore.replaceMobileGestaltEnabled
+                isEnabled: manualCacheEditorEnabled
             )
             toolNavigationLink(
                 value: "ConfigTweaks",
