@@ -20,7 +20,7 @@ struct MobileGestaltView: View {
     @StateObject private var store = GestaltStore.shared
 
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
-    @AppStorage("ogMachineName") private var ogMachineName = "" // <-- ĐÃ THÊM BIẾN NÀY
+    @AppStorage("ogMachineName") private var ogMachineName = "" 
 
     @State var mbdb: Backup?
     @State var eligibilityData = Data()
@@ -303,53 +303,41 @@ struct MobileGestaltView: View {
                 if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
                     let targetProductType = productType
                     
-                    // Bảng mapping CHÍNH XÁC 100% dựa trên ảnh IPSW/AppleDB bạn cung cấp
+                    // Bảng mapping CHUẨN XÁC cho 3 key phần cứng
                     let spoofMap: [String: (hw: String, cpu: String, reg: String)] = [
-                        // iPhone 15 Series
+                        // iPhone 15
                         "iPhone16,1": ("D83AP", "t8130", "A2848"), // 15 Pro
                         "iPhone16,2": ("D84AP", "t8130", "A2849"), // 15 Pro Max
-                        // iPhone 16 Series
+                        // iPhone 16
                         "iPhone17,3": ("D47AP", "t8140", "A3081"), // 16
                         "iPhone17,4": ("D48AP", "t8140", "A3082"), // 16 Plus
                         "iPhone17,1": ("D93AP", "t8140", "A3083"), // 16 Pro
                         "iPhone17,2": ("D94AP", "t8140", "A3084"), // 16 Pro Max
                         "iPhone17,5": ("V59AP", "t8140", "A3212"), // 16e
-                        // iPhone 17 Series
+                        // iPhone 17
                         "iPhone18,3": ("V57AP", "t8150", "A3258"), // 17
                         "iPhone18,1": ("V53AP", "t8150", "A3256"), // 17 Pro
                         "iPhone18,2": ("V54AP", "t8150", "A3257"), // 17 Pro Max
                         "iPhone18,4": ("D23AP", "t8150", "A3260"), // Air
                         "iPhone18,5": ("V59AP", "t8150", "A3575"), // 17e
-                        // iPhone 18 Series
+                        // iPhone 18
                         "iPhone19,2": ("V63AP", "t8160", "A3472"), // 18 Pro
                         "iPhone19,3": ("V64AP", "t8160", "A3473"), // 18 Pro Max (US)
-                        "iPhone19,7": ("V64sAP", "t8160", "A3717"),// 18 Pro Max (Global) - Ép dùng mã Reg US để mở AI
-                        "iPhone19,4": ("V68AP", "t8160", "A3447") // Duo - Ép dùng mã Reg US để mở AI
+                        "iPhone19,7": ("V64sAP", "t8160", "A3717"),// 18 Pro Max (Global) - Ép mã Reg US (A3473) để AI dễ lên, hoặc dùng A3717
+                        "iPhone19,4": ("V68AP", "t8160", "A3447") // Duo
                     ]
                     
-                    // Ghi đè bộ ba phần cứng nếu có trong mapping
+                    // 1. GHI ĐÈ 3 KEY PHẦN CỨNG VÀO CACHE EXTRA
                     if let info = spoofMap[targetProductType] {
                         ce[MGKey.prodType] = targetProductType
                         ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw // HardwareModel
                         ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu // CPUModel
                         ce["97JDvERpVwO+GHtthIh7hA"] = info.reg // RegulatoryModel
-                    } else if targetProductType == ogMachineName {
-                        // Nếu chọn Original, khôi phục lại từ backup
-                        if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
-                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
-                                if let val = ogCE[key] {
-                                    ce[key] = val
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Nếu chọn model khác Original, bật AI + Region LL
-                    if targetProductType != ogMachineName {
-                        // Bật AI key
-                        ce["A62OafQ85EJAiiqKn4agtg"] = 1 // AI Toggle
                         
-                        // Bật Region LL
+                        // Ép buộc AI và Region
+                        ce["A62OafQ85EJAiiqKn4agtg"] = 1 // AI Toggle
+                        ce["XNCjqOupLM/S8fNyxRNQTA"] = 1 // Photos Clean Up
+                        ce["YgYIIViDt1kgzyIsIV61vA"] = 1 // Handwriting
                         ce["h63QSdBCiT/z0WU6rdQv6Q"] = "LL" // RegionCode
                         ce["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A" // RegionInfo
                         
@@ -359,25 +347,45 @@ struct MobileGestaltView: View {
                         ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ") // SiriHub
                         
                         self.selectedRegionCode = "LL"
+                    } else if targetProductType == ogMachineName {
+                        // Khôi phục Original
+                        if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
+                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA", "A62OafQ85EJAiiqKn4agtg"] {
+                                if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
+                            }
+                        }
                     }
                     
-                    // Phần còn lại giữ nguyên như cũ (artwork, model name, custom keys...)
-                    let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+                    // 2. VÁ TRỰC TIẾP VÀO CACHE DATA (Để sửa lỗi "Cached model does not match")
+                    if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict) {
+                        // Vá AI slots
+                        for key in MGKey.appIntellAllKeys {
+                            if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                                data[slotIdx * 8] = 1
+                            }
+                        }
+                        // Vá green-tea
+                        data[layout.greenTeaOffset] = 0
+                        data[layout.notGreenTeaOffset] = 1
+                        
+                        let testDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
+                        testDict["CacheData"] = data
+                        if case .success = layout.validatePlist(testDict) {
+                            store.mgCurrentDict["CacheData"] = data
+                        }
+                    }
                     
-                    if dynamicIslandType == 0 {
-                        art.removeObject(forKey: "ArtworkDeviceSubType")
-                    } else if dynamicIslandType > 0 {
+                    // 3. LƯU ARTWORK & REGION
+                    let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+                    if dynamicIslandType == 0 { art.removeObject(forKey: "ArtworkDeviceSubType") }
+                    else if dynamicIslandType > 0 {
                         let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
                         art["ArtworkDeviceSubType"] = subtypes[dynamicIslandType]
                     } else if enableCustomSubtype, let val = Int(customSubtypeValue) {
                         art["ArtworkDeviceSubType"] = val
                     }
-                    
-                    if enableModelName {
-                        art["ArtworkDeviceProductDescription"] = modelName
-                    } else {
-                        art.removeObject(forKey: "ArtworkDeviceProductDescription")
-                    }
+                    if enableModelName { art["ArtworkDeviceProductDescription"] = modelName }
+                    else { art.removeObject(forKey: "ArtworkDeviceProductDescription") }
                     ce[MGKey.artwork] = art
                     
                     if let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
