@@ -412,7 +412,7 @@ struct SettingsView: View {
 
     private var appInfoSection: some View {
         Section(header: Text(L("settings_app_info"))) {
-            HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v3.1.3 Beta 2").font(.footnote).foregroundStyle(.secondary) }
+            HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v3.1.3 Beta 3").font(.footnote).foregroundStyle(.secondary) }
             HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
             HStack { Label(L("app_device"), systemImage: "apps.iphone"); Spacer(); Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary) }
             Text(L("app_info_footer")).font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
