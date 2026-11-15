@@ -287,9 +287,7 @@ struct ManualCacheExtraEditorView: View {
             set: { if !$0 { successMessage = nil } }
         )) {
             Button("OK", role: .cancel) {
-                successMessage = nil
-                // Chuyển sang tab Apply sau khi bấm OK
-                NotificationCenter.default.post(name: .switchToApplyTab, object: nil)
+                successMessage = nil // Đã ngắt hoàn toàn việc tự động chuyển tab
             }
         } message: {
             Text(successMessage ?? "")
@@ -375,7 +373,6 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isSaving = false
                     showApplyTab = true
-                    // Hiển thị popup giống bên MobileGestaltView
                     successMessage = "Saved and applied successfully. Hãy Hard Reboot để iOS nhận cấu hình mới."
                 }
             } catch {
@@ -406,7 +403,6 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isReverting = false
                     showApplyTab = true
-                    // Hiển thị popup giống bên MobileGestaltView
                     successMessage = "All tweaks reverted successfully.\n\nPlease go to the SETTINGS tab and tap 'Respring Device' to apply the changes."
                 }
             } catch {
