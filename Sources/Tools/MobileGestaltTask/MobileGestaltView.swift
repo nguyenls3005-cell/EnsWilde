@@ -223,10 +223,6 @@ struct MobileGestaltView: View {
                 mobileGestalt = store.mgCurrentDict
             }
             
-            if let region = store.cacheExtra[MGKey.regionCode] as? String {
-                self.selectedRegionCode = region
-            }
-            
             if initError != nil {
                 lastError = initError
                 initError = nil
@@ -234,6 +230,13 @@ struct MobileGestaltView: View {
                 return
             }
             hydrateFromDict()
+        }
+        // Lắng nghe sự thay đổi từ store (khi Editor Save) để tự động cập nhật UI
+        .onReceive(store.$mgCurrentDict) { newDict in
+            if newDict.count > 0 {
+                self.mobileGestalt = newDict
+                self.hydrateFromDict()
+            }
         }
         .onChange(of: enableModelName) { enabled in if enabled { applyModelName() } else { removeModelName() } }
         .onChange(of: modelName) { _ in if enableModelName && !modelName.isEmpty { applyModelName() } }
@@ -258,6 +261,12 @@ struct MobileGestaltView: View {
 
         if let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
             productType = cacheExtra[MGKey.prodType] as? String ?? productType
+            
+            // ĐỒNG BỘ REGION KHI EDITOR THAY ĐỔI
+            if let region = cacheExtra[MGKey.regionCode] as? String {
+                self.selectedRegionCode = region
+            }
+            
             if let artwork = cacheExtra[MGKey.artwork] as? NSDictionary, let subtype = artwork["ArtworkDeviceSubType"] as? Int {
                 switch subtype {
                 case 2436: dynamicIslandType = 1
@@ -322,29 +331,25 @@ struct MobileGestaltView: View {
                         "iPhone19,4": ("V68AP", "t8160", "A3447")
                     ]
                     
-                    // Nếu là máy hỗ trợ (khác Original), tự động Spoof + Bật AI
                     if targetProductType != ogMachineName, let info = spoofMap[targetProductType] {
                         ce[MGKey.prodType] = targetProductType
                         ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
                         ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
                         ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
                         
-                        // Bật toàn bộ cờ AI (YumEdit Logic)
-                        ce["A62OafQ85EJAiiqKn4agtg"] = 1 // AI Toggle
-                        ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2 // SiriMode
+                        ce["A62OafQ85EJAiiqKn4agtg"] = 1
+                        ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2
                         ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
                         ce["YgYIIViDt1kgzyIsIV61vA"] = 1
                         ce["h63QSdBCiT/z0WU6rdQv6Q"] = "LL"
                         ce["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A"
                         
-                        ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw") // InternalInstall
-                        ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg") // InternalBuild
-                        ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ") // SiriHub
+                        ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw")
+                        ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg")
+                        ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ")
                         
                         self.selectedRegionCode = "LL"
                     } else if targetProductType == ogMachineName {
-                        // FIX LỖI: Nếu chọn Original, CHỈ khôi phục Model/Region gốc. 
-                        // TUYỆT ĐỐI KHÔNG xóa các key AI vì người dùng có thể đang bật AI thủ công.
                         if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
                             for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
                                 if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
@@ -352,7 +357,6 @@ struct MobileGestaltView: View {
                         }
                     }
                     
-                    // Vá trực tiếp AI vào CacheData
                     if targetProductType != ogMachineName {
                         if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict) {
                             for key in MGKey.appIntellAllKeys {
@@ -371,7 +375,6 @@ struct MobileGestaltView: View {
                         }
                     }
                     
-                    // Lưu Artwork
                     let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
                     if dynamicIslandType == 0 { art.removeObject(forKey: "ArtworkDeviceSubType") }
                     else if dynamicIslandType > 0 {
