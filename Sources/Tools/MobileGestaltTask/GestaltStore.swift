@@ -190,13 +190,14 @@ final class GestaltStore: ObservableObject {
     }
     func mgPullKeys(_ keys: [String], enableValue: Int = 1) { for key in keys { disableBooleanExtraKey(key, enableValue: enableValue) } }
     
+    // FIX LỖI GẠT SANG TẮT: Đọc trực tiếp trạng thái thực tế từ CacheExtra hoặc CacheData
     func isKeyEnabled(_ key: String, enableValue: Int = 1) -> Bool {
-        if let num = self.cacheExtra[key] as? NSNumber, num.intValue == enableValue { return true }
+        if let num = self.cacheExtra[key] as? NSNumber {
+            return num.intValue == enableValue
+        }
         if case .success((let layout, let data)) = MGCacheDataCoordinator.shared.resolveValidated(for: self.mgCurrentDict),
-           let slotIdx = layout.slotIndex(forKey: key), layout.validateSingleBooleanSlot(slotIdx, in: data), data[slotIdx * 8] == 1 {
-            let savedOrig = NSDictionary(contentsOf: MGURL.savedGestaltURL)
-            let origVal = MGCacheDataCoordinator.shared.originalSlotValue(forKey: key, layout: layout, savedOriginalDict: savedOrig) ?? false
-            if !origVal { return true }
+           let slotIdx = layout.slotIndex(forKey: key), layout.validateSingleBooleanSlot(slotIdx, in: data) {
+            return data[slotIdx * 8] == (enableValue != 0 ? 1 : 0)
         }
         return false
     }
