@@ -3,6 +3,10 @@ import UIKit
 import UserNotifications
 import AirliftFFI
 
+extension Notification.Name {
+    static let switchToApplyTab = Notification.Name("EnsWilde.switchToApplyTab")
+}
+
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
@@ -27,7 +31,6 @@ struct MainViewWithNavigation: View {
             NavigationStack { SettingsView(toolStore: toolStore) }
                 .tabItem { Label(L("nav_settings"), systemImage: "gearshape.fill") }.tag(NavigationTab.settings)
 
-            // Đã đổi thành AboutView() để dùng bản đầy đủ từ SettingsView.swift
             NavigationStack { AboutView() }
                 .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }.tag(NavigationTab.about)
 
@@ -40,6 +43,12 @@ struct MainViewWithNavigation: View {
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
         .onAppear { applyTintColor() }
+        .onReceive(NotificationCenter.default.publisher(for: .switchToApplyTab)) { _ in
+            // Tự động chuyển sang tab Apply sau khi Save hoặc Revert ở Editor
+            if showApplyTab {
+                selectedTab = .apply
+            }
+        }
     }
 
     private func applyTintColor() {
@@ -63,6 +72,7 @@ struct ApplyTabView: View {
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
 
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
+    @AppStorage("manualCacheEditorEnabled") private var manualCacheEditorEnabled: Bool = false
 
     @State private var showErrorAlert = false
     @State private var lastError: String?
@@ -80,6 +90,10 @@ struct ApplyTabView: View {
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
+        
+        // Thêm dòng này để nhận diện Editor đang bật
+        if manualCacheEditorEnabled { list.append(("CacheExtra Editor", "pencil.and.list.clipboard")) }
+        
         if toolStore.configTweaksEnabled { list.append((L("tool_config_tweaks"), "textformat")) }
         return list
     }
@@ -179,6 +193,3 @@ struct ApplyTabView: View {
         }
     }
 }
-
-// ĐÃ XOÁ HOÀN TOÀN `private struct TabAboutView` Ở ĐÂY
-// Vì đã dùng struct AboutView() từ file SettingsView.swift
