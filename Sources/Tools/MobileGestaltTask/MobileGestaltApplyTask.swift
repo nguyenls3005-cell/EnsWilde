@@ -75,6 +75,17 @@ enum MobileGestaltApplyTask {
                 }
             }
             
+            // Merge manual CacheExtra edits tracked by ManualCacheExtraEditor.
+            // This runs AFTER the allowlist loop above and does NOT modify it.
+            // Keys in the allowlist keep priority; manual tracker only fills in
+            // additional keys the user added or removes keys they explicitly deleted.
+            for (manualKey, manualValue) in ManualEditTracker.loadSet() {
+                liveExtra[manualKey] = manualValue
+            }
+            for manualKey in ManualEditTracker.loadRemoved() where !allowedExtraKeys.contains(manualKey) {
+                liveExtra.removeObject(forKey: manualKey)
+            }
+            
             let blockedKeys = ["RegionInfo", "zHeENZu+wbg7PUprwNwBWg", "green-tea", "not-green-tea", "wapi"]
             for blocked in blockedKeys {
                 liveExtra.removeObject(forKey: blocked)
