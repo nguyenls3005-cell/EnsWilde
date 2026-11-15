@@ -343,9 +343,10 @@ struct MobileGestaltView: View {
                         
                         self.selectedRegionCode = "LL"
                     } else if targetProductType == ogMachineName {
-                        // Khôi phục lại máy thật nếu chọn Original
+                        // FIX LỖI: Nếu chọn Original, CHỈ khôi phục Model/Region gốc. 
+                        // TUYỆT ĐỐI KHÔNG xóa các key AI vì người dùng có thể đang bật AI thủ công.
                         if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
-                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA", "A62OafQ85EJAiiqKn4agtg", "a3n5T9sFtlyQ74NEp9ESxg"] {
+                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
                                 if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
                             }
                         }
