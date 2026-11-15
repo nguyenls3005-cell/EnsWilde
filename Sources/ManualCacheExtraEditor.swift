@@ -179,7 +179,6 @@ struct ManualCacheExtraEditorView: View {
     @State private var showingAdd = false
     @State private var editing: MGCacheExtraEntry?
     @State private var errorMessage: String?
-    @State private var successMessage: String?
 
     @State private var isSaving = false
     @State private var isReverting = false
@@ -227,14 +226,6 @@ struct ManualCacheExtraEditorView: View {
                             }
                         }
                     }
-                }
-            }
-
-            Section(header: Text("Manage")) {
-                Button {
-                    showingAdd = true
-                } label: {
-                    Label("Add Field", systemImage: "plus.circle")
                 }
             }
 
@@ -289,14 +280,6 @@ struct ManualCacheExtraEditorView: View {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
-        }
-        .alert("Done", isPresented: Binding(
-            get: { successMessage != nil },
-            set: { if !$0 { successMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { successMessage = nil }
-        } message: {
-            Text(successMessage ?? "")
         }
         .alert("Revert all MobileGestalt tweaks?", isPresented: $showRevertConfirm) {
             Button("Cancel", role: .cancel) { }
@@ -379,7 +362,7 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isSaving = false
                     showApplyTab = true
-                    successMessage = "Saved. Hard Reboot the device so iOS picks up the new configuration."
+                    NotificationCenter.default.post(name: .switchToApplyTab, object: nil)
                 }
             } catch {
                 await MainActor.run {
@@ -409,7 +392,7 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isReverting = false
                     showApplyTab = true
-                    successMessage = "Reverted. The live MobileGestalt cache was deleted and will regenerate on the next reboot."
+                    NotificationCenter.default.post(name: .switchToApplyTab, object: nil)
                 }
             } catch {
                 await MainActor.run {
