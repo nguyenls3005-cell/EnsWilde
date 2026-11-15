@@ -113,10 +113,6 @@ struct MGCacheExtraEntry: Identifiable, Equatable {
 }
 
 // MARK: - Edit Tracker
-//
-// Persists the user's manual CacheExtra edits so `applyGestalt` can merge them
-// into the live plist alongside its own allowlist. Kept in UserDefaults to
-// survive app restarts. Does NOT touch any existing Gestalt logic.
 
 enum ManualEditTracker {
     private static let setKey = "EnsWilde.manualCacheExtraSet.v1"
@@ -317,7 +313,7 @@ struct ManualCacheExtraEditorView: View {
     // MARK: - Load / Reload
 
     private func loadIfNeeded() {
-        if !store.mgCurrentDict.isEmpty { return }
+        if store.mgCurrentDict.count > 0 { return }
         let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
         _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
         if let data = try? Data(contentsOf: liveURL),
@@ -371,7 +367,6 @@ struct ManualCacheExtraEditorView: View {
                     print(log)
                 }
 
-                // Refresh store from live so the editor shows exactly what iOS now has.
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 let modURL = URL.documentsDirectory
                     .appendingPathComponent("ModifiedMobileGestalt.plist", conformingTo: .data)
