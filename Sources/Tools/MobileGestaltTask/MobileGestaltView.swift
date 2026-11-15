@@ -67,15 +67,15 @@ struct MobileGestaltView: View {
             Section(header: Text(L("section_device_subtype"))) {
                 Picker(selection: $dynamicIslandType) {
                     Text(L("mg_subtype_none")).tag(0)
-                    Text("2436 (iPhone X / For iPhone SE)").tag(1)
-                    Text("2556 (iPhone 14 Pro)").tag(2)
-                    Text("2796 (iPhone 14 Pro Max)").tag(3)
-                    Text("2976 (iPhone 15 Pro Max / 16 Plus)").tag(4)
-                    Text("2622 (iPhone 16 Pro / 17 Pro)").tag(5)
-                    Text("2868 (iPhone 16 Pro Max / 17 Pro Max)").tag(6)
-                    Text("2736 (iPhone Air)").tag(7)
-                    Text("2662 (iPhone 18 Pro Dynamic Island)").tag(8)
-                    Text("Custom Subtype").tag(-1)
+                    Text(L("mg_subtype_2436")).tag(1)
+                    Text(L("mg_subtype_2556")).tag(2)
+                    Text(L("mg_subtype_2796")).tag(3)
+                    Text(L("mg_subtype_2976")).tag(4)
+                    Text(L("mg_subtype_2622")).tag(5)
+                    Text(L("mg_subtype_2868")).tag(6)
+                    Text(L("mg_subtype_2736")).tag(7)
+                    Text(L("mg_subtype_2662")).tag(8)
+                    Text(L("mg_subtype_custom")).tag(-1)
                 } label: {
                     Text(L("mg_device_subtype_preset"))
                 }
@@ -89,15 +89,15 @@ struct MobileGestaltView: View {
                         enableCustomSubtype = true
                     }
                 }
-                .alert("Dynamic Island iPhone 18 Pro required iOS 27RC+", isPresented: $showDIWarning) {
-                    Button("Cancel", role: .cancel) { dynamicIslandType = 0 }
-                    Button("Accept") { enableCustomSubtype = false }
+                .alert(L("mg_di_warning_title"), isPresented: $showDIWarning) {
+                    Button(L("alert_cancel"), role: .cancel) { dynamicIslandType = 0 }
+                    Button(L("alert_accept")) { enableCustomSubtype = false }
                 }
 
                 if enableCustomSubtype {
-                    Toggle("Enable Custom Subtype", isOn: $enableCustomSubtype)
+                    Toggle(L("mg_enable_custom_subtype"), isOn: $enableCustomSubtype)
                     if enableCustomSubtype {
-                        TextField("Enter ArtworkDeviceSubType (e.g. 2xxx)", text: $customSubtypeValue)
+                        TextField(L("mg_custom_subtype_placeholder"), text: $customSubtypeValue)
                             .keyboardType(.numberPad)
                     }
                 }
@@ -128,7 +128,7 @@ struct MobileGestaltView: View {
                 Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                     .disabled(Utils.requiresVersion(18))
                 
-                Toggle("Become iPadOS", isOn: Binding(
+                Toggle(L("mg_become_ipados"), isOn: Binding(
                     get: { return store.mgTrollPadBinding().wrappedValue },
                     set: { newValue in
                         _ = store.mgSetiPadOS(enable: newValue)
@@ -150,7 +150,7 @@ struct MobileGestaltView: View {
                         Text("\(regionCustomSuffix ?? "Custom")").tag("CUSTOM")
                     }
                 } label: {
-                    Text("Region")
+                    Text(L("mg_region"))
                 }
                 .pickerStyle(.menu)
                 .onChange(of: selectedRegionCode) { newVal in
@@ -205,16 +205,16 @@ struct MobileGestaltView: View {
                     Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
                 }
                 Button(role: .destructive, action: resetOriginal) {
-                    Label("Revert Tweaks", systemImage: "arrow.counterclockwise")
+                    Label(L("mg_revert_tweaks"), systemImage: "arrow.counterclockwise")
                 }
             }
         }
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Message", isPresented: $showErrorAlert) {
-            Button("OK") {}
+        .alert(L("alert_message_title"), isPresented: $showErrorAlert) {
+            Button(L("alert_ok")) {}
         } message: {
-            Text(lastError ?? "???")
+            Text(lastError ?? L("msg_error_unknown"))
         }
         .onAppear {
             let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
@@ -238,7 +238,6 @@ struct MobileGestaltView: View {
             }
             hydrateFromDict()
         }
-        // Lắng nghe sự thay đổi từ store để tự động cập nhật UI
         .onReceive(store.$mgCurrentDict) { newDict in
             if newDict.count > 0 {
                 self.mobileGestalt = newDict
@@ -269,7 +268,6 @@ struct MobileGestaltView: View {
         if let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary {
             productType = cacheExtra[MGKey.prodType] as? String ?? productType
             
-            // Đồng bộ Region Code và Hậu tố
             let sysconfig = cacheExtra[MGKey.regionSysconfig] as? String ?? ""
             let regionCode = cacheExtra[MGKey.regionCode] as? String ?? ""
             
@@ -421,12 +419,12 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "Saved and applied successfully. Hãy Hard Reboot để iOS nhận cấu hình mới."
+                    lastError = L("mg_save_success_message")
                     showErrorAlert = true
                 }
             } catch {
                 await MainActor.run {
-                    lastError = "Save failed: \(error.localizedDescription)"
+                    lastError = L("mg_save_failed") + " \(error.localizedDescription)"
                     showErrorAlert = true
                 }
             }
@@ -447,12 +445,12 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
-                    lastError = "All tweaks reverted successfully.\n\nPlease go to the SETTINGS tab and tap 'Respring Device' to apply the changes."
+                    lastError = L("mg_revert_success_message")
                     showErrorAlert = true
                 }
             } catch {
                 await MainActor.run {
-                    lastError = "Revert failed: \(error.localizedDescription)"
+                    lastError = L("mg_revert_failed") + " \(error.localizedDescription)"
                     showErrorAlert = true
                 }
             }
