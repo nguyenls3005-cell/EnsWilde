@@ -179,6 +179,7 @@ struct ManualCacheExtraEditorView: View {
     @State private var showingAdd = false
     @State private var editing: MGCacheExtraEntry?
     @State private var errorMessage: String?
+    @State private var successMessage: String?
 
     @State private var isSaving = false
     @State private var isReverting = false
@@ -281,6 +282,18 @@ struct ManualCacheExtraEditorView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .alert("Message", isPresented: Binding(
+            get: { successMessage != nil },
+            set: { if !$0 { successMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {
+                successMessage = nil
+                // Chuyển sang tab Apply sau khi bấm OK
+                NotificationCenter.default.post(name: .switchToApplyTab, object: nil)
+            }
+        } message: {
+            Text(successMessage ?? "")
+        }
         .alert("Revert all MobileGestalt tweaks?", isPresented: $showRevertConfirm) {
             Button("Cancel", role: .cancel) { }
             Button("Revert", role: .destructive) { revertChanges() }
@@ -362,7 +375,8 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isSaving = false
                     showApplyTab = true
-                    NotificationCenter.default.post(name: .switchToApplyTab, object: nil)
+                    // Hiển thị popup giống bên MobileGestaltView
+                    successMessage = "Saved and applied successfully. Hãy Hard Reboot để iOS nhận cấu hình mới."
                 }
             } catch {
                 await MainActor.run {
@@ -392,7 +406,8 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isReverting = false
                     showApplyTab = true
-                    NotificationCenter.default.post(name: .switchToApplyTab, object: nil)
+                    // Hiển thị popup giống bên MobileGestaltView
+                    successMessage = "All tweaks reverted successfully.\n\nPlease go to the SETTINGS tab and tap 'Respring Device' to apply the changes."
                 }
             } catch {
                 await MainActor.run {
