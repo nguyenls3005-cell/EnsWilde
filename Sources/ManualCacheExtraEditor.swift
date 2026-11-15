@@ -34,53 +34,63 @@ enum MGValueKind: String, CaseIterable, Identifiable {
     func parse(_ text: String) throws -> Any {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch self {
-        case .string: return text
+        case .string:
+            return text
         case .integer:
             if let v = Int64(trimmed) { return NSNumber(value: v) }
-            guard let v = UInt64(trimmed) else { throw MGEditError("Enter a valid whole number.") }
+            guard let v = UInt64(trimmed) else { throw MGEditError(L("manual_editor_err_invalid_int")) }
             return NSNumber(value: v)
         case .real:
-            guard let v = Double(trimmed), v.isFinite else { throw MGEditError("Enter a finite decimal number.") }
+            guard let v = Double(trimmed), v.isFinite else { throw MGEditError(L("manual_editor_err_invalid_real")) }
             return NSNumber(value: v)
         case .boolean:
             switch trimmed.lowercased() {
             case "true", "1": return NSNumber(value: true)
             case "false", "0": return NSNumber(value: false)
-            default: throw MGEditError("Use true or false for a Boolean value.")
+            default: throw MGEditError(L("manual_editor_err_invalid_bool"))
             }
         case .date:
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             if let v = formatter.date(from: trimmed) { return v }
             formatter.formatOptions = [.withInternetDateTime]
-            guard let v = formatter.date(from: trimmed) else { throw MGEditError("Enter an ISO 8601 date.") }
+            guard let v = formatter.date(from: trimmed) else {
+                throw MGEditError(L("manual_editor_err_invalid_date"))
+            }
             return v
         case .data:
-            guard let v = Data(base64Encoded: trimmed.filter { !$0.isWhitespace }) else { throw MGEditError("Enter valid Base64 data.") }
+            guard let v = Data(base64Encoded: trimmed.filter { !$0.isWhitespace }) else {
+                throw MGEditError(L("manual_editor_err_invalid_data"))
+            }
             return v
         case .array, .dictionary:
             let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\">\(text)</plist>"
             guard let v = try? PropertyListSerialization.propertyList(from: Data(xml.utf8), options: [], format: nil),
-                  (self == .array && v is [Any]) || (self == .dictionary && v is [String: Any]) else { throw MGEditError("Enter a valid XML plist.") }
+                  (self == .array && v is [Any]) || (self == .dictionary && v is [String: Any]) else {
+                throw MGEditError(L("manual_editor_err_invalid_xml"))
+            }
             return v
         }
     }
 
     func text(for value: Any) -> String {
         switch self {
-        case .boolean: return (value as? NSNumber)?.boolValue == true ? "true" : "false"
+        case .boolean:
+            return (value as? NSNumber)?.boolValue == true ? "true" : "false"
         case .date:
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             return (value as? Date).map { formatter.string(from: $0) } ?? ""
-        case .data: return (value as? Data)?.base64EncodedString() ?? ""
+        case .data:
+            return (value as? Data)?.base64EncodedString() ?? ""
         case .array, .dictionary:
             guard let data = try? PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0),
                   let xml = String(data: data, encoding: .utf8),
                   let start = xml.range(of: "<plist version=\"1.0\">"),
                   let end = xml.range(of: "</plist>", options: .backwards) else { return "" }
             return String(xml[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        default: return String(describing: value)
+        default:
+            return String(describing: value)
         }
     }
 }
@@ -98,6 +108,7 @@ struct MGCacheExtraEntry: Identifiable, Equatable {
     var text: String
 }
 
+// MARK: - Edit Tracker
 enum ManualEditTracker {
     private static let setKey = "EnsWilde.manualCacheExtraSet.v1"
     private static let removedKey = "EnsWilde.manualCacheExtraRemoved.v1"
@@ -146,6 +157,7 @@ enum ManualEditTracker {
     }
 }
 
+// MARK: - Main View
 struct ManualCacheExtraEditorView: View {
     @ObservedObject var store: GestaltStore
     @AppStorage("manualCacheEditorEnabled") private var manualCacheEditorEnabled: Bool = false
@@ -168,16 +180,16 @@ struct ManualCacheExtraEditorView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("CacheExtra Editor")) {
-                Toggle("Enable tweak", isOn: $manualCacheEditorEnabled)
+            Section(header: Text(L("manual_editor_title"))) {
+                Toggle(L("enable_tweak"), isOn: $manualCacheEditorEnabled)
                     .onChange(of: manualCacheEditorEnabled) { isEnabled in
                         if !isEnabled { showApplyTab = false }
                     }
             }
 
-            Section(header: Text("Fields")) {
+            Section(header: Text(L("manual_editor_fields"))) {
                 if entries.isEmpty {
-                    Text("CacheExtra is empty.").foregroundColor(.secondary)
+                    Text(L("manual_editor_empty")).foregroundColor(.secondary)
                 } else {
                     ForEach(filtered) { entry in
                         Button { editing = entry } label: {
@@ -190,47 +202,47 @@ struct ManualCacheExtraEditorView: View {
                         }
                         .tint(.primary)
                         .swipeActions {
-                            Button(role: .destructive) { removeEntry(entry) } label: { Label("Delete", systemImage: "trash") }
+                            Button(role: .destructive) { removeEntry(entry) } label: { Label(L("manual_editor_delete"), systemImage: "trash") }
                         }
                     }
                 }
             }
 
-            Section(header: Text("Save & Revert")) {
+            Section(header: Text(L("manual_editor_save_revert"))) {
                 Button { saveChanges() } label: {
                     HStack {
                         if isSaving { ProgressView().controlSize(.small) } else { Image(systemName: "square.and.arrow.down") }
-                        Text(isSaving ? "Saving…" : "Save Settings")
+                        Text(isSaving ? L("manual_editor_saving") : L("manual_editor_save"))
                     }
                 }.disabled(isSaving || isReverting)
 
                 Button(role: .destructive) { showRevertConfirm = true } label: {
                     HStack {
                         if isReverting { ProgressView().controlSize(.small) } else { Image(systemName: "arrow.counterclockwise") }
-                        Text(isReverting ? "Reverting…" : "Revert Tweaks")
+                        Text(isReverting ? L("manual_editor_reverting") : L("manual_editor_revert"))
                     }
                 }.disabled(isSaving || isReverting)
             }
         }
-        .searchable(text: $searchText, prompt: "Search keys…")
-        .navigationTitle("CacheExtra Editor")
+        .searchable(text: $searchText, prompt: L("manual_editor_search"))
+        .navigationTitle(L("manual_editor_title"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) { Button { showingAdd = true } label: { Image(systemName: "plus") } }
         }
         .sheet(isPresented: $showingAdd) { ManualCacheExtraFieldEditor(field: nil) { newEntry in addOrUpdate(newEntry) } }
         .sheet(item: $editing) { entry in ManualCacheExtraFieldEditor(field: entry) { updated in addOrUpdate(updated) } }
-        .alert("Invalid value", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-            Button("OK", role: .cancel) { errorMessage = nil }
+        .alert(L("manual_editor_invalid_value"), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button(L("alert_ok"), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? "") }
-        .alert("Message", isPresented: Binding(get: { successMessage != nil }, set: { if !$0 { successMessage = nil } })) {
-            Button("OK", role: .cancel) { successMessage = nil }
+        .alert(L("alert_message_title"), isPresented: Binding(get: { successMessage != nil }, set: { if !$0 { successMessage = nil } })) {
+            Button(L("alert_ok"), role: .cancel) { successMessage = nil }
         } message: { Text(successMessage ?? "") }
-        .alert("Revert all MobileGestalt tweaks?", isPresented: $showRevertConfirm) {
-            Button("Cancel", role: .cancel) { }
-            Button("Revert", role: .destructive) { revertChanges() }
+        .alert(L("manual_editor_revert_confirm_title"), isPresented: $showRevertConfirm) {
+            Button(L("alert_cancel"), role: .cancel) { }
+            Button(L("manual_editor_revert"), role: .destructive) { revertChanges() }
         } message: {
-            Text("This deletes the live MobileGestalt cache file.")
+            Text(L("manual_editor_revert_confirm_message"))
         }
         .onAppear { loadIfNeeded(); reload() }
     }
@@ -259,15 +271,11 @@ struct ManualCacheExtraEditorView: View {
     private func addOrUpdate(_ entry: MGCacheExtraEntry) {
         do {
             let parsed = try entry.kind.parse(entry.text)
-            
-            // Cập nhật trực tiếp vào mgCurrentDict
             if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
                 ce[entry.key] = parsed
             }
-            
             ManualEditTracker.setValue(parsed, forKey: entry.key)
             
-            // QUAN TRỌNG: Trigger @Published bằng cách gán lại dictionary
             let newDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
             store.mgCurrentDict = newDict
             
@@ -303,10 +311,10 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isSaving = false
                     showApplyTab = true
-                    successMessage = "Saved and applied successfully. Hãy Hard Reboot để iOS nhận cấu hình mới."
+                    successMessage = L("mg_save_success_message")
                 }
             } catch {
-                await MainActor.run { isSaving = false; errorMessage = "Save failed: \(error.localizedDescription)" }
+                await MainActor.run { isSaving = false; errorMessage = L("mg_save_failed") + " \(error.localizedDescription)" }
             }
         }
     }
@@ -325,15 +333,16 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isReverting = false
                     showApplyTab = true
-                    successMessage = "All tweaks reverted successfully."
+                    successMessage = L("mg_revert_success_message")
                 }
             } catch {
-                await MainActor.run { isReverting = false; errorMessage = "Revert failed: \(error.localizedDescription)" }
+                await MainActor.run { isReverting = false; errorMessage = L("mg_revert_failed") + " \(error.localizedDescription)" }
             }
         }
     }
 }
 
+// MARK: - Field Editor
 struct ManualCacheExtraFieldEditor: View {
     @Environment(\.dismiss) var dismiss
     let field: MGCacheExtraEntry?
@@ -347,24 +356,24 @@ struct ManualCacheExtraFieldEditor: View {
     var body: some View {
         NavigationView {
             Form {
-                Section("Key") {
-                    TextField("Obfuscated key", text: $key).font(.system(.body, design: .monospaced)).disabled(field != nil)
+                Section(L("manual_editor_key")) {
+                    TextField(L("manual_editor_key_placeholder"), text: $key).font(.system(.body, design: .monospaced)).disabled(field != nil)
                 }
-                Section("Type") {
-                    Picker("Type", selection: $kind) {
+                Section(L("manual_editor_type")) {
+                    Picker(L("manual_editor_type"), selection: $kind) {
                         ForEach(MGValueKind.allCases) { k in Text(k.rawValue).tag(k) }
                     }.pickerStyle(.menu)
                 }
-                Section("Value") {
+                Section(L("manual_editor_value")) {
                     valueEditor
                     if let e = localError { Text(e).font(.caption).foregroundColor(.red) }
                 }
             }
-            .navigationTitle(field == nil ? "Add Field" : "Edit Field")
+            .navigationTitle(field == nil ? L("manual_editor_add_field") : L("manual_editor_edit_field"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { save() }.disabled(key.isEmpty) }
+                ToolbarItem(placement: .cancellationAction) { Button(L("alert_cancel")) { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { Button(L("alert_save")) { save() }.disabled(key.isEmpty) }
             }
             .onAppear {
                 if let f = field { key = f.key; kind = f.kind; text = f.text }
@@ -376,19 +385,19 @@ struct ManualCacheExtraFieldEditor: View {
     private var valueEditor: some View {
         switch kind {
         case .boolean:
-            Picker("Value", selection: $text) { Text("true").tag("true"); Text("false").tag("false") }.pickerStyle(.segmented)
+            Picker(L("manual_editor_value"), selection: $text) { Text("true").tag("true"); Text("false").tag("false") }.pickerStyle(.segmented)
         case .integer:
-            TextField("e.g. 1", text: $text).keyboardType(.numbersAndPunctuation).font(.system(.body, design: .monospaced))
+            TextField(L("manual_editor_placeholder_int"), text: $text).keyboardType(.numbersAndPunctuation).font(.system(.body, design: .monospaced))
         case .real:
-            TextField("e.g. 1.5", text: $text).keyboardType(.decimalPad).font(.system(.body, design: .monospaced))
+            TextField(L("manual_editor_placeholder_real"), text: $text).keyboardType(.decimalPad).font(.system(.body, design: .monospaced))
         case .string:
-            TextField("String value", text: $text)
+            TextField(L("manual_editor_placeholder_string"), text: $text)
         case .data:
-            VStack { Text("Base64").font(.caption); TextEditor(text: $text).frame(minHeight: 100).font(.system(.caption, design: .monospaced)) }
+            VStack(alignment: .leading) { Text(L("manual_editor_placeholder_base64")).font(.caption).foregroundColor(.secondary); TextEditor(text: $text).frame(minHeight: 100).font(.system(.caption, design: .monospaced)) }
         case .date:
-            TextField("ISO 8601", text: $text).font(.system(.body, design: .monospaced))
+            TextField(L("manual_editor_placeholder_date"), text: $text).font(.system(.body, design: .monospaced))
         case .array, .dictionary:
-            VStack { Text("Plist XML").font(.caption); TextEditor(text: $text).frame(minHeight: 150).font(.system(.caption, design: .monospaced)) }
+            VStack(alignment: .leading) { Text(L("manual_editor_placeholder_xml")).font(.caption).foregroundColor(.secondary); TextEditor(text: $text).frame(minHeight: 150).font(.system(.caption, design: .monospaced)) }
         }
     }
 
