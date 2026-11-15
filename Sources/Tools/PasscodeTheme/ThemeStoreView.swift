@@ -18,7 +18,7 @@ struct ThemeStoreView: View {
                 RepositoriesListView(storeManager: storeManager)
             }
         }
-        .navigationTitle("Theme Store")
+        .navigationTitle(L("theme_store_title"))
         .toolbar {
             if storeManager.selectedRepository == nil {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -45,16 +45,16 @@ struct RepositoriesListView: View {
                 Section {
                     VStack(spacing: 12) {
                         Image(systemName: "folder").font(.system(size: 48)).foregroundStyle(.secondary)
-                        Text("No repos. Tap + to add.").font(.subheadline).foregroundStyle(.secondary)
+                        Text(L("theme_store_empty")).font(.subheadline).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity).padding(.vertical, 20)
                 }
             } else {
-                Section(header: Text("Repositories")) {
+                Section(header: Text(L("theme_store_repos"))) {
                     ForEach(storeManager.repositories) { repo in
                         RepoRow(repo: repo, storeManager: storeManager)
                             .contextMenu {
                                 Button(role: .destructive) { storeManager.removeRepo(repo) } label: {
-                                    Label(repo.parentIndex != nil ? "Delete Group" : "Delete Repo", systemImage: "trash")
+                                    Label(repo.parentIndex != nil ? L("theme_store_delete_group") : L("theme_store_delete_repo"), systemImage: "trash")
                                 }
                             }
                     }
@@ -81,9 +81,9 @@ struct RepoRow: View {
                         .foregroundColor(.primary)     // ← chữ trắng, không cam
                         .font(.body)
                     if let c = themeCount {
-                        Text("\(c) themes").font(.caption).foregroundColor(.secondary)
+                        Text(String(format: L("theme_store_theme_count"), c)).font(.caption).foregroundColor(.secondary)
                     } else {
-                        Text("Loading...").font(.caption).foregroundColor(.secondary)
+                        Text(L("theme_store_loading")).font(.caption).foregroundColor(.secondary)
                     }
                 }
                 Spacer()
@@ -141,7 +141,7 @@ struct ThemesListView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle").font(.system(size: 48)).foregroundStyle(.red)
                     Text(error).foregroundColor(.secondary).multilineTextAlignment(.center)
-                    Button("Retry") {
+                    Button(L("theme_store_retry")) {
                         if let r = storeManager.selectedRepository {
                             Task { await storeManager.fetchThemes(from: r) }
                         }
@@ -150,7 +150,7 @@ struct ThemesListView: View {
             } else if storeManager.remoteThemes.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "photo.on.rectangle.angled").font(.system(size: 48)).foregroundStyle(.secondary)
-                    Text("No themes found.").foregroundColor(.secondary)
+                    Text(L("theme_store_no_themes")).foregroundColor(.secondary)
                 }.padding(.top, 60)
             } else {
                 LazyVGrid(columns: columns, spacing: 16) {
@@ -165,7 +165,7 @@ struct ThemesListView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: backAction) {
-                    HStack(spacing: 4) { Image(systemName: "chevron.left"); Text("Theme Store") }
+                    HStack(spacing: 4) { Image(systemName: "chevron.left"); Text(L("theme_store_title")) }
                 }
             }
         }
@@ -194,20 +194,20 @@ struct ThemeCard: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(theme.name).font(.subheadline.weight(.semibold)).foregroundColor(.primary).lineLimit(1)
-                Text("by \(theme.authors)").font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                Text(String(format: L("theme_store_by_author"), theme.authors)).font(.caption2).foregroundColor(.secondary).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
             
             if isDownloaded {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill").font(.caption2)
-                    Text("Downloaded").font(.caption2.weight(.semibold))
+                    Text(L("theme_store_downloaded")).font(.caption2.weight(.semibold))
                 }.foregroundColor(.green).frame(maxWidth: .infinity).frame(height: 32)
             } else {
                 Button { download() } label: {
                     HStack(spacing: 4) {
                         if isDownloading { ProgressView().controlSize(.mini) }
                         else { Image(systemName: "arrow.down.circle.fill").font(.caption2) }
-                        Text(isDownloading ? "Downloading" : "Download").font(.caption2.weight(.semibold))
+                        Text(isDownloading ? L("theme_store_downloading") : L("theme_store_download_btn")).font(.caption2.weight(.semibold))
                     }
                     .frame(maxWidth: .infinity).frame(height: 32)
                     .background(AppTheme.accent).foregroundColor(.white)
@@ -217,7 +217,7 @@ struct ThemeCard: View {
         }
         .padding(10).background(Color(.secondarySystemGroupedBackground)).cornerRadius(14)
         .task { await loadPreview() }
-        .alert("Error", isPresented: $showError) { Button("OK") {} } message: { Text(errorMsg) }
+        .alert(L("alert_error"), isPresented: $showError) { Button(L("alert_ok")) {} } message: { Text(errorMsg) }
     }
     
     private func loadPreview() async {
@@ -256,20 +256,20 @@ struct AddRepoSheet: View {
                     TextField("https://...", text: $urlText)
                         .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
                         .font(.system(.body, design: .monospaced))
-                } header: { Text("JSON URL") } footer: {
-                    Text("Paste a direct themes JSON or an index. Index auto-flattens into separate repos.")
+                } header: { Text(L("theme_store_json_url")) } footer: {
+                    Text(L("theme_store_json_desc"))
                 }
                 if let err = errorText {
                     Section { Text(err).foregroundColor(.red).font(.footnote) }
                 }
             }
-            .navigationTitle("Add Repo").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(L("add_repo")).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(L("alert_cancel")) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     if isAdding { ProgressView() }
                     else {
-                        Button("Add") { Task { await add() } }
+                        Button(L("button_add")) { Task { await add() } }
                             .bold().disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }
