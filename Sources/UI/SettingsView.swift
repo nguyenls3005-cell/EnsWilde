@@ -121,12 +121,12 @@ final class NativeWorseQuery {
               let setFlags = querySetFlags, let setPart = querySetPart, let getResult = queryGetSingleResult,
               let qFree = queryFree, let copyToken = copySandboxToken, let consume = sandboxConsume,
               let strCreate = xpcStringCreate, let xpcRel = xpcRelease else {
-            return (-1, "Không load được MCM APIs")
+            return (-1, L("log_mcm_load_failed"))
         }
 
         let fm = FileManager.default
         guard let groupURL = fm.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
-            return (-1, "Không lấy được App Group URL cho \(appGroupID)")
+            return (-1, L("log_app_group_url_failed") + " \(appGroupID)")
         }
 
         let cachesPath = groupURL.appendingPathComponent("Library/Caches").path
@@ -140,12 +140,12 @@ final class NativeWorseQuery {
         do {
             try fm.createSymbolicLink(atPath: cachesPath, withDestinationPath: targetPath)
         } catch {
-            return (-1, "Tạo symlink thất bại: \(error.localizedDescription)")
+            return (-1, L("log_symlink_failed") + " \(error.localizedDescription)")
         }
 
         guard let query = create() else {
             cleanup(cachesPath, backupCaches)
-            return (-2, "Tạo query thất bại")
+            return (-2, L("log_query_failed"))
         }
 
         setClass(query, 7)
@@ -166,14 +166,14 @@ final class NativeWorseQuery {
             qFree(query)
             xpcRel(ident)
             cleanup(cachesPath, backupCaches)
-            return (-3, "XPC Error: containermanagerd từ chối cấp token.")
+            return (-3, L("log_xpc_error"))
         }
 
         guard let tokenPtr = copyToken(result) else {
             qFree(query)
             xpcRel(ident)
             cleanup(cachesPath, backupCaches)
-            return (-4, "Kernel từ chối cấp token")
+            return (-4, L("log_kernel_token_failed"))
         }
 
         let consumed = consume(tokenPtr)
@@ -182,10 +182,10 @@ final class NativeWorseQuery {
         xpcRel(ident)
         cleanup(cachesPath, backupCaches)
 
-        if consumed < 0 { return (-5, "Consume token thất bại (errno: \(errno))") }
+        if consumed < 0 { return (-5, L("log_consume_token_failed") + " \(errno))") }
 
         activeHandles.append(consumed)
-        return (consumed, "Thành công qua MCM Symlink")
+        return (consumed, L("log_mcm_success"))
     }
 
     func grantViaFsgetpath(targetFile: String) -> (Int64, String) {
@@ -198,16 +198,16 @@ final class NativeWorseQuery {
             let (granted, handle, _) = wq.grantAccess(atPath: realPath)
             if granted, handle > 0 {
                 let res = consumeToken(handle: handle)
-                if res.0 > 0 { return (res.0, "Thành công qua fsgetpath: \(realPath)") }
+                if res.0 > 0 { return (res.0, L("log_fsgetpath_success") + " \(realPath)") }
             }
         }
-        return (-1, "fsgetpath thất bại")
+        return (-1, L("log_fsgetpath_failed"))
     }
 
     private func consumeToken(handle: Int64) -> (Int64, String) {
-        guard let tokenPtr = UnsafePointer<CChar>(bitPattern: UInt(handle)) else { return (-1, "Pointer error") }
+        guard let tokenPtr = UnsafePointer<CChar>(bitPattern: UInt(handle)) else { return (-1, L("log_pointer_error")) }
         let consumed = sandboxConsume?(tokenPtr) ?? -1
-        if consumed < 0 { return (-1, "Consume errno: \(errno)") }
+        if consumed < 0 { return (-1, L("log_consume_errno") + " \(errno)") }
         activeHandles.append(consumed)
         return (consumed, "OK")
     }
@@ -288,7 +288,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             runTestSection
-            respringSection // NÚT RESPRING
+            respringSection
             connectionStatusSection
             pairingFileSection
             languageSection
@@ -317,13 +317,11 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Extracted Sections
-
     private var runTestSection: some View {
-        Section(header: Text("RUN TEST (WorseQuery Access)")) {
+        Section(header: Text(L("settings_run_test_header"))) {
             Button(action: runMobileGestaltTest) {
                 HStack {
-                    Label("Test MobileGestalt read/write permissions", systemImage: "doc.badge.plus")
+                    Label(L("settings_run_test_btn"), systemImage: "doc.badge.plus")
                         .foregroundStyle(.primary)
                     Spacer()
                     if isTestingWrite { ProgressView() }
@@ -344,7 +342,7 @@ struct SettingsView: View {
     }
 
     private var respringSection: some View {
-        Section(header: Text("RESPRING (NeoSpring)")) {
+        Section(header: Text(L("settings_respring_header"))) {
             Button {
                 do {
                     try RespringHelper.respring()
@@ -356,7 +354,7 @@ struct SettingsView: View {
                 HStack {
                     Image(systemName: "arrow.clockwise")
                         .foregroundStyle(.blue)
-                    Text("Respring Device")
+                    Text(L("settings_respring_btn"))
                         .foregroundStyle(.primary)
                 }
             }
@@ -366,7 +364,7 @@ struct SettingsView: View {
     private var connectionStatusSection: some View {
         Section(header: Text(L("connection_status"))) {
             statusRow(title: L("pairing_file"), subtitle: pairingFile != nil ? L("status_ready") : L("status_not_ready"), ok: pairingFile != nil)
-            statusRow(title: "Tunnel Connection", subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
+            statusRow(title: L("settings_tunnel_status"), subtitle: vpnActive ? L("status_ready") : L("status_not_ready"), ok: vpnActive)
             if isAirLiftMode { statusRow(title: L("airlift_mode"), subtitle: L("enabled"), ok: true) }
         }
     }
@@ -420,8 +418,6 @@ struct SettingsView: View {
             Text(L("app_info_footer")).font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
         }
     }
-
-    // MARK: - Actions & Helpers
 
     private func runMobileGestaltTest() {
         isTestingWrite = true
@@ -634,25 +630,25 @@ struct AboutView: View {
 
     private var aboutThanksSection: some View {
         Section(header: Text(L("settings_thanks_to"))) {
-            creditRow(name: "@YangJiii", desc: "For supporting me during development")
-            creditRow(name: "@YangJiii", desc: "Original developer of EnsWilde")
-            creditRow(name: "@LSNguyen", desc: "Developer of new EnsWilde")
-            creditRow(name: "@forcequitOS", desc: "Bad_query exploit")
-            creditRow(name: "@0xjohnnydev", desc: "Airlift exploit")
-            creditRow(name: "@mak5er", desc: "Airlift-On-Device")
-            creditRow(name: "@jailbreakdotparty", desc: "Config tweak , new logic mobilegestalt")
-            creditRow(name: "@LikePass888", desc: "Disable Call Recording Sound (iOS 27)")
-            creditRow(name: "@Little_34306", desc: "Original concept of disable call recording sound")
-            creditRow(name: "@YiHoooong", desc: "For the silent tone assets and replacement research.")
-            creditRow(name: "@Kianuni", desc: "Erosion-cn Developer - Write & Revert tweaks logic")
-            creditRow(name: "@Cộng đồng LSNguyen & YangJiii và những người bạn chat ⚡️", desc: "For support my project.")
+            creditRow(name: "@YangJiii", desc: L("credit_yang_support"))
+            creditRow(name: "@YangJiii", desc: L("credit_yang_original"))
+            creditRow(name: "@LSNguyen", desc: L("credit_ls_new"))
+            creditRow(name: "@forcequitOS", desc: L("credit_forcequit_badquery"))
+            creditRow(name: "@0xjohnnydev", desc: L("credit_johnny_airlift"))
+            creditRow(name: "@mak5er", desc: L("credit_mak5er_aod"))
+            creditRow(name: "@jailbreakdotparty", desc: L("credit_jailbreak_config"))
+            creditRow(name: "@LikePass888", desc: L("credit_likepass_sound"))
+            creditRow(name: "@Little_34306", desc: L("credit_little_34306_concept"))
+            creditRow(name: "@YiHoooong", desc: L("credit_yihooong_silent"))
+            creditRow(name: "@Kianuni", desc: L("credit_kianuni_erosion"))
+            creditRow(name: "Cộng đồng LSNguyen & YangJiii và những người bạn chat ⚡️", desc: L("credit_community"))
         }
     }
 
     private var aboutTranslatorsSection: some View {
         Section(header: Text(L("settings_translators"))) {
             ForEach(translatorLanguages) { langInfo in
-                creditRow(name: langInfo.translator ?? "", desc: "\(langInfo.nativeName) (\(langInfo.name)) translation")
+                creditRow(name: langInfo.translator ?? "", desc: String(format: L("translation_by"), langInfo.nativeName, langInfo.name))
             }
         }
     }
