@@ -2,15 +2,22 @@
 //  ManualCacheExtraEditor.swift
 //  EnsWilde
 //
-//  Trình chỉnh key CacheExtra bằng tay, port từ GestaltX PlistValueKind.
+//  Manual CacheExtra key editor. Value-kind parsing ported from GestaltX.
 //
 
 import SwiftUI
 import CoreFoundation
 
 enum MGValueKind: String, CaseIterable, Identifiable {
-    case string = "String", integer = "Integer", real = "Real", boolean = "Boolean"
-    case data = "Data", array = "Array", dictionary = "Dictionary", date = "Date"
+    case string = "String"
+    case integer = "Integer"
+    case real = "Real"
+    case boolean = "Boolean"
+    case data = "Data"
+    case array = "Array"
+    case dictionary = "Dictionary"
+    case date = "Date"
+
     var id: String { rawValue }
 
     static func detect(_ value: Any) -> Self {
@@ -28,39 +35,40 @@ enum MGValueKind: String, CaseIterable, Identifiable {
     func parse(_ text: String) throws -> Any {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch self {
-        case .string: return text
+        case .string:
+            return text
         case .integer:
             if let v = Int64(trimmed) { return NSNumber(value: v) }
-            guard let v = UInt64(trimmed) else { throw MGEditError("Nhập số nguyên hợp lệ.") }
+            guard let v = UInt64(trimmed) else { throw MGEditError("Enter a valid whole number.") }
             return NSNumber(value: v)
         case .real:
-            guard let v = Double(trimmed), v.isFinite else { throw MGEditError("Nhập số thực hợp lệ.") }
+            guard let v = Double(trimmed), v.isFinite else { throw MGEditError("Enter a finite decimal number.") }
             return NSNumber(value: v)
         case .boolean:
             switch trimmed.lowercased() {
             case "true", "1": return NSNumber(value: true)
             case "false", "0": return NSNumber(value: false)
-            default: throw MGEditError("Nhập true hoặc false.")
+            default: throw MGEditError("Use true or false for a Boolean value.")
             }
         case .date:
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let v = f.date(from: trimmed) { return v }
-            f.formatOptions = [.withInternetDateTime]
-            guard let v = f.date(from: trimmed) else {
-                throw MGEditError("Nhập ngày ISO 8601, ví dụ: 2026-11-09T12:00:00Z")
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let v = formatter.date(from: trimmed) { return v }
+            formatter.formatOptions = [.withInternetDateTime]
+            guard let v = formatter.date(from: trimmed) else {
+                throw MGEditError("Enter an ISO 8601 date, such as 2026-11-09T12:00:00Z.")
             }
             return v
         case .data:
             guard let v = Data(base64Encoded: trimmed.filter { !$0.isWhitespace }) else {
-                throw MGEditError("Nhập Base64 hợp lệ.")
+                throw MGEditError("Enter valid Base64 data.")
             }
             return v
         case .array, .dictionary:
             let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\">\(text)</plist>"
             guard let v = try? PropertyListSerialization.propertyList(from: Data(xml.utf8), options: [], format: nil),
                   (self == .array && v is [Any]) || (self == .dictionary && v is [String: Any]) else {
-                throw MGEditError("Nhập XML plist array/dictionary hợp lệ.")
+                throw MGEditError("Enter a valid XML plist array or dictionary fragment.")
             }
             return v
         }
@@ -68,19 +76,22 @@ enum MGValueKind: String, CaseIterable, Identifiable {
 
     func text(for value: Any) -> String {
         switch self {
-        case .boolean: return (value as? NSNumber)?.boolValue == true ? "true" : "false"
+        case .boolean:
+            return (value as? NSNumber)?.boolValue == true ? "true" : "false"
         case .date:
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return (value as? Date).map { f.string(from: $0) } ?? ""
-        case .data: return (value as? Data)?.base64EncodedString() ?? ""
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return (value as? Date).map { formatter.string(from: $0) } ?? ""
+        case .data:
+            return (value as? Data)?.base64EncodedString() ?? ""
         case .array, .dictionary:
             guard let data = try? PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0),
                   let xml = String(data: data, encoding: .utf8),
                   let start = xml.range(of: "<plist version=\"1.0\">"),
                   let end = xml.range(of: "</plist>", options: .backwards) else { return "" }
             return String(xml[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        default: return String(describing: value)
+        default:
+            return String(describing: value)
         }
     }
 }
@@ -108,14 +119,16 @@ struct ManualCacheExtraEditorView: View {
     @State private var errorMessage: String?
 
     private var filtered: [MGCacheExtraEntry] {
-        searchText.isEmpty ? entries : entries.filter { $0.key.localizedCaseInsensitiveContains(searchText) }
+        searchText.isEmpty
+            ? entries
+            : entries.filter { $0.key.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
         List {
             if entries.isEmpty {
                 Section {
-                    Text("CacheExtra trống.").foregroundColor(.secondary)
+                    Text("CacheExtra is empty.").foregroundColor(.secondary)
                 }
             } else {
                 Section {
@@ -138,14 +151,14 @@ struct ManualCacheExtraEditorView: View {
                             Button(role: .destructive) {
                                 removeEntry(entry)
                             } label: {
-                                Label("Xóa", systemImage: "trash")
+                                Label("Delete", systemImage: "trash")
                             }
                         }
                     }
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Tìm key...")
+        .searchable(text: $searchText, prompt: "Search keys…")
         .navigationTitle("CacheExtra Editor")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -159,7 +172,7 @@ struct ManualCacheExtraEditorView: View {
         .sheet(item: $editing) { entry in
             ManualCacheExtraFieldEditor(field: entry) { updated in addOrUpdate(updated) }
         }
-        .alert("Lỗi", isPresented: Binding(
+        .alert("Invalid value", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -213,7 +226,7 @@ struct ManualCacheExtraFieldEditor: View {
         NavigationView {
             Form {
                 Section("Key") {
-                    TextField("Obfuscated key (22 ký tự)", text: $key)
+                    TextField("Obfuscated key (22 chars)", text: $key)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .font(.system(.body, design: .monospaced))
@@ -234,14 +247,14 @@ struct ManualCacheExtraFieldEditor: View {
                     }
                 }
             }
-            .navigationTitle(field == nil ? "Thêm field" : "Sửa field")
+            .navigationTitle(field == nil ? "Add Field" : "Edit Field")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Hủy") { dismiss() }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Lưu") { save() }
+                    Button("Save") { save() }
                         .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -265,13 +278,15 @@ struct ManualCacheExtraFieldEditor: View {
             }
             .pickerStyle(.segmented)
         case .integer:
-            TextField("Ví dụ: 1", text: $text).keyboardType(.numbersAndPunctuation)
+            TextField("e.g. 1", text: $text)
+                .keyboardType(.numbersAndPunctuation)
                 .font(.system(.body, design: .monospaced))
         case .real:
-            TextField("Ví dụ: 1.5", text: $text).keyboardType(.decimalPad)
+            TextField("e.g. 1.5", text: $text)
+                .keyboardType(.decimalPad)
                 .font(.system(.body, design: .monospaced))
         case .string:
-            TextField("Chuỗi", text: $text)
+            TextField("String value", text: $text)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
         case .data:
@@ -284,11 +299,11 @@ struct ManualCacheExtraFieldEditor: View {
                     .textInputAutocapitalization(.never)
             }
         case .date:
-            TextField("ISO 8601", text: $text)
+            TextField("ISO 8601 (e.g. 2026-11-09T12:00:00Z)", text: $text)
                 .font(.system(.body, design: .monospaced))
         case .array, .dictionary:
             VStack(alignment: .leading, spacing: 4) {
-                Text("Plist XML").font(.caption).foregroundColor(.secondary)
+                Text("Plist XML fragment").font(.caption).foregroundColor(.secondary)
                 TextEditor(text: $text)
                     .frame(minHeight: 150)
                     .font(.system(.caption, design: .monospaced))
