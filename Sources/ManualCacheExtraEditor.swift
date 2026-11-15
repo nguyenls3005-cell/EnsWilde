@@ -2,11 +2,14 @@
 //  ManualCacheExtraEditor.swift
 //  EnsWilde
 //
-//  Manual CacheExtra key editor. Value-kind parsing ported from GestaltX.
+//  Standalone CacheExtra key editor with its own enable toggle, Save, and Revert.
+//  Value-kind parsing ported from GestaltX.
 //
 
 import SwiftUI
 import CoreFoundation
+
+// MARK: - Value kinds
 
 enum MGValueKind: String, CaseIterable, Identifiable {
     case string = "String"
@@ -109,14 +112,82 @@ struct MGCacheExtraEntry: Identifiable, Equatable {
     var text: String
 }
 
+// MARK: - Edit Tracker
+//
+// Persists the user's manual CacheExtra edits so `applyGestalt` can merge them
+// into the live plist alongside its own allowlist. Kept in UserDefaults to
+// survive app restarts. Does NOT touch any existing Gestalt logic.
+
+enum ManualEditTracker {
+    private static let setKey = "EnsWilde.manualCacheExtraSet.v1"
+    private static let removedKey = "EnsWilde.manualCacheExtraRemoved.v1"
+
+    static func setValue(_ value: Any, forKey key: String) {
+        var dict = loadSet()
+        dict[key] = value
+        saveSet(dict)
+
+        var removed = loadRemoved()
+        removed.remove(key)
+        saveRemoved(removed)
+    }
+
+    static func removeKey(_ key: String) {
+        var dict = loadSet()
+        dict.removeValue(forKey: key)
+        saveSet(dict)
+
+        var removed = loadRemoved()
+        removed.insert(key)
+        saveRemoved(removed)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: setKey)
+        UserDefaults.standard.removeObject(forKey: removedKey)
+    }
+
+    static func loadSet() -> [String: Any] {
+        guard let data = UserDefaults.standard.data(forKey: setKey),
+              let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+            return [:]
+        }
+        return dict
+    }
+
+    static func loadRemoved() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: removedKey) ?? [])
+    }
+
+    static func saveSet(_ dict: [String: Any]) {
+        guard PropertyListSerialization.propertyList(dict, isValidFor: .binary),
+              let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .binary, options: 0) else { return }
+        UserDefaults.standard.set(data, forKey: setKey)
+    }
+
+    static func saveRemoved(_ set: Set<String>) {
+        UserDefaults.standard.set(Array(set), forKey: removedKey)
+    }
+}
+
+// MARK: - Main View
+
 struct ManualCacheExtraEditorView: View {
     @ObservedObject var store: GestaltStore
+
+    @AppStorage("manualCacheEditorEnabled") private var manualCacheEditorEnabled: Bool = false
+    @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
 
     @State private var entries: [MGCacheExtraEntry] = []
     @State private var searchText = ""
     @State private var showingAdd = false
     @State private var editing: MGCacheExtraEntry?
     @State private var errorMessage: String?
+    @State private var successMessage: String?
+
+    @State private var isSaving = false
+    @State private var isReverting = false
+    @State private var showRevertConfirm = false
 
     private var filtered: [MGCacheExtraEntry] {
         searchText.isEmpty
@@ -125,13 +196,18 @@ struct ManualCacheExtraEditorView: View {
     }
 
     var body: some View {
-        List {
-            if entries.isEmpty {
-                Section {
+        Form {
+            Section(header: Text("CacheExtra Editor")) {
+                Toggle("Enable tweak", isOn: $manualCacheEditorEnabled)
+                    .onChange(of: manualCacheEditorEnabled) { isEnabled in
+                        if !isEnabled { showApplyTab = false }
+                    }
+            }
+
+            Section(header: Text("Fields")) {
+                if entries.isEmpty {
                     Text("CacheExtra is empty.").foregroundColor(.secondary)
-                }
-            } else {
-                Section {
+                } else {
                     ForEach(filtered) { entry in
                         Button {
                             editing = entry
@@ -140,7 +216,7 @@ struct ManualCacheExtraEditorView: View {
                                 Text(entry.key)
                                     .font(.system(.caption, design: .monospaced))
                                     .lineLimit(1)
-                                Text("\(entry.kind.rawValue) · \(entry.text.prefix(100))")
+                                Text("\(entry.kind.rawValue) · \(entry.text.prefix(120))")
                                     .font(.system(.caption2, design: .monospaced))
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
@@ -156,6 +232,44 @@ struct ManualCacheExtraEditorView: View {
                         }
                     }
                 }
+            }
+
+            Section(header: Text("Manage")) {
+                Button {
+                    showingAdd = true
+                } label: {
+                    Label("Add Field", systemImage: "plus.circle")
+                }
+            }
+
+            Section(header: Text("Save & Revert")) {
+                Button {
+                    saveChanges()
+                } label: {
+                    HStack {
+                        if isSaving {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "square.and.arrow.down")
+                        }
+                        Text(isSaving ? "Saving…" : "Save Settings")
+                    }
+                }
+                .disabled(isSaving || isReverting)
+
+                Button(role: .destructive) {
+                    showRevertConfirm = true
+                } label: {
+                    HStack {
+                        if isReverting {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.counterclockwise")
+                        }
+                        Text(isReverting ? "Reverting…" : "Revert Tweaks")
+                    }
+                }
+                .disabled(isSaving || isReverting)
             }
         }
         .searchable(text: $searchText, prompt: "Search keys…")
@@ -180,7 +294,39 @@ struct ManualCacheExtraEditorView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .onAppear { reload() }
+        .alert("Done", isPresented: Binding(
+            get: { successMessage != nil },
+            set: { if !$0 { successMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { successMessage = nil }
+        } message: {
+            Text(successMessage ?? "")
+        }
+        .alert("Revert all MobileGestalt tweaks?", isPresented: $showRevertConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Revert", role: .destructive) { revertChanges() }
+        } message: {
+            Text("This deletes the live MobileGestalt cache file. iOS will regenerate a clean copy on the next reboot. All tweaks — including ones from the MobileGestalt page — will be reset.")
+        }
+        .onAppear {
+            loadIfNeeded()
+            reload()
+        }
+    }
+
+    // MARK: - Load / Reload
+
+    private func loadIfNeeded() {
+        if !store.mgCurrentDict.isEmpty { return }
+        let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+        _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
+        if let data = try? Data(contentsOf: liveURL),
+           let dict = try? PropertyListSerialization.propertyList(from: data, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
+            store.mgCurrentDict = dict
+        }
+        if store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary == nil {
+            store.mgCurrentDict["CacheExtra"] = NSMutableDictionary()
+        }
     }
 
     private func reload() {
@@ -194,10 +340,13 @@ struct ManualCacheExtraEditorView: View {
         entries = result.sorted { $0.key < $1.key }
     }
 
+    // MARK: - Edit
+
     private func addOrUpdate(_ entry: MGCacheExtraEntry) {
         do {
             let parsed = try entry.kind.parse(entry.text)
             store.cacheExtra[entry.key] = parsed
+            ManualEditTracker.setValue(parsed, forKey: entry.key)
             store.objectWillChange.send()
             reload()
         } catch {
@@ -207,10 +356,77 @@ struct ManualCacheExtraEditorView: View {
 
     private func removeEntry(_ entry: MGCacheExtraEntry) {
         store.cacheExtra.removeObject(forKey: entry.key)
+        ManualEditTracker.removeKey(entry.key)
         store.objectWillChange.send()
         reload()
     }
+
+    // MARK: - Save
+
+    private func saveChanges() {
+        isSaving = true
+        Task {
+            do {
+                try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
+                    print(log)
+                }
+
+                // Refresh store from live so the editor shows exactly what iOS now has.
+                let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+                let modURL = URL.documentsDirectory
+                    .appendingPathComponent("ModifiedMobileGestalt.plist", conformingTo: .data)
+                if let data = try? Data(contentsOf: liveURL) {
+                    try? data.write(to: modURL)
+                }
+
+                await MainActor.run {
+                    store.loadFromPlist(url: modURL)
+                    reload()
+                    isSaving = false
+                    showApplyTab = true
+                    successMessage = "Saved. Hard Reboot the device so iOS picks up the new configuration."
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    errorMessage = "Save failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    // MARK: - Revert
+
+    private func revertChanges() {
+        isReverting = true
+        Task {
+            do {
+                try await MobileGestaltApplyTask.restoreGestalt { log in
+                    print(log)
+                }
+                ManualEditTracker.clear()
+                let modURL = URL.documentsDirectory
+                    .appendingPathComponent("ModifiedMobileGestalt.plist", conformingTo: .data)
+                try? FileManager.default.removeItem(at: modURL)
+
+                await MainActor.run {
+                    store.mgCurrentDict = NSMutableDictionary()
+                    reload()
+                    isReverting = false
+                    showApplyTab = true
+                    successMessage = "Reverted. The live MobileGestalt cache was deleted and will regenerate on the next reboot."
+                }
+            } catch {
+                await MainActor.run {
+                    isReverting = false
+                    errorMessage = "Revert failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
 }
+
+// MARK: - Field Editor
 
 struct ManualCacheExtraFieldEditor: View {
     @Environment(\.dismiss) var dismiss
