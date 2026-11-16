@@ -119,7 +119,8 @@ struct MobileGestaltView: View {
 
             Section(header: Text(L("section_display_and_ui"))) {
                 Toggle(L("mg_stage_manager"), isOn: store.mgByteBinding(key: MGKey.stageMgr))
-                Toggle(L("mg_aod"), isOn: store.mgByteBinding(key: MGKey.AOD))
+                // FIX AOD: Bật cả 2 key AOD và AOTime
+                Toggle(L("mg_aod"), isOn: bindingForMGKeys([MGKey.AOD, MGKey.AOTime]))
                     .disabled(Utils.requiresVersion(18))
                 Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                     .disabled(Utils.requiresVersion(18))
@@ -173,12 +174,12 @@ struct MobileGestaltView: View {
                 // AI Sub-menu (Chỉ hiện khi AI được bật)
                 if store.isEnabled(MGKey.appIntellAllKeys) {
                     Group {
-                        Toggle("On-device Siri", isOn: bindingForMGKey(key: "O/7gbXWA5X2IRPVtDRU+bw"))
-                        Toggle("Audio Intelligence", isOn: bindingForMGKey(key: "rb2tKZxlj0Gm2tBmUQSLqQ"))
-                        Toggle("Personal Translator", isOn: bindingForMGKey(key: "M1n2sAqf33NAOgZRGxQYBA"))
-                        Toggle("Clean Up in Photos", isOn: bindingForMGKey(key: "XNCjqOupLM/S8fNyxRNQTA"))
-                        Toggle("Handwriting Synthesis", isOn: bindingForMGKey(key: "YgYIIViDt1kgzyIsIV61vA"))
-                        Toggle("Always-Listening \"Hey Siri\"", isOn: bindingForMGKey(key: "U+73bmG4kBGj6kpreQXUTQ"))
+                        Toggle(L("mg_ondevice_siri"), isOn: bindingForMGKey(key: "O/7gbXWA5X2IRPVtDRU+bw"))
+                        Toggle(L("mg_audio_intel"), isOn: bindingForMGKey(key: "rb2tKZxlj0Gm2tBmUQSLqQ"))
+                        Toggle(L("mg_personal_translator"), isOn: bindingForMGKey(key: "M1n2sAqf33NAOgZRGxQYBA"))
+                        Toggle(L("mg_clean_up"), isOn: bindingForMGKey(key: "XNCjqOupLM/S8fNyxRNQTA"))
+                        Toggle(L("mg_handwriting"), isOn: bindingForMGKey(key: "YgYIIViDt1kgzyIsIV61vA"))
+                        Toggle(L("mg_hey_siri"), isOn: bindingForMGKey(key: "U+73bmG4kBGj6kpreQXUTQ"))
                     }
                     .padding(.leading, 16)
                     .transition(.opacity)
