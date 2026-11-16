@@ -55,7 +55,6 @@ struct MobileGestaltView: View {
     @State private var selectedRegionCode: String = "CH"
     @State private var regionCustomSuffix: String? = nil
 
-    // MARK: - Body
     var body: some View {
         Form {
             Section(header: Text(L("tool_mobile_gestalt"))) {
@@ -134,24 +133,6 @@ struct MobileGestaltView: View {
                 ))
             }
 
-            // MARK: - APPLE INTELLIGENCE & SIRI
-            Section(header: Text("Apple Intelligence & Siri")) {
-                Toggle("Apple Intelligence", isOn: bindingForMGKey(key: "A62OafQ85EJAiiqKn4agtg"))
-                    .help("Sets the Apple Intelligence flag")
-                Toggle("On-device Siri", isOn: bindingForMGKey(key: "O/7gbXWA5X2IRPVtDRU+bw"))
-                    .help("Reports that Siri understands requests on device")
-                Toggle("Audio Intelligence", isOn: bindingForMGKey(key: "rb2tKZxlj0Gm2tBmUQSLqQ"))
-                    .help("Reports the new iOS 27 Audio Intelligence capability")
-                Toggle("Personal Translator", isOn: bindingForMGKey(key: "M1n2sAqf33NAOgZRGxQYBA"))
-                    .help("Reports the personal translator capability")
-                Toggle("Clean Up in Photos", isOn: bindingForMGKey(key: "XNCjqOupLM/S8fNyxRNQTA"))
-                    .help("Reports support for the Photos Clean Up tool")
-                Toggle("Handwriting Synthesis", isOn: bindingForMGKey(key: "YgYIIViDt1kgzyIsIV61vA"))
-                    .help("Reports the handwriting synthesis model")
-                Toggle("Always-Listening \"Hey Siri\"", isOn: bindingForMGKey(key: "U+73bmG4kBGj6kpreQXUTQ"))
-                    .help("Reports that the device can hear \"Hey Siri\" at any time")
-            }
-
             Section(header: Text(L("section_system_features"))) {
                 Toggle(isOn: bindingForMGKeys(["9MZ5AdH43csAUajl/dU+IQ"], type: [Int].self, defaultValue: [1], enableValue: [1, 2])) {
                     Text(L("mg_install_ipad_apps"))
@@ -182,10 +163,26 @@ struct MobileGestaltView: View {
                 Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
                 Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
                 Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
+                
+                // Bật AI
                 Toggle(isOn: bindingForAppleIntelligence()) {
                     Text(L("mg_apple_intelligence"))
                 }
                 .disabled(Utils.requiresVersion(18))
+                
+                // AI Sub-menu (Chỉ hiện khi AI được bật)
+                if store.isEnabled(MGKey.appIntellAllKeys) {
+                    Group {
+                        Toggle("On-device Siri", isOn: bindingForMGKey(key: "O/7gbXWA5X2IRPVtDRU+bw"))
+                        Toggle("Audio Intelligence", isOn: bindingForMGKey(key: "rb2tKZxlj0Gm2tBmUQSLqQ"))
+                        Toggle("Personal Translator", isOn: bindingForMGKey(key: "M1n2sAqf33NAOgZRGxQYBA"))
+                        Toggle("Clean Up in Photos", isOn: bindingForMGKey(key: "XNCjqOupLM/S8fNyxRNQTA"))
+                        Toggle("Handwriting Synthesis", isOn: bindingForMGKey(key: "YgYIIViDt1kgzyIsIV61vA"))
+                        Toggle("Always-Listening \"Hey Siri\"", isOn: bindingForMGKey(key: "U+73bmG4kBGj6kpreQXUTQ"))
+                    }
+                    .padding(.leading, 16)
+                    .transition(.opacity)
+                }
                 
                 Picker(selection: $productType) {
                     Text(L("mg_device_model_unchanged")).tag(MobileGestaltView.machineName())
