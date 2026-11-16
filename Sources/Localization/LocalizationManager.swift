@@ -17,7 +17,6 @@ final class LocalizationManager: ObservableObject {
 
     @Published var availableLanguages: [LanguageInfo] = []
 
-    // TỪ ĐIỂN CHUẨN 100% - FULL 9 NGÔN NGỮ - ĐẦY ĐỦ TẤT CẢ CÁC KEY
     private let dict: [String: [String: String]] = [
         "en": [
             "nav_home": "Home", "nav_theme_store": "Theme Store", "nav_settings": "Settings", "nav_about": "About", "nav_apply": "Apply",
@@ -30,9 +29,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "Disable Call Recording Sound", "tool_disable_sound_desc": "Disable call recording sound",
             
             "section_hardware_features": "Hardware Features", "section_display_and_ui": "Display & UI",
-            "mg_boot_chime": "Boot chime", "mg_charge_limit": "Charge limit", "mg_camera_button": "Camera button",
-            "mg_stage_manager": "Stage Manager", "mg_aod": "Always on Display", "mg_aod_vibrancy": "AOD Vibrancy", "mg_become_ipados": "Become iPadOS",
-            "section_internal_features": "Internal Features", "section_save_reset": "Save / Reset", "mg_install_ipad_apps": "Install iPadOS apps",
+            "section_internal_features": "Internal Features", "section_save_reset": "Save / Reset", "section_system_features": "System Features",
+            "mg_boot_chime": "Boot chime", "mg_charge_limit": "Charge limit", "mg_camera_button": "Camera button", "mg_tap_to_wake": "Tap to Wake",
+            "mg_stage_manager": "Stage Manager", "mg_aod": "Always on Display (AOD)", "mg_aod_vibrancy": "AOD Vibrancy", "mg_become_ipados": "Become iPadOS",
+            "mg_install_ipad_apps": "Install iPadOS apps", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "Action Button", "mg_crash_detection": "Crash Detection",
+            "mg_internal_storage": "Internal Storage", "mg_internal_stuff": "Internal Stuff", "mg_security_research": "Security Research",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "Device Model", "mg_device_model_unchanged": "Unchanged",
+            "mg_ondevice_siri": "On-device Siri", "mg_audio_intel": "Audio Intelligence", "mg_personal_translator": "Personal Translator",
+            "mg_clean_up": "Clean Up in Photos", "mg_handwriting": "Handwriting Synthesis", "mg_hey_siri": "Always-Listening \"Hey Siri\"",
             
             "config_tweaks_title": "Config Tweaks", "config_enable_tweak": "Enable Tweak", "config_lock_screen_footnote": "Lock Screen Footnote",
             "config_footnote_placeholder": "Enter lock screen text...", "config_supervision_title": "Supervision", "config_enable_supervision": "Enable Supervision",
@@ -85,7 +89,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "Custom Subtype", "mg_enable_custom_subtype": "Enable Custom Subtype",
             "mg_custom_subtype_placeholder": "Enter ArtworkDeviceSubType (e.g. 2xxx)", "mg_change_model_name": "Change Device Model Name",
-            "mg_model_name_placeholder": "Model Name", "mg_region": "Region", "mg_device_model": "Device model", "mg_device_model_unchanged": "unchanged",
+            "mg_model_name_placeholder": "Model Name", "mg_region": "Region",
             
             "manual_editor_fields": "Fields", "manual_editor_empty": "CacheExtra is empty.", "manual_editor_delete": "Delete", "manual_editor_save": "Save Settings",
             "manual_editor_saving": "Saving…", "manual_editor_revert": "Revert Tweaks", "manual_editor_reverting": "Reverting…", "manual_editor_save_revert": "Save & Revert",
@@ -98,10 +102,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Enter a finite decimal number.", "manual_editor_err_invalid_bool": "Use true or false for a Boolean value.",
             "manual_editor_err_invalid_date": "Enter an ISO 8601 date.", "manual_editor_err_invalid_data": "Enter valid Base64 data.", "manual_editor_err_invalid_xml": "Enter a valid XML plist fragment.",
             
-            "pair_enter_pin_title": "Enter this PIN in Settings",
-            "pair_step_instruction": "Settings > Privacy & Security > Developer Mode > Pair with EnsWilde",
-            "pair_success_title": "Pairing Successful!",
-            "pair_start_btn": "Start Pair On Device",
+            "pair_enter_pin_title": "Enter this PIN in Settings", "pair_step_instruction": "Settings > Privacy & Security > Developer Mode > Pair with EnsWilde",
+            "pair_success_title": "Pairing Successful!", "pair_start_btn": "Start Pair On Device",
             "pair_background_info": "The app has infinite background execution enabled. You can safely switch to Settings to enter the PIN without iOS terminating it.",
             
             "alert_ok": "OK", "alert_cancel": "Cancel", "alert_message_title": "Message", "alert_error": "Error", "alert_close": "Close", "button_add": "Add", "save_changes": "Save Changes"
@@ -117,9 +119,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "Tắt âm báo ghi âm cuộc gọi", "tool_disable_sound_desc": "Tắt âm thanh ghi âm cuộc gọi",
             
             "section_hardware_features": "Tính năng phần cứng", "section_display_and_ui": "Hiển thị & Giao diện",
-            "mg_boot_chime": "Âm thanh khởi động", "mg_charge_limit": "Giới hạn sạc", "mg_camera_button": "Nút camera",
+            "section_internal_features": "Tính năng nội bộ", "section_save_reset": "Lưu / Đặt lại", "section_system_features": "Tính năng hệ thống",
+            "mg_boot_chime": "Âm thanh khởi động", "mg_charge_limit": "Giới hạn sạc", "mg_camera_button": "Nút camera", "mg_tap_to_wake": "Chạm để đánh thức",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Màn hình luôn bật (AOD)", "mg_aod_vibrancy": "Độ sống động AOD", "mg_become_ipados": "Chuyển thành iPadOS",
-            "section_internal_features": "Tính năng nội bộ", "section_save_reset": "Lưu / Đặt lại", "mg_install_ipad_apps": "Cài ứng dụng iPadOS",
+            "mg_install_ipad_apps": "Cài ứng dụng iPadOS", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "Nút Action", "mg_crash_detection": "Phát hiện va chạm",
+            "mg_internal_storage": "Bộ nhớ trong", "mg_internal_stuff": "Nội dung nội bộ", "mg_security_research": "Nghiên cứu bảo mật",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "Model thiết bị", "mg_device_model_unchanged": "không đổi",
+            "mg_ondevice_siri": "On-device Siri", "mg_audio_intel": "Audio Intelligence", "mg_personal_translator": "Personal Translator",
+            "mg_clean_up": "Clean Up in Photos", "mg_handwriting": "Handwriting Synthesis", "mg_hey_siri": "Always-Listening \"Hey Siri\"",
             
             "config_tweaks_title": "Tinh chỉnh Config", "config_enable_tweak": "Bật tinh chỉnh", "config_lock_screen_footnote": "Chữ trên màn hình khóa",
             "config_footnote_placeholder": "Nhập chữ cho màn hình khoá...", "config_supervision_title": "Giám sát (Supervision)", "config_enable_supervision": "Bật giám sát",
@@ -172,7 +179,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "Tùy chỉnh Subtype", "mg_enable_custom_subtype": "Bật tùy chỉnh Subtype",
             "mg_custom_subtype_placeholder": "Nhập ArtworkDeviceSubType (ví dụ: 2xxx)", "mg_change_model_name": "Đổi tên Model thiết bị",
-            "mg_model_name_placeholder": "Tên Model", "mg_region": "Vùng", "mg_device_model": "Model thiết bị", "mg_device_model_unchanged": "không đổi",
+            "mg_model_name_placeholder": "Tên Model", "mg_region": "Vùng",
             
             "manual_editor_fields": "Danh sách key", "manual_editor_empty": "CacheExtra đang trống.", "manual_editor_delete": "Xóa", "manual_editor_save": "Lưu cài đặt",
             "manual_editor_saving": "Đang lưu…", "manual_editor_revert": "Khôi phục mặc định", "manual_editor_reverting": "Đang khôi phục…", "manual_editor_save_revert": "Lưu / Khôi phục",
@@ -185,10 +192,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Nhập số thực hợp lệ.", "manual_editor_err_invalid_bool": "Nhập true hoặc false.",
             "manual_editor_err_invalid_date": "Nhập ngày theo ISO 8601.", "manual_editor_err_invalid_data": "Nhập Base64 hợp lệ.", "manual_editor_err_invalid_xml": "Nhập đoạn XML plist hợp lệ.",
             
-            "pair_enter_pin_title": "Nhập mã PIN này vào Cài đặt",
-            "pair_step_instruction": "Cài đặt > Quyền riêng tư & Bảo mật > Chế độ nhà phát triển > Pair with EnsWilde",
-            "pair_success_title": "Pairing Thành Công!",
-            "pair_start_btn": "Bắt đầu Pair On Device",
+            "pair_enter_pin_title": "Nhập mã PIN này vào Cài đặt", "pair_step_instruction": "Cài đặt > Quyền riêng tư & Bảo mật > Chế độ nhà phát triển > Pair with EnsWilde",
+            "pair_success_title": "Pairing Thành Công!", "pair_start_btn": "Bắt đầu Pair On Device",
             "pair_background_info": "App đã được bật chế độ chạy ngầm vô hạn. Bạn có thể yên tâm chuyển sang Settings để nhập PIN mà không lo bị iOS tắt.",
             
             "alert_ok": "OK", "alert_cancel": "Hủy", "alert_message_title": "Thông báo", "alert_error": "Lỗi", "alert_close": "Đóng", "button_add": "Thêm", "save_changes": "Lưu thay đổi"
@@ -204,9 +209,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "通話録音音を無効にする", "tool_disable_sound_desc": "通話録音のサウンドを無効にする",
             
             "section_hardware_features": "ハードウェア機能", "section_display_and_ui": "ディスプレイとUI",
-            "mg_boot_chime": "起動音", "mg_charge_limit": "充電制限", "mg_camera_button": "カメラボタン",
+            "section_internal_features": "内部機能", "section_save_reset": "保存 / リセット", "section_system_features": "システム機能",
+            "mg_boot_chime": "起動音", "mg_charge_limit": "充電制限", "mg_camera_button": "カメラボタン", "mg_tap_to_wake": "タップで起動",
             "mg_stage_manager": "ステージマネージャ", "mg_aod": "常時表示ディスプレイ (AOD)", "mg_aod_vibrancy": "AODの鮮やかさ", "mg_become_ipados": "iPadOS化",
-            "section_internal_features": "内部機能", "section_save_reset": "保存 / リセット", "mg_install_ipad_apps": "iPadOSアプリをインストール",
+            "mg_install_ipad_apps": "iPadOSアプリをインストール", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "アクションボタン", "mg_crash_detection": "衝突検出",
+            "mg_internal_storage": "内部ストレージ", "mg_internal_stuff": "内部コンテンツ", "mg_security_research": "セキュリティ研究",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "デバイスモデル", "mg_device_model_unchanged": "変更なし",
+            "mg_ondevice_siri": "オンデバイスSiri", "mg_audio_intel": "オーディオインテリジェンス", "mg_personal_translator": "パーソナル翻訳",
+            "mg_clean_up": "写真のクリーンアップ", "mg_handwriting": "手書き合成", "mg_hey_siri": "常時 listening \"Hey Siri\"",
             
             "config_tweaks_title": "Config 微調整", "config_enable_tweak": "微調整を有効にする", "config_lock_screen_footnote": "ロック画面のフッター",
             "config_footnote_placeholder": "ロック画面のテキストを入力...", "config_supervision_title": "監視 (Supervision)", "config_enable_supervision": "監視を有効にする",
@@ -259,7 +269,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "カスタムサブタイプ", "mg_enable_custom_subtype": "カスタムサブタイプを有効にする",
             "mg_custom_subtype_placeholder": "ArtworkDeviceSubTypeを入力 (例: 2xxx)", "mg_change_model_name": "デバイスモデル名を変更",
-            "mg_model_name_placeholder": "モデル名", "mg_region": "地域", "mg_device_model": "デバイスモデル", "mg_device_model_unchanged": "変更なし",
+            "mg_model_name_placeholder": "モデル名", "mg_region": "地域",
             
             "manual_editor_fields": "フィールド", "manual_editor_empty": "CacheExtraは空です。", "manual_editor_delete": "削除", "manual_editor_save": "設定を保存",
             "manual_editor_saving": "保存中…", "manual_editor_revert": "微調整を元に戻す", "manual_editor_reverting": "元に戻しています…", "manual_editor_save_revert": "保存して元に戻す",
@@ -272,10 +282,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "有効な小数を入力してください。", "manual_editor_err_invalid_bool": "ブール値にはtrueまたはfalseを使用してください。",
             "manual_editor_err_invalid_date": "ISO 8601形式の日付を入力してください。", "manual_editor_err_invalid_data": "有効なBase64データを入力してください。", "manual_editor_err_invalid_xml": "有効なXML plistフラグメントを入力してください。",
             
-            "pair_enter_pin_title": "設定でこのPINを入力してください",
-            "pair_step_instruction": "設定 > プライバシーとセキュリティ > デベロッパモード > Pair with EnsWilde",
-            "pair_success_title": "ペアリング成功！",
-            "pair_start_btn": "デバイスでのペアリングを開始",
+            "pair_enter_pin_title": "設定でこのPINを入力してください", "pair_step_instruction": "設定 > プライバシーとセキュリティ > デベロッパモード > Pair with EnsWilde",
+            "pair_success_title": "ペアリング成功！", "pair_start_btn": "デバイスでのペアリングを開始",
             "pair_background_info": "アプリは無限のバックグラウンド実行が有効になっています。iOSによって終了されることなく、設定に移動してPINを安全に入力できます。",
             
             "alert_ok": "OK", "alert_cancel": "キャンセル", "alert_message_title": "メッセージ", "alert_error": "エラー", "alert_close": "閉じる", "button_add": "追加", "save_changes": "変更を保存"
@@ -291,9 +299,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "禁用通话录音声音", "tool_disable_sound_desc": "禁用通话录音声音",
             
             "section_hardware_features": "硬件功能", "section_display_and_ui": "显示与界面",
-            "mg_boot_chime": "启动提示音", "mg_charge_limit": "充电限制", "mg_camera_button": "相机按钮",
-            "mg_stage_manager": "台前调度 (Stage Manager)", "mg_aod": "全天候显示 (AOD)", "mg_aod_vibrancy": "AOD 生动度", "mg_become_ipados": "变身 iPadOS",
-            "section_internal_features": "内部功能", "section_save_reset": "保存 / 重置", "mg_install_ipad_apps": "安装 iPadOS 应用",
+            "section_internal_features": "内部功能", "section_save_reset": "保存 / 重置", "section_system_features": "系统功能",
+            "mg_boot_chime": "启动提示音", "mg_charge_limit": "充电限制", "mg_camera_button": "相机按钮", "mg_tap_to_wake": "轻点唤醒",
+            "mg_stage_manager": "台前调度", "mg_aod": "全天候显示 (AOD)", "mg_aod_vibrancy": "AOD 生动度", "mg_become_ipados": "变身 iPadOS",
+            "mg_install_ipad_apps": "安装 iPadOS 应用", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "操作按钮", "mg_crash_detection": "车祸检测",
+            "mg_internal_storage": "内部存储", "mg_internal_stuff": "内部内容", "mg_security_research": "安全研究",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "设备型号", "mg_device_model_unchanged": "保持不变",
+            "mg_ondevice_siri": "端侧 Siri", "mg_audio_intel": "音频智能", "mg_personal_translator": "个人翻译",
+            "mg_clean_up": "照片消除", "mg_handwriting": "手写合成", "mg_hey_siri": "始终监听 \"嘿 Siri\"",
             
             "config_tweaks_title": "配置微调", "config_enable_tweak": "启用插件", "config_lock_screen_footnote": "锁屏页脚文本",
             "config_footnote_placeholder": "输入锁屏文本...", "config_supervision_title": "监督 (Supervision)", "config_enable_supervision": "启用监督",
@@ -346,7 +359,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "自定义子类型", "mg_enable_custom_subtype": "启用自定义子类型",
             "mg_custom_subtype_placeholder": "输入 ArtworkDeviceSubType (例如 2xxx)", "mg_change_model_name": "更改设备型号名称",
-            "mg_model_name_placeholder": "型号名称", "mg_region": "地区", "mg_device_model": "设备型号", "mg_device_model_unchanged": "保持不变",
+            "mg_model_name_placeholder": "型号名称", "mg_region": "地区",
             
             "manual_editor_fields": "字段", "manual_editor_empty": "CacheExtra 为空。", "manual_editor_delete": "删除", "manual_editor_save": "保存设置",
             "manual_editor_saving": "保存中…", "manual_editor_revert": "还原微调", "manual_editor_reverting": "还原中…", "manual_editor_save_revert": "保存并还原",
@@ -359,10 +372,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "请输入有效的小数。", "manual_editor_err_invalid_bool": "布尔值请输入 true 或 false。",
             "manual_editor_err_invalid_date": "请输入 ISO 8601 日期。", "manual_editor_err_invalid_data": "请输入有效的 Base64 数据。", "manual_editor_err_invalid_xml": "请输入有效的 XML plist 片段。",
             
-            "pair_enter_pin_title": "在设置中输入此 PIN 码",
-            "pair_step_instruction": "设置 > 隐私与安全性 > 开发者模式 > Pair with EnsWilde",
-            "pair_success_title": "配对成功！",
-            "pair_start_btn": "开始在设备上配对",
+            "pair_enter_pin_title": "在设置中输入此 PIN 码", "pair_step_instruction": "设置 > 隐私与安全性 > 开发者模式 > Pair with EnsWilde",
+            "pair_success_title": "配对成功！", "pair_start_btn": "开始在设备上配对",
             "pair_background_info": "应用已启用无限后台运行。您可以安全地切换到设置输入 PIN，而不必担心被 iOS 终止。",
             
             "alert_ok": "确定", "alert_cancel": "取消", "alert_message_title": "消息", "alert_error": "错误", "alert_close": "关闭", "button_add": "添加", "save_changes": "保存更改"
@@ -378,9 +389,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "停用通話錄音聲音", "tool_disable_sound_desc": "停用通話錄音聲音",
             
             "section_hardware_features": "硬體功能", "section_display_and_ui": "顯示與介面",
-            "mg_boot_chime": "開機提示音", "mg_charge_limit": "充電限制", "mg_camera_button": "相機按鈕",
-            "mg_stage_manager": "台前調度 (Stage Manager)", "mg_aod": "永遠顯示 (AOD)", "mg_aod_vibrancy": "AOD 生動度", "mg_become_ipados": "變身 iPadOS",
-            "section_internal_features": "內部功能", "section_save_reset": "儲存 / 重置", "mg_install_ipad_apps": "安裝 iPadOS 應用程式",
+            "section_internal_features": "內部功能", "section_save_reset": "儲存 / 重置", "section_system_features": "系統功能",
+            "mg_boot_chime": "開機提示音", "mg_charge_limit": "充電限制", "mg_camera_button": "相機按鈕", "mg_tap_to_wake": "點擊喚醒",
+            "mg_stage_manager": "台前調度", "mg_aod": "永遠顯示 (AOD)", "mg_aod_vibrancy": "AOD 生動度", "mg_become_ipados": "變身 iPadOS",
+            "mg_install_ipad_apps": "安裝 iPadOS 應用程式", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "動作按鈕", "mg_crash_detection": "車禍偵測",
+            "mg_internal_storage": "內部儲存空間", "mg_internal_stuff": "內部內容", "mg_security_research": "安全研究",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "裝置型號", "mg_device_model_unchanged": "保持不變",
+            "mg_ondevice_siri": "裝置端 Siri", "mg_audio_intel": "音訊智慧", "mg_personal_translator": "個人翻譯",
+            "mg_clean_up": "照片清除", "mg_handwriting": "手寫合成", "mg_hey_siri": "永遠聆聽 \"嘿 Siri\"",
             
             "config_tweaks_title": "設定微調", "config_enable_tweak": "啟用外掛", "config_lock_screen_footnote": "鎖定畫面頁尾文字",
             "config_footnote_placeholder": "輸入鎖定畫面文字...", "config_supervision_title": "監督 (Supervision)", "config_enable_supervision": "啟用監督",
@@ -433,7 +449,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "自訂子類型", "mg_enable_custom_subtype": "啟用自訂子類型",
             "mg_custom_subtype_placeholder": "輸入 ArtworkDeviceSubType (例如 2xxx)", "mg_change_model_name": "更改裝置型號名稱",
-            "mg_model_name_placeholder": "型號名稱", "mg_region": "地區", "mg_device_model": "裝置型號", "mg_device_model_unchanged": "保持不變",
+            "mg_model_name_placeholder": "型號名稱", "mg_region": "地區",
             
             "manual_editor_fields": "欄位", "manual_editor_empty": "CacheExtra 為空。", "manual_editor_delete": "刪除", "manual_editor_save": "儲存設定",
             "manual_editor_saving": "儲存中…", "manual_editor_revert": "還原微調", "manual_editor_reverting": "還原中…", "manual_editor_save_revert": "儲存並還原",
@@ -446,10 +462,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "請輸入有效的小數。", "manual_editor_err_invalid_bool": "布林值請輸入 true 或 false。",
             "manual_editor_err_invalid_date": "請輸入 ISO 8601 日期。", "manual_editor_err_invalid_data": "請輸入有效的 Base64 資料。", "manual_editor_err_invalid_xml": "請輸入有效的 XML plist 片段。",
             
-            "pair_enter_pin_title": "在設定中輸入此 PIN 碼",
-            "pair_step_instruction": "設定 > 隱私權與安全性 > 開發者模式 > Pair with EnsWilde",
-            "pair_success_title": "配對成功！",
-            "pair_start_btn": "開始在裝置上配對",
+            "pair_enter_pin_title": "在設定中輸入此 PIN 碼", "pair_step_instruction": "設定 > 隱私權與安全性 > 開發者模式 > Pair with EnsWilde",
+            "pair_success_title": "配對成功！", "pair_start_btn": "開始在裝置上配對",
             "pair_background_info": "應用程式已啟用無限背景執行。您可以安全地切換到設定輸入 PIN，而不必擔心被 iOS 終止。",
             
             "alert_ok": "確定", "alert_cancel": "取消", "alert_message_title": "訊息", "alert_error": "錯誤", "alert_close": "關閉", "button_add": "新增", "save_changes": "儲存變更"
@@ -465,9 +479,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "Désactiver le son d'enregistrement", "tool_disable_sound_desc": "Désactiver le son d'enregistrement d'appel",
             
             "section_hardware_features": "Fonctionnalités matérielles", "section_display_and_ui": "Affichage et interface",
-            "mg_boot_chime": "Carillon de démarrage", "mg_charge_limit": "Limite de charge", "mg_camera_button": "Bouton de l'appareil photo",
+            "section_internal_features": "Fonctionnalités internes", "section_save_reset": "Enregistrer / Réinitialiser", "section_system_features": "Fonctionnalités système",
+            "mg_boot_chime": "Carillon de démarrage", "mg_charge_limit": "Limite de charge", "mg_camera_button": "Bouton de l'appareil photo", "mg_tap_to_wake": "Appuyer pour réveiller",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Toujours activé (AOD)", "mg_aod_vibrancy": "Vibrance AOD", "mg_become_ipados": "Devenir iPadOS",
-            "section_internal_features": "Fonctionnalités internes", "section_save_reset": "Enregistrer / Réinitialiser", "mg_install_ipad_apps": "Installer des apps iPadOS",
+            "mg_install_ipad_apps": "Installer des apps iPadOS", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "Bouton d'action", "mg_crash_detection": "Détection d'accident",
+            "mg_internal_storage": "Stockage interne", "mg_internal_stuff": "Contenu interne", "mg_security_research": "Recherche de sécurité",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "Modèle d'appareil", "mg_device_model_unchanged": "inchangé",
+            "mg_ondevice_siri": "Siri sur l'appareil", "mg_audio_intel": "Intelligence audio", "mg_personal_translator": "Traducteur personnel",
+            "mg_clean_up": "Nettoyage des photos", "mg_handwriting": "Synthèse d'écriture manuscrite", "mg_hey_siri": "Écoute permanente \"Dis Siri\"",
             
             "config_tweaks_title": "Ajustements de configuration", "config_enable_tweak": "Activer l'ajustement", "config_lock_screen_footnote": "Note de bas de page",
             "config_footnote_placeholder": "Entrez le texte de l'écran de verrouillage...", "config_supervision_title": "Supervision", "config_enable_supervision": "Activer la supervision",
@@ -520,7 +539,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "Sous-type personnalisé", "mg_enable_custom_subtype": "Activer le sous-type personnalisé",
             "mg_custom_subtype_placeholder": "Entrez ArtworkDeviceSubType (ex : 2xxx)", "mg_change_model_name": "Changer le nom du modèle",
-            "mg_model_name_placeholder": "Nom du modèle", "mg_region": "Région", "mg_device_model": "Modèle d'appareil", "mg_device_model_unchanged": "inchangé",
+            "mg_model_name_placeholder": "Nom du modèle", "mg_region": "Région",
             
             "manual_editor_fields": "Champs", "manual_editor_empty": "CacheExtra est vide.", "manual_editor_delete": "Supprimer", "manual_editor_save": "Enregistrer",
             "manual_editor_saving": "Enregistrement…", "manual_editor_revert": "Rétablir", "manual_editor_reverting": "Rétablissement…", "manual_editor_save_revert": "Enregistrer & Rétablir",
@@ -533,10 +552,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Entrez un nombre décimal fini.", "manual_editor_err_invalid_bool": "Utilisez true ou false pour un booléen.",
             "manual_editor_err_invalid_date": "Entrez une date ISO 8601.", "manual_editor_err_invalid_data": "Entrez des données Base64 valides.", "manual_editor_err_invalid_xml": "Entrez un fragment XML plist valide.",
             
-            "pair_enter_pin_title": "Entrez ce code PIN dans Réglages",
-            "pair_step_instruction": "Réglages > Confidentialité et sécurité > Mode développeur > Pair with EnsWilde",
-            "pair_success_title": "Appairage réussi !",
-            "pair_start_btn": "Démarrer l'appairage sur l'appareil",
+            "pair_enter_pin_title": "Entrez ce code PIN dans Réglages", "pair_step_instruction": "Réglages > Confidentialité et sécurité > Mode développeur > Pair with EnsWilde",
+            "pair_success_title": "Appairage réussi !", "pair_start_btn": "Démarrer l'appairage sur l'appareil",
             "pair_background_info": "L'application a une exécution en arrière-plan infinie activée. Vous pouvez passer en toute sécurité aux Réglages pour saisir le code PIN sans qu'iOS ne la ferme.",
             
             "alert_ok": "OK", "alert_cancel": "Annuler", "alert_message_title": "Message", "alert_error": "Erreur", "alert_close": "Fermer", "button_add": "Ajouter", "save_changes": "Enregistrer"
@@ -552,9 +569,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "تعطيل صوت تسجيل المكالمات", "tool_disable_sound_desc": "تعطيل صوت تسجيل المكالمات",
             
             "section_hardware_features": "ميزات الأجهزة", "section_display_and_ui": "العرض والواجهة",
-            "mg_boot_chime": "نغمة التشغيل", "mg_charge_limit": "حد الشحن", "mg_camera_button": "زر الكاميرا",
+            "section_internal_features": "الميزات الداخلية", "section_save_reset": "حفظ / إعادة تعيين", "section_system_features": "ميزات النظام",
+            "mg_boot_chime": "نغمة التشغيل", "mg_charge_limit": "حد الشحن", "mg_camera_button": "زر الكاميرا", "mg_tap_to_wake": "اضغط للإيقاظ",
             "mg_stage_manager": "مدير المهام (Stage Manager)", "mg_aod": "العرض الدائم (AOD)", "mg_aod_vibrancy": "حيوية AOD", "mg_become_ipados": "التحول إلى iPadOS",
-            "section_internal_features": "الميزات الداخلية", "section_save_reset": "حفظ / إعادة تعيين", "mg_install_ipad_apps": "تثبيت تطبيقات iPadOS",
+            "mg_install_ipad_apps": "تثبيت تطبيقات iPadOS", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "زر الإجراء", "mg_crash_detection": "اكتشاف الحوادث",
+            "mg_internal_storage": "التخزين الداخلي", "mg_internal_stuff": "محتوى داخلي", "mg_security_research": "أبحاث الأمان",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "طراز الجهاز", "mg_device_model_unchanged": "دون تغيير",
+            "mg_ondevice_siri": "Siri على الجهاز", "mg_audio_intel": "الذكاء الصوتي", "mg_personal_translator": "المترجم الشخصي",
+            "mg_clean_up": "تنظيف الصور", "mg_handwriting": "توليف الكتابة اليدوية", "mg_hey_siri": "الاستماع الدائم \"يا سيري\"",
             
             "config_tweaks_title": "تعديلات التكوين", "config_enable_tweak": "تمكين التعديل", "config_lock_screen_footnote": "تذييل شاشة القفل",
             "config_footnote_placeholder": "أدخل نص شاشة القفل...", "config_supervision_title": "الإشراف (Supervision)", "config_enable_supervision": "تمكين الإشراف",
@@ -607,7 +629,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "نوع فرعي مخصص", "mg_enable_custom_subtype": "تمكين النوع الفرعي المخصص",
             "mg_custom_subtype_placeholder": "أدخل ArtworkDeviceSubType (مثال: 2xxx)", "mg_change_model_name": "تغيير اسم طراز الجهاز",
-            "mg_model_name_placeholder": "اسم الطراز", "mg_region": "المنطقة", "mg_device_model": "طراز الجهاز", "mg_device_model_unchanged": "دون تغيير",
+            "mg_model_name_placeholder": "اسم الطراز", "mg_region": "المنطقة",
             
             "manual_editor_fields": "الحقول", "manual_editor_empty": "CacheExtra فارغ.", "manual_editor_delete": "حذف", "manual_editor_save": "حفظ الإعدادات",
             "manual_editor_saving": "جاري الحفظ…", "manual_editor_revert": "إرجاع التعديلات", "manual_editor_reverting": "جاري الإرجاع…", "manual_editor_save_revert": "حفظ وإرجاع",
@@ -620,10 +642,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "أدخل عددًا عشريًا صالحًا.", "manual_editor_err_invalid_bool": "استخدم true أو false لقيمة منطقية.",
             "manual_editor_err_invalid_date": "أدخل تاريخ ISO 8601.", "manual_editor_err_invalid_data": "أدخل بيانات Base64 صالحة.", "manual_editor_err_invalid_xml": "أدخل جزء XML plist صالح.",
             
-            "pair_enter_pin_title": "أدخل رمز PIN هذا في الإعدادات",
-            "pair_step_instruction": "الإعدادات > الخصوصية والأمان > وضع المطور > Pair with EnsWilde",
-            "pair_success_title": "نجح الاقتران!",
-            "pair_start_btn": "بدء الاقتران على الجهاز",
+            "pair_enter_pin_title": "أدخل رمز PIN هذا في الإعدادات", "pair_step_instruction": "الإعدادات > الخصوصية والأمان > وضع المطور > Pair with EnsWilde",
+            "pair_success_title": "نجح الاقتران!", "pair_start_btn": "بدء الاقتران على الجهاز",
             "pair_background_info": "تم تفعيل التشغيل غير المحدود في الخلفية للتطبيق. يمكنك الانتقال بأمان إلى الإعدادات لإدخال رمز PIN دون قلق من إيقاف iOS له.",
             
             "alert_ok": "موافق", "alert_cancel": "إلغاء", "alert_message_title": "رسالة", "alert_error": "خطأ", "alert_close": "إغلاق", "button_add": "إضافة", "save_changes": "حفظ التغييرات"
@@ -639,9 +659,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "Desactivar sonido de grabación", "tool_disable_sound_desc": "Desactivar sonido de grabación de llamadas",
             
             "section_hardware_features": "Funciones de hardware", "section_display_and_ui": "Pantalla e interfaz",
-            "mg_boot_chime": "Sonido de arranque", "mg_charge_limit": "Límite de carga", "mg_camera_button": "Botón de cámara",
+            "section_internal_features": "Funciones internas", "section_save_reset": "Guardar / Restablecer", "section_system_features": "Funciones del sistema",
+            "mg_boot_chime": "Sonido de arranque", "mg_charge_limit": "Límite de carga", "mg_camera_button": "Botón de cámara", "mg_tap_to_wake": "Toca para despertar",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Pantalla siempre activa (AOD)", "mg_aod_vibrancy": "Vibrancia AOD", "mg_become_ipados": "Convertirse en iPadOS",
-            "section_internal_features": "Funciones internas", "section_save_reset": "Guardar / Restablecer", "mg_install_ipad_apps": "Instalar apps de iPadOS",
+            "mg_install_ipad_apps": "Instalar apps de iPadOS", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "Botón de acción", "mg_crash_detection": "Detección de choques",
+            "mg_internal_storage": "Almacenamiento interno", "mg_internal_stuff": "Contenido interno", "mg_security_research": "Investigación de seguridad",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "Modelo del dispositivo", "mg_device_model_unchanged": "sin cambios",
+            "mg_ondevice_siri": "Siri en el dispositivo", "mg_audio_intel": "Inteligencia de audio", "mg_personal_translator": "Traductor personal",
+            "mg_clean_up": "Limpieza de fotos", "mg_handwriting": "Síntesis de escritura", "mg_hey_siri": "Escucha permanente \"Oye Siri\"",
             
             "config_tweaks_title": "Ajustes de configuración", "config_enable_tweak": "Activar ajuste", "config_lock_screen_footnote": "Nota al pie",
             "config_footnote_placeholder": "Ingresa texto de pantalla de bloqueo...", "config_supervision_title": "Supervisión", "config_enable_supervision": "Activar supervisión",
@@ -694,7 +719,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "Subtipo personalizado", "mg_enable_custom_subtype": "Activar subtipo personalizado",
             "mg_custom_subtype_placeholder": "Ingresa ArtworkDeviceSubType (ej. 2xxx)", "mg_change_model_name": "Cambiar nombre del modelo",
-            "mg_model_name_placeholder": "Nombre del modelo", "mg_region": "Región", "mg_device_model": "Modelo del dispositivo", "mg_device_model_unchanged": "sin cambios",
+            "mg_model_name_placeholder": "Nombre del modelo", "mg_region": "Región",
             
             "manual_editor_fields": "Campos", "manual_editor_empty": "CacheExtra está vacío.", "manual_editor_delete": "Eliminar", "manual_editor_save": "Guardar",
             "manual_editor_saving": "Guardando…", "manual_editor_revert": "Revertir", "manual_editor_reverting": "Revirtiendo…", "manual_editor_save_revert": "Guardar y revertir",
@@ -707,10 +732,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Ingresa un número decimal finito.", "manual_editor_err_invalid_bool": "Usa true o false para un valor booleano.",
             "manual_editor_err_invalid_date": "Ingresa una fecha ISO 8601.", "manual_editor_err_invalid_data": "Ingresa datos Base64 válidos.", "manual_editor_err_invalid_xml": "Ingresa un fragmento XML plist válido.",
             
-            "pair_enter_pin_title": "Ingresa este PIN en Ajustes",
-            "pair_step_instruction": "Ajustes > Privacidad y seguridad > Modo desarrollador > Pair with EnsWilde",
-            "pair_success_title": "¡Emparejamiento exitoso!",
-            "pair_start_btn": "Iniciar emparejamiento en el dispositivo",
+            "pair_enter_pin_title": "Ingresa este PIN en Ajustes", "pair_step_instruction": "Ajustes > Privacidad y seguridad > Modo desarrollador > Pair with EnsWilde",
+            "pair_success_title": "¡Emparejamiento exitoso!", "pair_start_btn": "Iniciar emparejamiento en el dispositivo",
             "pair_background_info": "La app tiene habilitada la ejecución en segundo plano infinita. Puedes cambiar a Ajustes de forma segura para ingresar el PIN sin que iOS la cierre.",
             
             "alert_ok": "OK", "alert_cancel": "Cancelar", "alert_message_title": "Mensaje", "alert_error": "Error", "alert_close": "Cerrar", "button_add": "Añadir", "save_changes": "Guardar cambios"
@@ -726,9 +749,14 @@ final class LocalizationManager: ObservableObject {
             "tool_disable_sound": "Отключить звук записи звонков", "tool_disable_sound_desc": "Отключить звук записи звонков",
             
             "section_hardware_features": "Аппаратные функции", "section_display_and_ui": "Дисплей и интерфейс",
-            "mg_boot_chime": "Звук загрузки", "mg_charge_limit": "Ограничение заряда", "mg_camera_button": "Кнопка камеры",
+            "section_internal_features": "Внутренние функции", "section_save_reset": "Сохранить / Сброс", "section_system_features": "Системные функции",
+            "mg_boot_chime": "Звук загрузки", "mg_charge_limit": "Ограничение заряда", "mg_camera_button": "Кнопка камеры", "mg_tap_to_wake": "Пробуждение касанием",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Always-on Display (AOD)", "mg_aod_vibrancy": "Яркость AOD", "mg_become_ipados": "Режим iPadOS",
-            "section_internal_features": "Внутренние функции", "section_save_reset": "Сохранить / Сброс", "mg_install_ipad_apps": "Установить приложения iPadOS",
+            "mg_install_ipad_apps": "Установить приложения iPadOS", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "Кнопка действия", "mg_crash_detection": "Обнаружение аварий",
+            "mg_internal_storage": "Внутренняя память", "mg_internal_stuff": "Внутреннее содержимое", "mg_security_research": "Исследование безопасности",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "Модель устройства", "mg_device_model_unchanged": "без изменений",
+            "mg_ondevice_siri": "Siri на устройстве", "mg_audio_intel": "Аудио интеллект", "mg_personal_translator": "Личный переводчик",
+            "mg_clean_up": "Очистка фото", "mg_handwriting": "Синтез рукописного текста", "mg_hey_siri": "Постоянное прослушивание \"Привет Siri\"",
             
             "config_tweaks_title": "Настройка конфигурации", "config_enable_tweak": "Включить твик", "config_lock_screen_footnote": "Сноска на экране блокировки",
             "config_footnote_placeholder": "Введите текст для экрана блокировки...", "config_supervision_title": "Наблюдение (Supervision)", "config_enable_supervision": "Включить наблюдение",
@@ -781,7 +809,7 @@ final class LocalizationManager: ObservableObject {
             "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
             "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "Пользовательский подтип", "mg_enable_custom_subtype": "Включить пользовательский подтип",
             "mg_custom_subtype_placeholder": "Введите ArtworkDeviceSubType (например, 2xxx)", "mg_change_model_name": "Изменить название модели",
-            "mg_model_name_placeholder": "Название модели", "mg_region": "Регион", "mg_device_model": "Модель устройства", "mg_device_model_unchanged": "без изменений",
+            "mg_model_name_placeholder": "Название модели", "mg_region": "Регион",
             
             "manual_editor_fields": "Поля", "manual_editor_empty": "CacheExtra пуст.", "manual_editor_delete": "Удалить", "manual_editor_save": "Сохранить",
             "manual_editor_saving": "Сохранение…", "manual_editor_revert": "Отменить", "manual_editor_reverting": "Отмена…", "manual_editor_save_revert": "Сохранить и отменить",
@@ -794,10 +822,8 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Введите корректное десятичное число.", "manual_editor_err_invalid_bool": "Используйте true или false для логического значения.",
             "manual_editor_err_invalid_date": "Введите дату в формате ISO 8601.", "manual_editor_err_invalid_data": "Введите корректные данные Base64.", "manual_editor_err_invalid_xml": "Введите корректный фрагмент XML plist.",
             
-            "pair_enter_pin_title": "Введите этот PIN-код в Настройках",
-            "pair_step_instruction": "Настройки > Конфиденциальность и безопасность > Режим разработчика > Pair with EnsWilde",
-            "pair_success_title": "Сопряжение успешно!",
-            "pair_start_btn": "Начать сопряжение на устройстве",
+            "pair_enter_pin_title": "Введите этот PIN-код в Настройках", "pair_step_instruction": "Настройки > Конфиденциальность и безопасность > Режим разработчика > Pair with EnsWilde",
+            "pair_success_title": "Сопряжение успешно!", "pair_start_btn": "Начать сопряжение на устройстве",
             "pair_background_info": "В приложении включено бесконечное фоновое выполнение. Вы можете безопасно перейти в Настройки, чтобы ввести PIN-код, не опасаясь, что iOS закроет приложение.",
             
             "alert_ok": "ОК", "alert_cancel": "Отмена", "alert_message_title": "Сообщение", "alert_error": "Ошибка", "alert_close": "Закрыть", "button_add": "Добавить", "save_changes": "Сохранить изменения"
@@ -809,9 +835,7 @@ final class LocalizationManager: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Lấy chuỗi đã bản địa hóa (Hỗ trợ map mã ngôn ngữ linh hoạt)
     func string(for key: String) -> String {
-        // Lấy mã ngôn ngữ và chuẩn hóa (vd: zh_CN -> zh-CN, vi_VN -> vi, ar_SA -> ar)
         let rawCode = currentLanguage.lowercased()
         var langCode = rawCode.components(separatedBy: CharacterSet(charactersIn: "-_")).first ?? "en"
         
@@ -819,37 +843,20 @@ final class LocalizationManager: ObservableObject {
             langCode = rawCode.contains("tw") || rawCode.contains("hant") ? "zh-TW" : "zh-CN"
         }
         
-        // 1. Ưu tiên tìm trong từ điển của ngôn ngữ hiện tại
-        if let val = dict[langCode]?[key] {
-            return val
-        }
+        if let val = dict[langCode]?[key] { return val }
+        if let val = dict["en"]?[key] { return val }
         
-        // 2. Fallback về tiếng Anh nếu không có bản dịch
-        if let val = dict["en"]?[key] {
-            return val
-        }
-        
-        // 3. CƠ CHẾ TỰ ĐỘNG FORMAT KEY (Nếu sau này có thêm key mới mà quên dịch)
-        // Ví dụ: "section_my_new_feature" -> "Section My New Feature"
-        let formattedKey = key
-            .replacingOccurrences(of: "_", with: " ")
-            .capitalized
-        
-        return formattedKey
+        return key.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
-    /// Kiểm tra xem ngôn ngữ có sẵn trong từ điển không
     func hasLanguage(_ code: String) -> Bool {
         let rawCode = code.lowercased()
-        if rawCode.contains("zh") {
-            return true
-        }
+        if rawCode.contains("zh") { return true }
         let langCode = rawCode.components(separatedBy: CharacterSet(charactersIn: "-_")).first ?? ""
         return dict[langCode] != nil
     }
 }
 
-// MARK: - Convenience Functions
 func L(_ key: String) -> String {
     return LocalizationManager.shared.string(for: key)
 }
