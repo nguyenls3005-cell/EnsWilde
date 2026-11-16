@@ -17,7 +17,7 @@ final class LocalizationManager: ObservableObject {
 
     @Published var availableLanguages: [LanguageInfo] = []
 
-    // TỪ ĐIỂN CHUẨN 100% - FULL 9 NGÔN NGỮ - ĐÃ BAO GỒM MÀN HÌNH PAIRING
+    // TỪ ĐIỂN CHUẨN 100% - FULL 9 NGÔN NGỮ - ĐẦY ĐỦ TẤT CẢ CÁC KEY
     private let dict: [String: [String: String]] = [
         "en": [
             "nav_home": "Home", "nav_theme_store": "Theme Store", "nav_settings": "Settings", "nav_about": "About", "nav_apply": "Apply",
@@ -32,6 +32,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "Hardware Features", "section_display_and_ui": "Display & UI",
             "mg_boot_chime": "Boot chime", "mg_charge_limit": "Charge limit", "mg_camera_button": "Camera button",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Always on Display", "mg_aod_vibrancy": "AOD Vibrancy", "mg_become_ipados": "Become iPadOS",
+            "section_internal_features": "Internal Features", "section_save_reset": "Save / Reset", "mg_install_ipad_apps": "Install iPadOS apps",
             
             "config_tweaks_title": "Config Tweaks", "config_enable_tweak": "Enable Tweak", "config_lock_screen_footnote": "Lock Screen Footnote",
             "config_footnote_placeholder": "Enter lock screen text...", "config_supervision_title": "Supervision", "config_enable_supervision": "Enable Supervision",
@@ -97,7 +98,6 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Enter a finite decimal number.", "manual_editor_err_invalid_bool": "Use true or false for a Boolean value.",
             "manual_editor_err_invalid_date": "Enter an ISO 8601 date.", "manual_editor_err_invalid_data": "Enter valid Base64 data.", "manual_editor_err_invalid_xml": "Enter a valid XML plist fragment.",
             
-            // --- PAIRING KEYS ---
             "pair_enter_pin_title": "Enter this PIN in Settings",
             "pair_step_instruction": "Settings > Privacy & Security > Developer Mode > Pair with EnsWilde",
             "pair_success_title": "Pairing Successful!",
@@ -119,6 +119,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "Tính năng phần cứng", "section_display_and_ui": "Hiển thị & Giao diện",
             "mg_boot_chime": "Âm thanh khởi động", "mg_charge_limit": "Giới hạn sạc", "mg_camera_button": "Nút camera",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Màn hình luôn bật (AOD)", "mg_aod_vibrancy": "Độ sống động AOD", "mg_become_ipados": "Chuyển thành iPadOS",
+            "section_internal_features": "Tính năng nội bộ", "section_save_reset": "Lưu / Đặt lại", "mg_install_ipad_apps": "Cài ứng dụng iPadOS",
             
             "config_tweaks_title": "Tinh chỉnh Config", "config_enable_tweak": "Bật tinh chỉnh", "config_lock_screen_footnote": "Chữ trên màn hình khóa",
             "config_footnote_placeholder": "Nhập chữ cho màn hình khoá...", "config_supervision_title": "Giám sát (Supervision)", "config_enable_supervision": "Bật giám sát",
@@ -184,7 +185,6 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Nhập số thực hợp lệ.", "manual_editor_err_invalid_bool": "Nhập true hoặc false.",
             "manual_editor_err_invalid_date": "Nhập ngày theo ISO 8601.", "manual_editor_err_invalid_data": "Nhập Base64 hợp lệ.", "manual_editor_err_invalid_xml": "Nhập đoạn XML plist hợp lệ.",
             
-            // --- PAIRING KEYS ---
             "pair_enter_pin_title": "Nhập mã PIN này vào Cài đặt",
             "pair_step_instruction": "Cài đặt > Quyền riêng tư & Bảo mật > Chế độ nhà phát triển > Pair with EnsWilde",
             "pair_success_title": "Pairing Thành Công!",
@@ -206,6 +206,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "ハードウェア機能", "section_display_and_ui": "ディスプレイとUI",
             "mg_boot_chime": "起動音", "mg_charge_limit": "充電制限", "mg_camera_button": "カメラボタン",
             "mg_stage_manager": "ステージマネージャ", "mg_aod": "常時表示ディスプレイ (AOD)", "mg_aod_vibrancy": "AODの鮮やかさ", "mg_become_ipados": "iPadOS化",
+            "section_internal_features": "内部機能", "section_save_reset": "保存 / リセット", "mg_install_ipad_apps": "iPadOSアプリをインストール",
             
             "config_tweaks_title": "Config 微調整", "config_enable_tweak": "微調整を有効にする", "config_lock_screen_footnote": "ロック画面のフッター",
             "config_footnote_placeholder": "ロック画面のテキストを入力...", "config_supervision_title": "監視 (Supervision)", "config_enable_supervision": "監視を有効にする",
@@ -292,6 +293,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "硬件功能", "section_display_and_ui": "显示与界面",
             "mg_boot_chime": "启动提示音", "mg_charge_limit": "充电限制", "mg_camera_button": "相机按钮",
             "mg_stage_manager": "台前调度 (Stage Manager)", "mg_aod": "全天候显示 (AOD)", "mg_aod_vibrancy": "AOD 生动度", "mg_become_ipados": "变身 iPadOS",
+            "section_internal_features": "内部功能", "section_save_reset": "保存 / 重置", "mg_install_ipad_apps": "安装 iPadOS 应用",
             
             "config_tweaks_title": "配置微调", "config_enable_tweak": "启用插件", "config_lock_screen_footnote": "锁屏页脚文本",
             "config_footnote_placeholder": "输入锁屏文本...", "config_supervision_title": "监督 (Supervision)", "config_enable_supervision": "启用监督",
@@ -378,6 +380,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "硬體功能", "section_display_and_ui": "顯示與介面",
             "mg_boot_chime": "開機提示音", "mg_charge_limit": "充電限制", "mg_camera_button": "相機按鈕",
             "mg_stage_manager": "台前調度 (Stage Manager)", "mg_aod": "永遠顯示 (AOD)", "mg_aod_vibrancy": "AOD 生動度", "mg_become_ipados": "變身 iPadOS",
+            "section_internal_features": "內部功能", "section_save_reset": "儲存 / 重置", "mg_install_ipad_apps": "安裝 iPadOS 應用程式",
             
             "config_tweaks_title": "設定微調", "config_enable_tweak": "啟用外掛", "config_lock_screen_footnote": "鎖定畫面頁尾文字",
             "config_footnote_placeholder": "輸入鎖定畫面文字...", "config_supervision_title": "監督 (Supervision)", "config_enable_supervision": "啟用監督",
@@ -464,6 +467,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "Fonctionnalités matérielles", "section_display_and_ui": "Affichage et interface",
             "mg_boot_chime": "Carillon de démarrage", "mg_charge_limit": "Limite de charge", "mg_camera_button": "Bouton de l'appareil photo",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Toujours activé (AOD)", "mg_aod_vibrancy": "Vibrance AOD", "mg_become_ipados": "Devenir iPadOS",
+            "section_internal_features": "Fonctionnalités internes", "section_save_reset": "Enregistrer / Réinitialiser", "mg_install_ipad_apps": "Installer des apps iPadOS",
             
             "config_tweaks_title": "Ajustements de configuration", "config_enable_tweak": "Activer l'ajustement", "config_lock_screen_footnote": "Note de bas de page",
             "config_footnote_placeholder": "Entrez le texte de l'écran de verrouillage...", "config_supervision_title": "Supervision", "config_enable_supervision": "Activer la supervision",
@@ -550,6 +554,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "ميزات الأجهزة", "section_display_and_ui": "العرض والواجهة",
             "mg_boot_chime": "نغمة التشغيل", "mg_charge_limit": "حد الشحن", "mg_camera_button": "زر الكاميرا",
             "mg_stage_manager": "مدير المهام (Stage Manager)", "mg_aod": "العرض الدائم (AOD)", "mg_aod_vibrancy": "حيوية AOD", "mg_become_ipados": "التحول إلى iPadOS",
+            "section_internal_features": "الميزات الداخلية", "section_save_reset": "حفظ / إعادة تعيين", "mg_install_ipad_apps": "تثبيت تطبيقات iPadOS",
             
             "config_tweaks_title": "تعديلات التكوين", "config_enable_tweak": "تمكين التعديل", "config_lock_screen_footnote": "تذييل شاشة القفل",
             "config_footnote_placeholder": "أدخل نص شاشة القفل...", "config_supervision_title": "الإشراف (Supervision)", "config_enable_supervision": "تمكين الإشراف",
@@ -636,6 +641,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "Funciones de hardware", "section_display_and_ui": "Pantalla e interfaz",
             "mg_boot_chime": "Sonido de arranque", "mg_charge_limit": "Límite de carga", "mg_camera_button": "Botón de cámara",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Pantalla siempre activa (AOD)", "mg_aod_vibrancy": "Vibrancia AOD", "mg_become_ipados": "Convertirse en iPadOS",
+            "section_internal_features": "Funciones internas", "section_save_reset": "Guardar / Restablecer", "mg_install_ipad_apps": "Instalar apps de iPadOS",
             
             "config_tweaks_title": "Ajustes de configuración", "config_enable_tweak": "Activar ajuste", "config_lock_screen_footnote": "Nota al pie",
             "config_footnote_placeholder": "Ingresa texto de pantalla de bloqueo...", "config_supervision_title": "Supervisión", "config_enable_supervision": "Activar supervisión",
@@ -722,6 +728,7 @@ final class LocalizationManager: ObservableObject {
             "section_hardware_features": "Аппаратные функции", "section_display_and_ui": "Дисплей и интерфейс",
             "mg_boot_chime": "Звук загрузки", "mg_charge_limit": "Ограничение заряда", "mg_camera_button": "Кнопка камеры",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Always-on Display (AOD)", "mg_aod_vibrancy": "Яркость AOD", "mg_become_ipados": "Режим iPadOS",
+            "section_internal_features": "Внутренние функции", "section_save_reset": "Сохранить / Сброс", "mg_install_ipad_apps": "Установить приложения iPadOS",
             
             "config_tweaks_title": "Настройка конфигурации", "config_enable_tweak": "Включить твик", "config_lock_screen_footnote": "Сноска на экране блокировки",
             "config_footnote_placeholder": "Введите текст для экрана блокировки...", "config_supervision_title": "Наблюдение (Supervision)", "config_enable_supervision": "Включить наблюдение",
