@@ -9,7 +9,7 @@ struct OnDevicePairingView: View {
             Section {
                 if manager.isPairing {
                     VStack(spacing: 16) {
-                        Text("Nhập mã PIN này vào Cài đặt")
+                        Text(L("pair_enter_pin_title"))
                             .font(.headline)
                         
                         HStack {
@@ -27,7 +27,7 @@ struct OnDevicePairingView: View {
                             }
                         }
                         
-                        Text("Cài đặt > Quyền riêng tư & Bảo mật > Chế độ nhà phát triển > Pair with EnsWilde")
+                        Text(L("pair_step_instruction"))
                             .font(.caption)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
@@ -39,22 +39,22 @@ struct OnDevicePairingView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 48))
                             .foregroundStyle(.green)
-                        Text("Pairing Thành Công!")
+                        Text(L("pair_success_title"))
                             .font(.headline)
-                        Button("Đóng") { dismiss() }
+                        Button(L("alert_close")) { dismiss() }
                             .buttonStyle(.borderedProminent)
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
                 } else {
-                    Button("Bắt đầu Pair On Device") {
+                    Button(L("pair_start_btn")) {
                         manager.startPairing()
                     }
                 }
             } header: {
-                Text("Pair On Device (iOS 27+)")
+                Text(L("pair_on_device"))
             } footer: {
-                Text("App đã được bật chế độ chạy ngầm vô hạn. Bạn có thể yên tâm chuyển sang Settings để nhập PIN mà không lo bị iOS tắt.")
+                Text(L("pair_background_info"))
             }
             
             if !manager.statusLog.isEmpty {
@@ -68,16 +68,15 @@ struct OnDevicePairingView: View {
             
             if manager.isPairing {
                 Section {
-                    Button("Hủy", role: .destructive) {
+                    Button(L("alert_cancel"), role: .destructive) {
                         manager.stopPairing()
                     }
                 }
             }
         }
-        .navigationTitle("Pair On Device")
+        .navigationTitle(L("pair_on_device"))
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
-            // Dọn dẹp khi view bị đóng để tránh rò rỉ
             manager.stopPairing()
         }
     }
