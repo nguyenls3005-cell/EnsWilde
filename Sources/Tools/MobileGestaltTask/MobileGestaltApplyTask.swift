@@ -57,18 +57,22 @@ enum MobileGestaltApplyTask {
         if let liveExtra = liveDict["CacheExtra"] as? NSMutableDictionary,
            let storeExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary {
             
-            let allowedExtraKeys = [
-                MGKey.artwork, MGKey.prodType, MGKey.regionCode, MGKey.regionSysconfig,
+            // Bổ sung MGKey.island + MGKey.artwork rõ ràng
+            let allowedExtraKeys: [String] = [
+                "oPeik/9e8lQWMszEjbPzng",     // Artwork
+                "YlEtTtHlNesRBMal1CqRaA",     // Island
+                MGKey.prodType, MGKey.regionCode, MGKey.regionSysconfig,
                 MGKey.regModelNumber, MGKey.modelNameOuter1, MGKey.modelNameOuter2,
-                MGKey.liquidGlassLowPower, MGKey.island, MGKey.AOTime, MGKey.AOD,
+                MGKey.liquidGlassLowPower, MGKey.AOTime, MGKey.AOD,
                 MGKey.AODVibrancy, MGKey.chargeLim, MGKey.bootChime, MGKey.intInstall,
                 MGKey.intBuild, MGKey.srd, MGKey.crashDet, MGKey.pwm, MGKey.appPencil,
                 MGKey.camButton, MGKey.grapPefr, MGKey.actButton, MGKey.tapToWake,
                 MGKey.stageMgr,
                 "A62OafQ85EJAiiqKn4agtg", "a3n5T9sFtlyQ74NEp9ESxg", "O/7gbXWA5X2IRPVtDRU+bw",
                 "rb2tKZxlj0Gm2tBmUQSLqQ", "M1n2sAqf33NAOgZRGxQYBA", "XNCjqOupLM/S8fNyxRNQTA",
-                "YgYIIViDt1kgzyIsIV61vA", "U+73bmG4kBGj6kpreQXUTQ", "h63QSdBCiT/z0WU6rdQv6Q", "yK+xavymRGZ3xWc1tb8XDg"
-            ] + MGKey.appIntellAllKeys + MGKey.ipadosCacheEx
+                "YgYIIViDt1kgzyIsIV61vA", "U+73bmG4kBGj6kpreQXUTQ",
+                "h63QSdBCiT/z0WU6rdQv6Q", "yK+xavymRGZ3xWc1tb8XDg"
+            ] + MGKey.ipadosCacheEx
             
             for key in allowedExtraKeys {
                 if let newVal = storeExtra[key] {
@@ -78,7 +82,7 @@ enum MobileGestaltApplyTask {
                 }
             }
             
-            let blockedKeys = ["RegionInfo", "zHeENZu+wbg7PUprwNwBWg", "green-tea", "not-green-tea", "wapi"]
+            let blockedKeys = ["RegionInfo", "green-tea", "not-green-tea", "wapi"]
             for blocked in blockedKeys {
                 liveExtra.removeObject(forKey: blocked)
             }
