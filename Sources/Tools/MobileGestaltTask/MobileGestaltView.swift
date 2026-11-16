@@ -55,6 +55,7 @@ struct MobileGestaltView: View {
     @State private var selectedRegionCode: String = "CH"
     @State private var regionCustomSuffix: String? = nil
 
+    // MARK: - Body
     var body: some View {
         Form {
             Section(header: Text(L("tool_mobile_gestalt"))) {
@@ -81,13 +82,9 @@ struct MobileGestaltView: View {
                 }
                 .pickerStyle(.menu)
                 .onChange(of: dynamicIslandType) { newValue in
-                    if newValue == 8 {
-                        showDIWarning = true
-                    } else if newValue != -1 {
-                        enableCustomSubtype = false
-                    } else {
-                        enableCustomSubtype = true
-                    }
+                    if newValue == 8 { showDIWarning = true }
+                    else if newValue != -1 { enableCustomSubtype = false }
+                    else { enableCustomSubtype = true }
                 }
                 .alert(L("mg_di_warning_title"), isPresented: $showDIWarning) {
                     Button(L("alert_cancel"), role: .cancel) { dynamicIslandType = 0 }
@@ -135,6 +132,24 @@ struct MobileGestaltView: View {
                         store.objectWillChange.send()
                     }
                 ))
+            }
+
+            // MARK: - APPLE INTELLIGENCE & SIRI
+            Section(header: Text("Apple Intelligence & Siri")) {
+                Toggle("Apple Intelligence", isOn: bindingForMGKey(key: "A62OafQ85EJAiiqKn4agtg"))
+                    .help("Sets the Apple Intelligence flag")
+                Toggle("On-device Siri", isOn: bindingForMGKey(key: "O/7gbXWA5X2IRPVtDRU+bw"))
+                    .help("Reports that Siri understands requests on device")
+                Toggle("Audio Intelligence", isOn: bindingForMGKey(key: "rb2tKZxlj0Gm2tBmUQSLqQ"))
+                    .help("Reports the new iOS 27 Audio Intelligence capability")
+                Toggle("Personal Translator", isOn: bindingForMGKey(key: "M1n2sAqf33NAOgZRGxQYBA"))
+                    .help("Reports the personal translator capability")
+                Toggle("Clean Up in Photos", isOn: bindingForMGKey(key: "XNCjqOupLM/S8fNyxRNQTA"))
+                    .help("Reports support for the Photos Clean Up tool")
+                Toggle("Handwriting Synthesis", isOn: bindingForMGKey(key: "YgYIIViDt1kgzyIsIV61vA"))
+                    .help("Reports the handwriting synthesis model")
+                Toggle("Always-Listening \"Hey Siri\"", isOn: bindingForMGKey(key: "U+73bmG4kBGj6kpreQXUTQ"))
+                    .help("Reports that the device can hear \"Hey Siri\" at any time")
             }
 
             Section(header: Text(L("section_system_features"))) {
@@ -216,28 +231,7 @@ struct MobileGestaltView: View {
         } message: {
             Text(lastError ?? L("msg_error_unknown"))
         }
-        .onAppear {
-            let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
-            _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
-            
-            if let liveData = try? Data(contentsOf: liveURL),
-               let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
-                store.mgCurrentDict = liveDict
-                self.mobileGestalt = liveDict
-                try? liveData.write(to: modMGURL)
-            } else {
-                store.loadFromPlist(url: modMGURL)
-                mobileGestalt = store.mgCurrentDict
-            }
-            
-            if initError != nil {
-                lastError = initError
-                initError = nil
-                showErrorAlert.toggle()
-                return
-            }
-            hydrateFromDict()
-        }
+        .onAppear { loadData() }
         .onReceive(store.$mgCurrentDict) { newDict in
             if newDict.count > 0 {
                 self.mobileGestalt = newDict
@@ -247,14 +241,37 @@ struct MobileGestaltView: View {
         .onChange(of: enableModelName) { enabled in if enabled { applyModelName() } else { removeModelName() } }
         .onChange(of: modelName) { _ in if enableModelName && !modelName.isEmpty { applyModelName() } }
         .onChange(of: enableCustomSubtype) { enabled in
-            if enabled {
-                dynamicIslandType = -1
-                applyCustomSubtype()
+            if enabled { dynamicIslandType = -1; applyCustomSubtype() }
+        }
+        .onChange(of: customSubtypeValue) { _ in if enableCustomSubtype { applyCustomSubtype() } }
+    }
+
+    // MARK: - Helper Functions
+    private func bindingForMGKey(key: String) -> Binding<Bool> {
+        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return .constant(false) }
+        return Binding(
+            get: { (cacheExtra[key] as? NSNumber)?.boolValue ?? false },
+            set: { enabled in
+                if enabled { cacheExtra[key] = 1 } else { cacheExtra.removeObject(forKey: key) }
+                store.objectWillChange.send()
             }
+        )
+    }
+
+    private func loadData() {
+        let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+        _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
+        
+        if let liveData = try? Data(contentsOf: liveURL),
+           let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
+            store.mgCurrentDict = liveDict
+            self.mobileGestalt = liveDict
+            try? liveData.write(to: modMGURL)
+        } else {
+            store.loadFromPlist(url: modMGURL)
+            mobileGestalt = store.mgCurrentDict
         }
-        .onChange(of: customSubtypeValue) { _ in
-            if enableCustomSubtype { applyCustomSubtype() }
-        }
+        hydrateFromDict()
     }
 
     private func hydrateFromDict() {
@@ -323,9 +340,7 @@ struct MobileGestaltView: View {
             do {
                 if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
                     
-                    // ==========================================
-                    // BLOCK 1: SPOOF AI (CHỈ SPOOF, KHÔNG ĐỤNG MÀN HÌNH)
-                    // ==========================================
+                    // BLOCK 1: SPOOF AI
                     let targetProductType = productType
                     let isOriginal = (targetProductType == ogMachineName)
                     
@@ -374,7 +389,6 @@ struct MobileGestaltView: View {
                         }
                     }
                     
-                    // Patch CacheData cho AI (giữ nguyên)
                     if !isOriginal {
                         if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict) {
                             for key in MGKey.appIntellAllKeys {
@@ -393,22 +407,17 @@ struct MobileGestaltView: View {
                         }
                     }
                     
-                    // ==========================================
-                    // BLOCK 2: DYNAMIC ISLAND (CHỈ GHI KHI CHỌN SUBTYPE)
-                    // ==========================================
+                    // BLOCK 2: DYNAMIC ISLAND
                     let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
                     
                     if dynamicIslandType == 0 && !enableCustomSubtype {
-                        // Nếu để None -> Tắt Island và xóa SubType
                         art.removeObject(forKey: "ArtworkDeviceSubType")
                         ce.removeObject(forKey: "YlEtTtHlNesRBMal1CqRaA")
                     } else if dynamicIslandType > 0 {
-                        // Chọn preset -> Gán SubType và Bật Island
                         let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
                         art["ArtworkDeviceSubType"] = subtypes[dynamicIslandType]
                         ce["YlEtTtHlNesRBMal1CqRaA"] = 1
                     } else if enableCustomSubtype, let val = Int(customSubtypeValue) {
-                        // Chọn custom -> Gán SubType và Bật Island
                         art["ArtworkDeviceSubType"] = val
                         ce["YlEtTtHlNesRBMal1CqRaA"] = 1
                     }
@@ -420,7 +429,6 @@ struct MobileGestaltView: View {
                     }
                     ce[MGKey.artwork] = art
                     
-                    // Region preset
                     if selectedRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
                         ce[MGKey.regionCode] = preset.id
                         ce[MGKey.regionSysconfig] = preset.suffix
