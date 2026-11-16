@@ -81,7 +81,6 @@ struct ApplyTabView: View {
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
         
-        // Đã bản địa hóa tiêu đề
         if manualCacheEditorEnabled { list.append((L("manual_editor_title"), "pencil.and.list.clipboard")) }
         
         if toolStore.configTweaksEnabled { list.append((L("tool_config_tweaks"), "textformat")) }
