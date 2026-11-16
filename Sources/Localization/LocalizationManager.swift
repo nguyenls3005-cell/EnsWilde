@@ -17,7 +17,7 @@ final class LocalizationManager: ObservableObject {
 
     @Published var availableLanguages: [LanguageInfo] = []
 
-    // TỪ ĐIỂN CHUẨN 100% - FULL 9 NGÔN NGỮ - BỔ SUNG TOÀN BỘ KEY CÒN THIẾU
+    // TỪ ĐIỂN CHUẨN 100% - FULL 9 NGÔN NGỮ - ĐÃ BAO GỒM MÀN HÌNH PAIRING
     private let dict: [String: [String: String]] = [
         "en": [
             "nav_home": "Home", "nav_theme_store": "Theme Store", "nav_settings": "Settings", "nav_about": "About", "nav_apply": "Apply",
@@ -96,6 +96,13 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_placeholder_xml": "Plist XML fragment", "manual_editor_err_invalid_int": "Enter a valid whole number.",
             "manual_editor_err_invalid_real": "Enter a finite decimal number.", "manual_editor_err_invalid_bool": "Use true or false for a Boolean value.",
             "manual_editor_err_invalid_date": "Enter an ISO 8601 date.", "manual_editor_err_invalid_data": "Enter valid Base64 data.", "manual_editor_err_invalid_xml": "Enter a valid XML plist fragment.",
+            
+            // --- PAIRING KEYS ---
+            "pair_enter_pin_title": "Enter this PIN in Settings",
+            "pair_step_instruction": "Settings > Privacy & Security > Developer Mode > Pair with EnsWilde",
+            "pair_success_title": "Pairing Successful!",
+            "pair_start_btn": "Start Pair On Device",
+            "pair_background_info": "The app has infinite background execution enabled. You can safely switch to Settings to enter the PIN without iOS terminating it.",
             
             "alert_ok": "OK", "alert_cancel": "Cancel", "alert_message_title": "Message", "alert_error": "Error", "alert_close": "Close", "button_add": "Add", "save_changes": "Save Changes"
         ],
@@ -177,6 +184,13 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Nhập số thực hợp lệ.", "manual_editor_err_invalid_bool": "Nhập true hoặc false.",
             "manual_editor_err_invalid_date": "Nhập ngày theo ISO 8601.", "manual_editor_err_invalid_data": "Nhập Base64 hợp lệ.", "manual_editor_err_invalid_xml": "Nhập đoạn XML plist hợp lệ.",
             
+            // --- PAIRING KEYS ---
+            "pair_enter_pin_title": "Nhập mã PIN này vào Cài đặt",
+            "pair_step_instruction": "Cài đặt > Quyền riêng tư & Bảo mật > Chế độ nhà phát triển > Pair with EnsWilde",
+            "pair_success_title": "Pairing Thành Công!",
+            "pair_start_btn": "Bắt đầu Pair On Device",
+            "pair_background_info": "App đã được bật chế độ chạy ngầm vô hạn. Bạn có thể yên tâm chuyển sang Settings để nhập PIN mà không lo bị iOS tắt.",
+            
             "alert_ok": "OK", "alert_cancel": "Hủy", "alert_message_title": "Thông báo", "alert_error": "Lỗi", "alert_close": "Đóng", "button_add": "Thêm", "save_changes": "Lưu thay đổi"
         ],
         "ja": [
@@ -256,6 +270,12 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_placeholder_xml": "Plist XMLフラグメント", "manual_editor_err_invalid_int": "有効な整数を入力してください。",
             "manual_editor_err_invalid_real": "有効な小数を入力してください。", "manual_editor_err_invalid_bool": "ブール値にはtrueまたはfalseを使用してください。",
             "manual_editor_err_invalid_date": "ISO 8601形式の日付を入力してください。", "manual_editor_err_invalid_data": "有効なBase64データを入力してください。", "manual_editor_err_invalid_xml": "有効なXML plistフラグメントを入力してください。",
+            
+            "pair_enter_pin_title": "設定でこのPINを入力してください",
+            "pair_step_instruction": "設定 > プライバシーとセキュリティ > デベロッパモード > Pair with EnsWilde",
+            "pair_success_title": "ペアリング成功！",
+            "pair_start_btn": "デバイスでのペアリングを開始",
+            "pair_background_info": "アプリは無限のバックグラウンド実行が有効になっています。iOSによって終了されることなく、設定に移動してPINを安全に入力できます。",
             
             "alert_ok": "OK", "alert_cancel": "キャンセル", "alert_message_title": "メッセージ", "alert_error": "エラー", "alert_close": "閉じる", "button_add": "追加", "save_changes": "変更を保存"
         ],
@@ -337,6 +357,12 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "请输入有效的小数。", "manual_editor_err_invalid_bool": "布尔值请输入 true 或 false。",
             "manual_editor_err_invalid_date": "请输入 ISO 8601 日期。", "manual_editor_err_invalid_data": "请输入有效的 Base64 数据。", "manual_editor_err_invalid_xml": "请输入有效的 XML plist 片段。",
             
+            "pair_enter_pin_title": "在设置中输入此 PIN 码",
+            "pair_step_instruction": "设置 > 隐私与安全性 > 开发者模式 > Pair with EnsWilde",
+            "pair_success_title": "配对成功！",
+            "pair_start_btn": "开始在设备上配对",
+            "pair_background_info": "应用已启用无限后台运行。您可以安全地切换到设置输入 PIN，而不必担心被 iOS 终止。",
+            
             "alert_ok": "确定", "alert_cancel": "取消", "alert_message_title": "消息", "alert_error": "错误", "alert_close": "关闭", "button_add": "添加", "save_changes": "保存更改"
         ],
         "zh-TW": [
@@ -416,6 +442,12 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_placeholder_xml": "Plist XML 片段", "manual_editor_err_invalid_int": "請輸入有效的整數。",
             "manual_editor_err_invalid_real": "請輸入有效的小數。", "manual_editor_err_invalid_bool": "布林值請輸入 true 或 false。",
             "manual_editor_err_invalid_date": "請輸入 ISO 8601 日期。", "manual_editor_err_invalid_data": "請輸入有效的 Base64 資料。", "manual_editor_err_invalid_xml": "請輸入有效的 XML plist 片段。",
+            
+            "pair_enter_pin_title": "在設定中輸入此 PIN 碼",
+            "pair_step_instruction": "設定 > 隱私權與安全性 > 開發者模式 > Pair with EnsWilde",
+            "pair_success_title": "配對成功！",
+            "pair_start_btn": "開始在裝置上配對",
+            "pair_background_info": "應用程式已啟用無限背景執行。您可以安全地切換到設定輸入 PIN，而不必擔心被 iOS 終止。",
             
             "alert_ok": "確定", "alert_cancel": "取消", "alert_message_title": "訊息", "alert_error": "錯誤", "alert_close": "關閉", "button_add": "新增", "save_changes": "儲存變更"
         ],
@@ -497,6 +529,12 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Entrez un nombre décimal fini.", "manual_editor_err_invalid_bool": "Utilisez true ou false pour un booléen.",
             "manual_editor_err_invalid_date": "Entrez une date ISO 8601.", "manual_editor_err_invalid_data": "Entrez des données Base64 valides.", "manual_editor_err_invalid_xml": "Entrez un fragment XML plist valide.",
             
+            "pair_enter_pin_title": "Entrez ce code PIN dans Réglages",
+            "pair_step_instruction": "Réglages > Confidentialité et sécurité > Mode développeur > Pair with EnsWilde",
+            "pair_success_title": "Appairage réussi !",
+            "pair_start_btn": "Démarrer l'appairage sur l'appareil",
+            "pair_background_info": "L'application a une exécution en arrière-plan infinie activée. Vous pouvez passer en toute sécurité aux Réglages pour saisir le code PIN sans qu'iOS ne la ferme.",
+            
             "alert_ok": "OK", "alert_cancel": "Annuler", "alert_message_title": "Message", "alert_error": "Erreur", "alert_close": "Fermer", "button_add": "Ajouter", "save_changes": "Enregistrer"
         ],
         "ar": [
@@ -576,6 +614,12 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_placeholder_xml": "جزء XML plist", "manual_editor_err_invalid_int": "أدخل عددًا صحيحًا صالحًا.",
             "manual_editor_err_invalid_real": "أدخل عددًا عشريًا صالحًا.", "manual_editor_err_invalid_bool": "استخدم true أو false لقيمة منطقية.",
             "manual_editor_err_invalid_date": "أدخل تاريخ ISO 8601.", "manual_editor_err_invalid_data": "أدخل بيانات Base64 صالحة.", "manual_editor_err_invalid_xml": "أدخل جزء XML plist صالح.",
+            
+            "pair_enter_pin_title": "أدخل رمز PIN هذا في الإعدادات",
+            "pair_step_instruction": "الإعدادات > الخصوصية والأمان > وضع المطور > Pair with EnsWilde",
+            "pair_success_title": "نجح الاقتران!",
+            "pair_start_btn": "بدء الاقتران على الجهاز",
+            "pair_background_info": "تم تفعيل التشغيل غير المحدود في الخلفية للتطبيق. يمكنك الانتقال بأمان إلى الإعدادات لإدخال رمز PIN دون قلق من إيقاف iOS له.",
             
             "alert_ok": "موافق", "alert_cancel": "إلغاء", "alert_message_title": "رسالة", "alert_error": "خطأ", "alert_close": "إغلاق", "button_add": "إضافة", "save_changes": "حفظ التغييرات"
         ],
@@ -657,6 +701,12 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Ingresa un número decimal finito.", "manual_editor_err_invalid_bool": "Usa true o false para un valor booleano.",
             "manual_editor_err_invalid_date": "Ingresa una fecha ISO 8601.", "manual_editor_err_invalid_data": "Ingresa datos Base64 válidos.", "manual_editor_err_invalid_xml": "Ingresa un fragmento XML plist válido.",
             
+            "pair_enter_pin_title": "Ingresa este PIN en Ajustes",
+            "pair_step_instruction": "Ajustes > Privacidad y seguridad > Modo desarrollador > Pair with EnsWilde",
+            "pair_success_title": "¡Emparejamiento exitoso!",
+            "pair_start_btn": "Iniciar emparejamiento en el dispositivo",
+            "pair_background_info": "La app tiene habilitada la ejecución en segundo plano infinita. Puedes cambiar a Ajustes de forma segura para ingresar el PIN sin que iOS la cierre.",
+            
             "alert_ok": "OK", "alert_cancel": "Cancelar", "alert_message_title": "Mensaje", "alert_error": "Error", "alert_close": "Cerrar", "button_add": "Añadir", "save_changes": "Guardar cambios"
         ],
         "ru": [
@@ -737,6 +787,12 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_real": "Введите корректное десятичное число.", "manual_editor_err_invalid_bool": "Используйте true или false для логического значения.",
             "manual_editor_err_invalid_date": "Введите дату в формате ISO 8601.", "manual_editor_err_invalid_data": "Введите корректные данные Base64.", "manual_editor_err_invalid_xml": "Введите корректный фрагмент XML plist.",
             
+            "pair_enter_pin_title": "Введите этот PIN-код в Настройках",
+            "pair_step_instruction": "Настройки > Конфиденциальность и безопасность > Режим разработчика > Pair with EnsWilde",
+            "pair_success_title": "Сопряжение успешно!",
+            "pair_start_btn": "Начать сопряжение на устройстве",
+            "pair_background_info": "В приложении включено бесконечное фоновое выполнение. Вы можете безопасно перейти в Настройки, чтобы ввести PIN-код, не опасаясь, что iOS закроет приложение.",
+            
             "alert_ok": "ОК", "alert_cancel": "Отмена", "alert_message_title": "Сообщение", "alert_error": "Ошибка", "alert_close": "Закрыть", "button_add": "Добавить", "save_changes": "Сохранить изменения"
         ]
     ]
@@ -748,6 +804,7 @@ final class LocalizationManager: ObservableObject {
 
     /// Lấy chuỗi đã bản địa hóa (Hỗ trợ map mã ngôn ngữ linh hoạt)
     func string(for key: String) -> String {
+        // Lấy mã ngôn ngữ và chuẩn hóa (vd: zh_CN -> zh-CN, vi_VN -> vi, ar_SA -> ar)
         let rawCode = currentLanguage.lowercased()
         var langCode = rawCode.components(separatedBy: CharacterSet(charactersIn: "-_")).first ?? "en"
         
