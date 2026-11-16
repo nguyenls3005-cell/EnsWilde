@@ -21,18 +21,18 @@ enum MobileGestaltApplyTask {
         try ensureAccess()
         
         guard FileManager.default.fileExists(atPath: onDeviceMGPath) else {
-            throw NSError(domain: "MG", code: -404, userInfo: [NSLocalizedDescriptionKey: "MobileGestalt cache is missing. Please RESPIRING or REBOOT your device to let iOS regenerate it before applying."])
+            throw NSError(domain: "MG", code: -404, userInfo: [NSLocalizedDescriptionKey: L("mg_err_cache_missing")])
         }
         
-        onLogUpdate("[MG] Đang đọc file MobileGestalt hiện tại...")
+        onLogUpdate(L("mg_log_reading"))
         let liveData = try Data(contentsOf: URL(fileURLWithPath: onDeviceMGPath))
         guard let liveDict = try PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary else {
-            throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: "Failed to parse live MobileGestalt"])
+            throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: L("mg_err_parse_failed")])
         }
         
         let candidateDict = NSMutableDictionary(dictionary: liveDict)
         
-        onLogUpdate("[MG] Đang đồng bộ CacheData (raw byte diff)...")
+        onLogUpdate(L("mg_log_syncing_cachedata"))
         if let liveCacheData = liveDict["CacheData"] as? Data,
            let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
            liveCacheData.count == storeCacheData.count {
@@ -48,12 +48,12 @@ enum MobileGestaltApplyTask {
             }
             
             candidateDict["CacheData"] = patchedData
-            onLogUpdate("[MG] Đã vá \(patchedBytes) byte trong CacheData.")
+            onLogUpdate(String(format: L("mg_log_patched_bytes"), patchedBytes))
         } else {
-            onLogUpdate("[MG] ⚠️ Kích thước CacheData không khớp, bỏ qua vá CacheData.")
+            onLogUpdate(L("mg_log_cache_size_mismatch"))
         }
         
-        onLogUpdate("[MG] Đang đồng bộ CacheExtra...")
+        onLogUpdate(L("mg_log_syncing_cacheextra"))
         if let liveExtra = liveDict["CacheExtra"] as? NSMutableDictionary,
            let storeExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary {
             
@@ -64,7 +64,10 @@ enum MobileGestaltApplyTask {
                 MGKey.AODVibrancy, MGKey.chargeLim, MGKey.bootChime, MGKey.intInstall,
                 MGKey.intBuild, MGKey.srd, MGKey.crashDet, MGKey.pwm, MGKey.appPencil,
                 MGKey.camButton, MGKey.grapPefr, MGKey.actButton, MGKey.tapToWake,
-                MGKey.stageMgr
+                MGKey.stageMgr,
+                "A62OafQ85EJAiiqKn4agtg", "a3n5T9sFtlyQ74NEp9ESxg", "O/7gbXWA5X2IRPVtDRU+bw",
+                "rb2tKZxlj0Gm2tBmUQSLqQ", "M1n2sAqf33NAOgZRGxQYBA", "XNCjqOupLM/S8fNyxRNQTA",
+                "YgYIIViDt1kgzyIsIV61vA", "U+73bmG4kBGj6kpreQXUTQ", "h63QSdBCiT/z0WU6rdQv6Q", "yK+xavymRGZ3xWc1tb8XDg"
             ] + MGKey.appIntellAllKeys + MGKey.ipadosCacheEx
             
             for key in allowedExtraKeys {
@@ -73,17 +76,6 @@ enum MobileGestaltApplyTask {
                 } else {
                     liveExtra.removeObject(forKey: key)
                 }
-            }
-            
-            // Merge manual CacheExtra edits tracked by ManualCacheExtraEditor.
-            // This runs AFTER the allowlist loop above and does NOT modify it.
-            // Keys in the allowlist keep priority; manual tracker only fills in
-            // additional keys the user added or removes keys they explicitly deleted.
-            for (manualKey, manualValue) in ManualEditTracker.loadSet() {
-                liveExtra[manualKey] = manualValue
-            }
-            for manualKey in ManualEditTracker.loadRemoved() where !allowedExtraKeys.contains(manualKey) {
-                liveExtra.removeObject(forKey: manualKey)
             }
             
             let blockedKeys = ["RegionInfo", "zHeENZu+wbg7PUprwNwBWg", "green-tea", "not-green-tea", "wapi"]
@@ -95,12 +87,12 @@ enum MobileGestaltApplyTask {
         }
         
         let finalData = try PropertyListSerialization.data(fromPropertyList: candidateDict, format: .binary, options: 0)
-        onLogUpdate("[MG] Kích thước file mới: \(finalData.count) bytes (Cũ: \(liveData.count) bytes)")
+        onLogUpdate(String(format: L("mg_log_new_size"), finalData.count, liveData.count))
         
-        onLogUpdate("[MG] Đang ghi đè file (pwrite + F_FULLFSYNC)...")
+        onLogUpdate(L("mg_log_writing"))
         let fd = open(onDeviceMGPath, O_RDWR)
         guard fd >= 0 else {
-            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: "Không thể mở file để ghi."])
+            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: L("mg_err_open_failed")])
         }
         defer { close(fd) }
 
@@ -112,7 +104,7 @@ enum MobileGestaltApplyTask {
         }
         
         guard written == finalData.count else {
-            throw NSError(domain: "MG", code: -21, userInfo: [NSLocalizedDescriptionKey: "Lỗi pwrite. Ghi được \(written)/\(finalData.count) bytes."])
+            throw NSError(domain: "MG", code: -21, userInfo: [NSLocalizedDescriptionKey: String(format: L("mg_err_pwrite_failed"), written, finalData.count)])
         }
         
         if oldSize > off_t(finalData.count) {
@@ -121,19 +113,19 @@ enum MobileGestaltApplyTask {
         
         if fcntl(fd, F_FULLFSYNC) == -1 {
             fsync(fd)
-            onLogUpdate("[MG] ⚠️ F_FULLFSYNC thất bại, dùng fsync thay thế.")
+            onLogUpdate(L("mg_log_fullfsync_failed"))
         } else {
-            onLogUpdate("[MG] ✅ F_FULLFSYNC thành công (Đã ép xuống ổ cứng).")
+            onLogUpdate(L("mg_log_fullfsync_success"))
         }
         
-        onLogUpdate("[MG] 🎉 GHI THÀNH CÔNG. Hãy TẮT NGUỒN (Hard Reboot) để iOS nạp lại cấu hình.")
+        onLogUpdate(L("mg_log_write_success"))
     }
 
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
         try ensureAccess()
         if FileManager.default.fileExists(atPath: onDeviceMGPath) {
             try FileManager.default.removeItem(atPath: onDeviceMGPath)
-            onLogUpdate("[MG] ✅ Đã xóa MobileGestalt cache. Hãy Respring để iOS tạo lại file gốc.")
+            onLogUpdate(L("mg_log_restored"))
         }
     }
 }
