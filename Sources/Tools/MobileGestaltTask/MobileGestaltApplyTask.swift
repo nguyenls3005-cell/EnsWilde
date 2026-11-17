@@ -57,10 +57,9 @@ enum MobileGestaltApplyTask {
         if let liveExtra = liveDict["CacheExtra"] as? NSMutableDictionary,
            let storeExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary {
             
-            // Bổ sung MGKey.island + MGKey.artwork rõ ràng
             let allowedExtraKeys: [String] = [
-                "oPeik/9e8lQWMszEjbPzng",     // Artwork
-                "YlEtTtHlNesRBMal1CqRaA",     // Island
+                "oPeik/9e8lQWMszEjbPzng",
+                "YlEtTtHlNesRBMal1CqRaA",
                 MGKey.prodType, MGKey.regionCode, MGKey.regionSysconfig,
                 MGKey.regModelNumber, MGKey.modelNameOuter1, MGKey.modelNameOuter2,
                 MGKey.liquidGlassLowPower, MGKey.AOTime, MGKey.AOD,
