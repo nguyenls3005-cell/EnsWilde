@@ -55,10 +55,6 @@ struct MobileGestaltView: View {
     @State private var selectedRegionCode: String = "CH"
     @State private var regionCustomSuffix: String? = nil
 
-    let islandSubtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
-    let islandKey = "YlEtTtHlNesRBMal1CqRaA"
-    let artworkKey = "oPeik/9e8lQWMszEjbPzng"
-
     var body: some View {
         Form {
             Section(header: Text(L("tool_mobile_gestalt"))) {
@@ -111,21 +107,21 @@ struct MobileGestaltView: View {
             }
 
             Section(header: Text(L("section_hardware_features"))) {
-                Toggle(L("mg_boot_chime"), isOn: bindingForMGKey(key: MGKey.bootChime))
-                Toggle(L("mg_charge_limit"), isOn: bindingForMGKey(key: MGKey.chargeLim))
+                Toggle(L("mg_boot_chime"), isOn: store.mgByteBinding(key: MGKey.bootChime))
+                Toggle(L("mg_charge_limit"), isOn: store.mgByteBinding(key: MGKey.chargeLim))
                     .disabled(Utils.requiresVersion(17))
                 if UIDevice._hasHomeButton() {
-                    Toggle(L("mg_tap_to_wake"), isOn: bindingForMGKey(key: MGKey.tapToWake))
+                    Toggle(L("mg_tap_to_wake"), isOn: store.mgByteBinding(key: MGKey.tapToWake))
                 }
-                Toggle(L("mg_camera_button"), isOn: bindingForMGKey(key: MGKey.camButton))
+                Toggle(L("mg_camera_button"), isOn: store.mgByteBinding(key: MGKey.camButton))
                     .disabled(Utils.requiresVersion(18))
             }
 
             Section(header: Text(L("section_display_and_ui"))) {
-                Toggle(L("mg_stage_manager"), isOn: bindingForMGKey(key: MGKey.stageMgr))
+                Toggle(L("mg_stage_manager"), isOn: store.mgByteBinding(key: MGKey.stageMgr))
                 Toggle(L("mg_aod"), isOn: bindingForMGKeys([MGKey.AOD, MGKey.AOTime]))
                     .disabled(Utils.requiresVersion(18))
-                Toggle(L("mg_aod_vibrancy"), isOn: bindingForMGKey(key: MGKey.AODVibrancy))
+                Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                     .disabled(Utils.requiresVersion(18))
                 
                 Toggle(L("mg_become_ipados"), isOn: Binding(
@@ -157,16 +153,16 @@ struct MobileGestaltView: View {
                     if newVal != "CUSTOM" { regionCustomSuffix = nil }
                 }
 
-                Toggle(L("mg_apple_pencil"), isOn: bindingForMGKey(key: MGKey.appPencil))
-                Toggle(L("mg_action_button"), isOn: bindingForMGKey(key: MGKey.actButton))
+                Toggle(L("mg_apple_pencil"), isOn: store.mgByteBinding(key: MGKey.appPencil))
+                Toggle(L("mg_action_button"), isOn: store.mgByteBinding(key: MGKey.actButton))
                     .disabled(Utils.requiresVersion(17))
-                Toggle(L("mg_crash_detection"), isOn: bindingForMGKey(key: MGKey.crashDet))
+                Toggle(L("mg_crash_detection"), isOn: store.mgByteBinding(key: MGKey.crashDet))
             }
 
             Section(header: Text(L("section_internal_features"))) {
-                Toggle(L("mg_internal_storage"), isOn: bindingForMGKey(key: MGKey.intBuild))
-                Toggle(L("mg_internal_stuff"), isOn: bindingForMGKey(key: MGKey.intInstall))
-                Toggle(L("mg_security_research"), isOn: bindingForMGKey(key: MGKey.srd))
+                Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
+                Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
+                Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
                 
                 Toggle(isOn: bindingForAppleIntelligence()) {
                     Text(L("mg_apple_intelligence"))
@@ -175,12 +171,12 @@ struct MobileGestaltView: View {
                 
                 if store.isEnabled(MGKey.appIntellAllKeys) {
                     Group {
-                        Toggle(L("mg_ondevice_siri"), isOn: bindingForMGKey(key: "O/7gbXWA5X2IRPVtDRU+bw"))
-                        Toggle(L("mg_audio_intel"), isOn: bindingForMGKey(key: "rb2tKZxlj0Gm2tBmUQSLqQ"))
-                        Toggle(L("mg_personal_translator"), isOn: bindingForMGKey(key: "M1n2sAqf33NAOgZRGxQYBA"))
-                        Toggle(L("mg_clean_up"), isOn: bindingForMGKey(key: "XNCjqOupLM/S8fNyxRNQTA"))
-                        Toggle(L("mg_handwriting"), isOn: bindingForMGKey(key: "YgYIIViDt1kgzyIsIV61vA"))
-                        Toggle(L("mg_hey_siri"), isOn: bindingForMGKey(key: "U+73bmG4kBGj6kpreQXUTQ"))
+                        Toggle(L("mg_ondevice_siri"), isOn: store.mgKeyBinding(["O/7gbXWA5X2IRPVtDRU+bw"]))
+                        Toggle(L("mg_audio_intel"), isOn: store.mgKeyBinding(["rb2tKZxlj0Gm2tBmUQSLqQ"]))
+                        Toggle(L("mg_personal_translator"), isOn: store.mgKeyBinding(["M1n2sAqf33NAOgZRGxQYBA"]))
+                        Toggle(L("mg_clean_up"), isOn: store.mgKeyBinding(["XNCjqOupLM/S8fNyxRNQTA"]))
+                        Toggle(L("mg_handwriting"), isOn: store.mgKeyBinding(["YgYIIViDt1kgzyIsIV61vA"]))
+                        Toggle(L("mg_hey_siri"), isOn: store.mgKeyBinding(["U+73bmG4kBGj6kpreQXUTQ"]))
                     }
                     .padding(.leading, 16)
                     .transition(.opacity)
@@ -232,61 +228,15 @@ struct MobileGestaltView: View {
         }
         .onAppear { loadData() }
         .onReceive(store.$mgCurrentDict) { newDict in
-            // FIX CRASH: Defer state mutation để tránh "Publishing during view update"
-            guard newDict.count > 0 else { return }
-            DispatchQueue.main.async {
+            if newDict.count > 0 {
                 self.mobileGestalt = newDict
                 self.hydrateFromDict()
             }
         }
     }
 
-    private func bindingForMGKey(key: String) -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return .constant(false) }
-        return Binding(
-            get: {
-                if let num = cacheExtra[key] as? NSNumber { return num.boolValue }
-                if let intVal = cacheExtra[key] as? Int { return intVal == 1 }
-                return false
-            },
-            set: { enabled in
-                if enabled { cacheExtra[key] = NSNumber(value: 1) } else { cacheExtra.removeObject(forKey: key) }
-            }
-        )
-    }
-
-    private func bindingForMGKeys<T: Equatable>(_ keys: [String], type: T.Type = Int.self, defaultValue: T? = 0, enableValue: T? = 1) -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary, let firstKey = keys.first else { return .constant(false) }
-        return Binding(
-            get: {
-                guard let value = cacheExtra[firstKey] as? T, let ev = enableValue else { return false }
-                return value == ev
-            },
-            set: { enabled in
-                for key in keys {
-                    if enabled { cacheExtra[key] = enableValue } else { cacheExtra.removeObject(forKey: key) }
-                }
-            }
-        )
-    }
-
-    private func loadData() {
-        let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
-        _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
-        
-        if let liveData = try? Data(contentsOf: liveURL),
-           let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
-            store.mgCurrentDict = liveDict
-            self.mobileGestalt = liveDict
-            try? liveData.write(to: modMGURL)
-        } else {
-            store.loadFromPlist(url: modMGURL)
-            mobileGestalt = store.mgCurrentDict
-        }
-        hydrateFromDict()
-    }
-
     private func hydrateFromDict() {
+        // Reset trước
         dynamicIslandType = 0
         enableCustomSubtype = false
         customSubtypeValue = ""
@@ -309,159 +259,126 @@ struct MobileGestaltView: View {
             self.regionCustomSuffix = sysconfig.isEmpty ? "\(regionCode) - Custom" : sysconfig
         }
         
-        if let artwork = cacheExtra[artworkKey] as? NSDictionary,
-           let rawSubtype = artwork["ArtworkDeviceSubType"] {
-            var subtypeValue: Int? = nil
-            if let n = rawSubtype as? NSNumber { subtypeValue = n.intValue }
-            else if let i = rawSubtype as? Int { subtypeValue = i }
-            else if let s = rawSubtype as? String { subtypeValue = Int(s) }
-            
-            if let subtype = subtypeValue {
-                if let idx = islandSubtypes.firstIndex(of: subtype), idx > 0 {
-                    dynamicIslandType = idx
-                } else {
-                    dynamicIslandType = -1
-                    enableCustomSubtype = true
-                    customSubtypeValue = "\(subtype)"
+        if let artwork = cacheExtra[MGKey.artwork] as? NSDictionary {
+            if let rawSubtype = artwork["ArtworkDeviceSubType"] {
+                var subtypeValue: Int? = nil
+                if let n = rawSubtype as? NSNumber { subtypeValue = n.intValue }
+                else if let i = rawSubtype as? Int { subtypeValue = i }
+                
+                if let subtype = subtypeValue {
+                    switch subtype {
+                    case 2436: dynamicIslandType = 1
+                    case 2556: dynamicIslandType = 2
+                    case 2796: dynamicIslandType = 3
+                    case 2976: dynamicIslandType = 4
+                    case 2622: dynamicIslandType = 5
+                    case 2868: dynamicIslandType = 6
+                    case 2736: dynamicIslandType = 7
+                    case 2662: dynamicIslandType = 8
+                    default:
+                        dynamicIslandType = -1
+                        enableCustomSubtype = true
+                        customSubtypeValue = "\(subtype)"
+                    }
                 }
             }
-        }
-        
-        if let artwork = cacheExtra[artworkKey] as? NSDictionary, let name = artwork["ArtworkDeviceProductDescription"] as? String, !name.isEmpty {
-            enableModelName = true
-            modelName = name
+            if let name = artwork["ArtworkDeviceProductDescription"] as? String, !name.isEmpty {
+                enableModelName = true
+                modelName = name
+            }
         }
     }
 
     private func saveChanges() {
         Task {
             do {
-                guard let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary else {
-                    await MainActor.run {
-                        lastError = L("mg_save_failed") + " CacheExtra is not mutable"
-                        showErrorAlert = true
-                    }
-                    return
-                }
-                
-                // 1. DYNAMIC ISLAND
-                let existingArt = (ce[artworkKey] as? NSMutableDictionary) ?? NSMutableDictionary()
-                let art = NSMutableDictionary(dictionary: existingArt)
-                
-                let finalSubtype: Int
-                if dynamicIslandType > 0 && dynamicIslandType < islandSubtypes.count {
-                    finalSubtype = islandSubtypes[dynamicIslandType]
-                } else if enableCustomSubtype, let val = Int(customSubtypeValue), val > 0 {
-                    finalSubtype = val
-                } else {
-                    finalSubtype = 0
-                }
-                
-                if finalSubtype > 0 {
-                    art["ArtworkDeviceSubType"] = NSNumber(value: finalSubtype)
-                    ce[islandKey] = NSNumber(value: 1)
-                } else {
-                    art.removeObject(forKey: "ArtworkDeviceSubType")
-                    ce.removeObject(forKey: islandKey)
-                }
-                
-                if enableModelName && !modelName.isEmpty {
-                    art["ArtworkDeviceProductDescription"] = modelName
-                } else {
-                    art.removeObject(forKey: "ArtworkDeviceProductDescription")
-                }
-                
-                if art.count > 0 { ce[artworkKey] = art } else { ce.removeObject(forKey: artworkKey) }
-                
-                // 2. SPOOF AI
-                let targetProductType = productType
-                let isOriginal = (targetProductType == ogMachineName)
-                
-                let spoofMap: [String: (hw: String, cpu: String, reg: String)] = [
-                    "iPhone16,1": ("D83AP", "t8130", "A2848"), "iPhone16,2": ("D84AP", "t8130", "A2849"),
-                    "iPhone17,3": ("D47AP", "t8140", "A3081"), "iPhone17,4": ("D48AP", "t8140", "A3082"),
-                    "iPhone17,1": ("D93AP", "t8140", "A3083"), "iPhone17,2": ("D94AP", "t8140", "A3084"),
-                    "iPhone17,5": ("V59AP", "t8140", "A3212"), "iPhone18,3": ("V57AP", "t8150", "A3258"),
-                    "iPhone18,1": ("V53AP", "t8150", "A3256"), "iPhone18,2": ("V54AP", "t8150", "A3257"),
-                    "iPhone18,4": ("D23AP", "t8150", "A3260"), "iPhone18,5": ("V59AP", "t8150", "A3575"),
-                    "iPhone19,2": ("V63AP", "t8160", "A3472"), "iPhone19,3": ("V64AP", "t8160", "A3473"),
-                    "iPhone19,7": ("V64sAP", "t8160", "A3717"), "iPhone19,4": ("V68AP", "t8160", "A3447")
-                ]
-                
-                if !isOriginal, let info = spoofMap[targetProductType] {
-                    ce[MGKey.prodType] = targetProductType
-                    ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
-                    ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
-                    ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
+                if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
+                    let targetProductType = productType
                     
-                    ce["A62OafQ85EJAiiqKn4agtg"] = 1
-                    ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2
-                    ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
-                    ce["YgYIIViDt1kgzyIsIV61vA"] = 1
+                    let spoofMap: [String: (hw: String, cpu: String, reg: String)] = [
+                        "iPhone16,1": ("D83AP", "t8130", "A2848"),
+                        "iPhone16,2": ("D84AP", "t8130", "A2849"),
+                        "iPhone17,3": ("D47AP", "t8140", "A3081"),
+                        "iPhone17,4": ("D48AP", "t8140", "A3082"),
+                        "iPhone17,1": ("D93AP", "t8140", "A3083"),
+                        "iPhone17,2": ("D94AP", "t8140", "A3084"),
+                        "iPhone17,5": ("V59AP", "t8140", "A3212"),
+                        "iPhone18,3": ("V57AP", "t8150", "A3258"),
+                        "iPhone18,1": ("V53AP", "t8150", "A3256"),
+                        "iPhone18,2": ("V54AP", "t8150", "A3257"),
+                        "iPhone18,4": ("D23AP", "t8150", "A3260"),
+                        "iPhone18,5": ("V59AP", "t8150", "A3575"),
+                        "iPhone19,2": ("V63AP", "t8160", "A3472"),
+                        "iPhone19,3": ("V64AP", "t8160", "A3473"),
+                        "iPhone19,7": ("V64sAP", "t8160", "A3717"),
+                        "iPhone19,4": ("V68AP", "t8160", "A3447")
+                    ]
                     
-                    if selectedRegionCode == "CUSTOM" || selectedRegionCode.isEmpty {
+                    if targetProductType != ogMachineName, let info = spoofMap[targetProductType] {
+                        ce[MGKey.prodType] = targetProductType
+                        ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
+                        ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
+                        ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
+                        
+                        ce["A62OafQ85EJAiiqKn4agtg"] = 1
+                        ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2
+                        ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
+                        ce["YgYIIViDt1kgzyIsIV61vA"] = 1
                         ce["h63QSdBCiT/z0WU6rdQv6Q"] = "LL"
                         ce["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A"
-                    }
-                    
-                    ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw")
-                    ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg")
-                    ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ")
-                } else if isOriginal {
-                    if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
-                        for key in [MGKey.prodType, "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
-                            if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
-                        }
-                    }
-                }
-                
-                // 3. CACHE DATA PATCH
-                let layoutResult = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict)
-                if case .success((let layout, var data)) = layoutResult {
-                    var patched = false
-                    
-                    if !isOriginal {
-                        for key in MGKey.appIntellAllKeys {
-                            if let slotIdx = layout.featureSlotIndices[key],
-                               layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                                data[slotIdx * 8] = 1
-                                patched = true
+                        
+                        ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw")
+                        ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg")
+                        ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ")
+                        
+                        self.selectedRegionCode = "LL"
+                    } else if targetProductType == ogMachineName {
+                        if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
+                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
+                                if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
                             }
                         }
-                        data[layout.greenTeaOffset] = 0
-                        data[layout.notGreenTeaOffset] = 1
-                        patched = true
                     }
                     
-                    if finalSubtype > 0 {
-                        if let islandSlotIdx = layout.featureSlotIndices[islandKey],
-                           layout.validateSingleBooleanSlot(islandSlotIdx, in: data) {
-                            data[islandSlotIdx * 8] = 1
-                            patched = true
+                    if targetProductType != ogMachineName {
+                        if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict) {
+                            for key in MGKey.appIntellAllKeys {
+                                if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
+                                    data[slotIdx * 8] = 1
+                                }
+                            }
+                            data[layout.greenTeaOffset] = 0
+                            data[layout.notGreenTeaOffset] = 1
+                            
+                            let testDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
+                            testDict["CacheData"] = data
+                            if case .success = layout.validatePlist(testDict) {
+                                store.mgCurrentDict["CacheData"] = data
+                            }
                         }
                     }
                     
-                    if patched {
-                        let testDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
-                        testDict["CacheData"] = data
-                        if case .success = layout.validatePlist(testDict) {
-                            store.mgCurrentDict["CacheData"] = data
-                        }
+                    let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+                    if dynamicIslandType == 0 { art.removeObject(forKey: "ArtworkDeviceSubType") }
+                    else if dynamicIslandType > 0 {
+                        let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
+                        art["ArtworkDeviceSubType"] = subtypes[dynamicIslandType]
+                        ce["YlEtTtHlNesRBMal1CqRaA"] = 1
+                    } else if enableCustomSubtype, let val = Int(customSubtypeValue) {
+                        art["ArtworkDeviceSubType"] = val
+                        ce["YlEtTtHlNesRBMal1CqRaA"] = 1
+                    }
+                    if enableModelName { art["ArtworkDeviceProductDescription"] = modelName }
+                    else { art.removeObject(forKey: "ArtworkDeviceProductDescription") }
+                    ce[MGKey.artwork] = art
+                    
+                    if selectedRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
+                        ce[MGKey.regionCode] = preset.id
+                        ce[MGKey.regionSysconfig] = preset.suffix
+                        ce[MGKey.regionInfo] = preset.suffix
                     }
                 }
                 
-                // 4. REGION
-                if selectedRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
-                    ce[MGKey.regionCode] = preset.id
-                    ce[MGKey.regionSysconfig] = preset.suffix
-                    ce["zHeENZu+wbg7PUprwNwBWg"] = preset.suffix
-                }
-                
-                // Trigger @Published
-                let newDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
-                store.mgCurrentDict = newDict
-                
-                // 5. APPLY
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
                     print(log)
                 }
@@ -474,7 +391,7 @@ struct MobileGestaltView: View {
                 
                 await MainActor.run {
                     self.mobileGestalt = store.mgCurrentDict
-                    self.hydrateFromDict()
+                    hydrateFromDict()
                     showApplyTab = true
                     lastError = L("mg_save_success_message")
                     showErrorAlert = true
@@ -526,7 +443,7 @@ struct MobileGestaltView: View {
         _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
         
         var initialDict = NSMutableDictionary()
-        var initialError: String? = nil
+        var initErr: String? = nil
         
         do {
             if FileManager.default.fileExists(atPath: liveURL.path) {
@@ -545,18 +462,35 @@ struct MobileGestaltView: View {
             if let mutable = GestaltStore.loadMutableDict(from: modMGURL) {
                 initialDict = mutable
             } else {
-                initialError = "Failed to load MobileGestalt"
+                initErr = "Failed to load MobileGestalt"
             }
         } catch {
-            initialError = "Failed to copy MobileGestalt: \(error)"
+            initErr = "Failed to copy MobileGestalt: \(error)"
         }
         
         _mobileGestalt = State(initialValue: initialDict)
-        _initError = State(initialValue: initialError)
+        _initError = State(initialValue: initErr)
     }
 
-    func bindingForAppleIntelligence() -> Binding<Bool> {
+    private func bindingForAppleIntelligence() -> Binding<Bool> {
         return store.mgKeyBinding(MGKey.appIntellAllKeys)
+    }
+
+    private func bindingForMGKeys<T: Equatable>(_ keys: [String], type: T.Type = Int.self, defaultValue: T? = 0, enableValue: T? = 1) -> Binding<Bool> {
+        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary, let firstKey = keys.first else {
+            return .constant(false)
+        }
+        return Binding(
+            get: {
+                guard let value = cacheExtra[firstKey] as? T, let ev = enableValue else { return false }
+                return value == ev
+            },
+            set: { enabled in
+                for key in keys {
+                    if enabled { cacheExtra[key] = enableValue } else { cacheExtra.removeObject(forKey: key) }
+                }
+            }
+        )
     }
 
     static func machineName() -> String {
