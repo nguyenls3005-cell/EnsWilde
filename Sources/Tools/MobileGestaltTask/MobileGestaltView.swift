@@ -55,7 +55,6 @@ struct MobileGestaltView: View {
     @State private var selectedRegionCode: String = "CH"
     @State private var regionCustomSuffix: String? = nil
 
-    // Subtype constants
     let islandSubtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
     let islandKey = "YlEtTtHlNesRBMal1CqRaA"
     let artworkKey = "oPeik/9e8lQWMszEjbPzng"
@@ -233,15 +232,12 @@ struct MobileGestaltView: View {
         }
         .onAppear { loadData() }
         .onReceive(store.$mgCurrentDict) { newDict in
-            if newDict.count > 0 {
+            // FIX CRASH: Defer state mutation để tránh "Publishing during view update"
+            guard newDict.count > 0 else { return }
+            DispatchQueue.main.async {
                 self.mobileGestalt = newDict
                 self.hydrateFromDict()
             }
-        }
-        .onChange(of: enableModelName) { enabled in if enabled { applyModelName() } else { removeModelName() } }
-        .onChange(of: modelName) { _ in if enableModelName && !modelName.isEmpty { applyModelName() } }
-        .onChange(of: enableCustomSubtype) { enabled in
-            if enabled { dynamicIslandType = -1 }
         }
     }
 
@@ -255,25 +251,21 @@ struct MobileGestaltView: View {
             },
             set: { enabled in
                 if enabled { cacheExtra[key] = NSNumber(value: 1) } else { cacheExtra.removeObject(forKey: key) }
-                store.mgCurrentDict["CacheExtra"] = cacheExtra
-                store.objectWillChange.send()
             }
         )
     }
 
     private func bindingForMGKeys<T: Equatable>(_ keys: [String], type: T.Type = Int.self, defaultValue: T? = 0, enableValue: T? = 1) -> Binding<Bool> {
-        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary else { return .constant(false) }
+        guard let cacheExtra = mobileGestalt["CacheExtra"] as? NSMutableDictionary, let firstKey = keys.first else { return .constant(false) }
         return Binding(
             get: {
-                guard let value = cacheExtra[keys.first!] as? T, let ev = enableValue else { return false }
+                guard let value = cacheExtra[firstKey] as? T, let ev = enableValue else { return false }
                 return value == ev
             },
             set: { enabled in
                 for key in keys {
                     if enabled { cacheExtra[key] = enableValue } else { cacheExtra.removeObject(forKey: key) }
                 }
-                store.mgCurrentDict["CacheExtra"] = cacheExtra
-                store.objectWillChange.send()
             }
         )
     }
@@ -302,7 +294,6 @@ struct MobileGestaltView: View {
         modelName = ""
         productType = MobileGestaltView.machineName()
 
-        // Đọc từ store.mgCurrentDict trực tiếp (không dùng mobileGestalt có thể stale)
         guard let cacheExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary else { return }
         
         productType = cacheExtra[MGKey.prodType] as? String ?? productType
@@ -318,7 +309,6 @@ struct MobileGestaltView: View {
             self.regionCustomSuffix = sysconfig.isEmpty ? "\(regionCode) - Custom" : sysconfig
         }
         
-        // Đọc subtype (linh hoạt NSNumber / Int / String)
         if let artwork = cacheExtra[artworkKey] as? NSDictionary,
            let rawSubtype = artwork["ArtworkDeviceSubType"] {
             var subtypeValue: Int? = nil
@@ -343,42 +333,18 @@ struct MobileGestaltView: View {
         }
     }
 
-    private func applyModelName() {
-        guard let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary else { return }
-        let existingArt = (ce[artworkKey] as? NSMutableDictionary) ?? NSMutableDictionary()
-        let art = NSMutableDictionary(dictionary: existingArt)
-        art["ArtworkDeviceProductDescription"] = modelName
-        ce[artworkKey] = art
-        store.mgCurrentDict["CacheExtra"] = ce
-        store.objectWillChange.send()
-    }
-
-    private func removeModelName() {
-        guard let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary else { return }
-        if let existingArt = ce[artworkKey] as? NSMutableDictionary {
-            let art = NSMutableDictionary(dictionary: existingArt)
-            art.removeObject(forKey: "ArtworkDeviceProductDescription")
-            ce[artworkKey] = art
-            store.mgCurrentDict["CacheExtra"] = ce
-            store.objectWillChange.send()
-        }
-    }
-
     private func saveChanges() {
         Task {
             do {
-                // Ensure CacheExtra mutable
                 guard let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary else {
                     await MainActor.run {
-                        lastError = "CacheExtra missing"
+                        lastError = L("mg_save_failed") + " CacheExtra is not mutable"
                         showErrorAlert = true
                     }
                     return
                 }
                 
-                // ===========================
                 // 1. DYNAMIC ISLAND
-                // ===========================
                 let existingArt = (ce[artworkKey] as? NSMutableDictionary) ?? NSMutableDictionary()
                 let art = NSMutableDictionary(dictionary: existingArt)
                 
@@ -407,9 +373,7 @@ struct MobileGestaltView: View {
                 
                 if art.count > 0 { ce[artworkKey] = art } else { ce.removeObject(forKey: artworkKey) }
                 
-                // ===========================
                 // 2. SPOOF AI
-                // ===========================
                 let targetProductType = productType
                 let isOriginal = (targetProductType == ogMachineName)
                 
@@ -451,14 +415,11 @@ struct MobileGestaltView: View {
                     }
                 }
                 
-                // ===========================
-                // 3. CACHE DATA PATCH (AI + ISLAND)
-                // ===========================
-                if let layoutResult = try? MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict),
-                   case .success((let layout, var data)) = layoutResult {
+                // 3. CACHE DATA PATCH
+                let layoutResult = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict)
+                if case .success((let layout, var data)) = layoutResult {
                     var patched = false
                     
-                    // AI slots
                     if !isOriginal {
                         for key in MGKey.appIntellAllKeys {
                             if let slotIdx = layout.featureSlotIndices[key],
@@ -472,14 +433,11 @@ struct MobileGestaltView: View {
                         patched = true
                     }
                     
-                    // Island slot
                     if finalSubtype > 0 {
                         if let islandSlotIdx = layout.featureSlotIndices[islandKey],
                            layout.validateSingleBooleanSlot(islandSlotIdx, in: data) {
                             data[islandSlotIdx * 8] = 1
                             patched = true
-                        } else if !isOriginal {
-                            // Nếu slot không tồn tại (máy cũ), thử vẫn giữ CacheData cũ
                         }
                     }
                     
@@ -492,9 +450,7 @@ struct MobileGestaltView: View {
                     }
                 }
                 
-                // ===========================
                 // 4. REGION
-                // ===========================
                 if selectedRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
                     ce[MGKey.regionCode] = preset.id
                     ce[MGKey.regionSysconfig] = preset.suffix
@@ -505,30 +461,15 @@ struct MobileGestaltView: View {
                 let newDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
                 store.mgCurrentDict = newDict
                 
-                // ===========================
-                // 5. APPLY TO LIVE
-                // ===========================
+                // 5. APPLY
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
                     print(log)
                 }
                 
-                // Read back and verify
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 let expectedData = try Data(contentsOf: liveURL)
                 try expectedData.write(to: modMGURL)
                 
-                // Verify
-                if let verifyDict = try PropertyListSerialization.propertyList(from: expectedData, options: [.mutableContainersAndLeaves], format: nil) as? NSDictionary {
-                    let verifyCE = verifyDict["CacheExtra"] as? NSDictionary
-                    let verifyArt = verifyCE?[artworkKey] as? NSDictionary
-                    let verifySubtype = (verifyArt?["ArtworkDeviceSubType"] as? NSNumber)?.intValue ?? -1
-                    print("[Verify] ArtworkDeviceSubType in live file = \(verifySubtype)")
-                    if finalSubtype > 0 && verifySubtype != finalSubtype {
-                        print("[Verify] WARNING: write did not persist!")
-                    }
-                }
-                
-                // Reload from modMGURL
                 store.loadFromPlist(url: modMGURL)
                 
                 await MainActor.run {
@@ -584,6 +525,9 @@ struct MobileGestaltView: View {
         let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
         _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
         
+        var initialDict = NSMutableDictionary()
+        var initialError: String? = nil
+        
         do {
             if FileManager.default.fileExists(atPath: liveURL.path) {
                 try? FileManager.default.removeItem(at: modMGURL)
@@ -599,16 +543,16 @@ struct MobileGestaltView: View {
             chmod(origMGURL.path, 0o644)
             
             if let mutable = GestaltStore.loadMutableDict(from: modMGURL) {
-                _mobileGestalt = State(initialValue: mutable)
+                initialDict = mutable
             } else {
-                _mobileGestalt = State(initialValue: [:])
-                _initError = State(initialValue: "Failed to load MobileGestalt")
+                initialError = "Failed to load MobileGestalt"
             }
         } catch {
-            _mobileGestalt = State(initialValue: [:])
-            _initError = State(initialValue: "Failed to copy MobileGestalt: \(error)")
-            taskRunning = true
+            initialError = "Failed to copy MobileGestalt: \(error)"
         }
+        
+        _mobileGestalt = State(initialValue: initialDict)
+        _initError = State(initialValue: initialError)
     }
 
     func bindingForAppleIntelligence() -> Binding<Bool> {
