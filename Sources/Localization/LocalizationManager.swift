@@ -824,4 +824,121 @@ final class LocalizationManager: ObservableObject {
             "mg_boot_chime": "Звук загрузки", "mg_charge_limit": "Ограничение заряда", "mg_camera_button": "Кнопка камеры", "mg_tap_to_wake": "Пробуждение касанием",
             "mg_stage_manager": "Stage Manager", "mg_aod": "Always-on Display (AOD)", "mg_aod_vibrancy": "Яркость AOD", "mg_become_ipados": "Режим iPadOS",
             "mg_install_ipad_apps": "Установить приложения iPadOS", "mg_apple_pencil": "Apple Pencil", "mg_action_button": "Кнопка действия", "mg_crash_detection": "Обнаружение аварий",
-            "mg_internal_storage": "Внутренняя память",
+            "mg_internal_storage": "Внутренняя память", "mg_internal_stuff": "Внутреннее содержимое", "mg_security_research": "Исследование безопасности",
+            "mg_apple_intelligence": "Apple Intelligence", "mg_device_model": "Модель устройства", "mg_device_model_unchanged": "без изменений",
+            "mg_ondevice_siri": "Siri на устройстве", "mg_audio_intel": "Аудио интеллект", "mg_personal_translator": "Личный переводчик",
+            "mg_clean_up": "Очистка фото", "mg_handwriting": "Синтез рукописного текста", "mg_hey_siri": "Постоянное прослушивание \"Привет Siri\"",
+            "mg_device_subtype_preset": "Пресет подтипа устройства", "mg_subtype_none": "Нет", "mg_subtype_2436": "2436 (Жесты iPhone X)",
+            "mg_subtype_2556": "2556 (iPhone 14 Pro)", "mg_subtype_2796": "2796 (iPhone 14 Pro Max)", "mg_subtype_2976": "2976 (iPhone 15 Pro Max)",
+            "mg_subtype_2622": "2622 (iPhone 16 Pro)", "mg_subtype_2868": "2868 (iPhone 16 Pro Max)", "mg_subtype_2736": "2736 (iPhone Air)",
+            "mg_subtype_2662": "2662 (iPhone 18 Pro)", "mg_subtype_custom": "Пользовательский подтип", "mg_enable_custom_subtype": "Включить пользовательский подтип",
+            "mg_custom_subtype_placeholder": "Введите ArtworkDeviceSubType (например, 2xxx)", "mg_change_model_name": "Изменить название модели",
+            "mg_model_name_placeholder": "Название модели", "mg_region": "Регион", "mg_di_warning_title": "Для Dynamic Island iPhone 18 Pro требуется iOS 27RC+",
+            "mg_save_settings": "Сохранить настройки", "mg_revert_tweaks": "Отменить твики", "mg_save_success_message": "Успешно сохранено и применено. Выполните жесткую перезагрузку устройства, чтобы iOS обнаружила новую конфигурацию.",
+            "mg_revert_success_message": "Все твики успешно отменены. Перейдите в НАСТРОЙКИ и нажмите 'Перезапустить SpringBoard'.",
+            "mg_revert_failed": "Ошибка отмены:", "mg_save_failed": "Ошибка сохранения:", "mg_init_failed": "Не удалось загрузить MobileGestalt: %@",
+            "config_tweaks_title": "Настройка конфигурации", "config_enable_tweak": "Включить твик", "config_lock_screen_footnote": "Сноска на экране блокировки",
+            "config_footnote_placeholder": "Введите текст для экрана блокировки...", "config_supervision_title": "Наблюдение (Supervision)", "config_enable_supervision": "Включить наблюдение",
+            "config_apply_save": "Применить и сохранить изменения", "config_restore_save": "Восстановить изменения", "config_saved_message": "Сохранено. Перейдите на вкладку «Применить», чтобы применить.",
+            "config_restored_title": "Восстановлено", "config_restored_message": "Все конфигурации очищены. Перейдите на вкладку «Применить», чтобы завершить удаление на устройстве.",
+            "passcode_theme_manager": "Менеджер тем пароля", "passcode_enable_theme": "Включить тему пароля", "global_settings": "Глобальные настройки",
+            "passcode_language_method": "Язык/Метод", "passcode_telephony_version": "Версия Telephony", "section_theme_library": "Библиотека тем",
+            "section_theme_settings": "Настройки темы", "passcode_theme_name": "Название темы", "passcode_detected_size": "Обнаруженный размер",
+            "passcode_target_key_size": "Целевой размер клавиши", "passcode_selected_theme": "Выбранная тема", "passcode_selected": "Выбрано",
+            "passcode_theme_selected": "Эта тема будет применена", "section_theme_files": "Файлы темы", "section_danger_zone": "Опасная зона",
+            "passcode_delete_theme": "Удалить тему",
+            "wallet_title": "Apple Wallet", "wallet_enable": "Включить Apple Wallet", "section_wallet_cards": "Карты в кошельке",
+            "wallet_no_cards": "Карты не добавлены", "section_add_card": "Добавить карту", "wallet_scan_card": "Сканировать ID карты",
+            "wallet_manual_input": "Ручной ввод", "wallet_import_default_zip": "Импорт стандартной карты (ZIP)",
+            "recording_sound_title": "Отключить звук записи звонков", "tone_status": "Состояние звука", "current_tone": "Текущий звук",
+            "pairing_not_found": "Файл сопряжения не найден", "check_tone_status": "Проверить состояние звука", "tone_status_footer": "Проверяет, является ли аудиофайл на устройстве оригинальным файлом Apple.",
+            "backup_system": "Система резервного копирования", "backup_status": "Состояние резервной копии", "backup_ready": "Копия готова", "refresh_backup_status": "Обновить состояние",
+            "backup_system_footer": "При первом применении приложение автоматически извлечет исходный файл в хранилище устройства.",
+            "restore_default_sounds": "Восстановить стандартные звуки", "restore_footer": "Восстановить исходные звуки из автоматически созданной резервной копии.",
+            "theme_store_title": "Магазин тем", "theme_store_downloaded": "Загружено", "theme_store_download_btn": "Скачать", "theme_store_by_author": "от %@", "theme_store_repos": "Репозитории",
+            "theme_store_theme_count": "%d тем", "theme_store_json_url": "URL-адрес JSON", "theme_store_json_desc": "Вставьте прямой JSON тем или индекс.",
+            "theme_store_loading": "Загрузка...", "theme_store_empty": "Пусто. Нажмите +, чтобы добавить.", "theme_store_delete_group": "Удалить группу", "theme_store_delete_repo": "Удалить репозиторий",
+            "add_repo": "Добавить репозиторий",
+            "settings_run_test_header": "ЗАПУСТИТЬ ТЕСТ (Доступ WorseQuery)", "settings_run_test_btn": "Проверить права чтения/записи MobileGestalt",
+            "settings_respring_header": "RESPRING (NeoSpring)", "settings_respring_btn": "Перезапустить SpringBoard", "settings_tunnel_status": "Туннельное соединение",
+            "connection_status": "Состояние подключения", "pairing_file": "Файл сопряжения", "status_not_ready": "Не готово",
+            "import_pairing": "Импорт сопряжения", "pair_on_device": "Сопряжение на устройстве (iOS 27+)", "button_reset_pairing": "Сбросить сопряжение",
+            "settings_language": "Язык", "settings_accent_color": "Цвет акцента", "settings_app_info": "Информация о приложении",
+            "color_orange": "Оранжевый", "color_pink": "Розовый", "color_mauve": "Бледно-лиловый", "color_red": "Красный", "color_green": "Зеленый", "color_blue": "Синий",
+            "app_ios": "iOS", "app_device": "Устройство", "app_info_footer": "iOS 27+: bad_query может изменять текст на экране блокировки и обои PosterBoard. iOS 26: только Airlift.",
+            "about_desc": "Спасибо за использование Enswilde, пересобрано с bad_query.", "button_donate": "Пожертвовать",
+            "about_group_yang": "Группа Telegram YangJiii", "about_group_ls": "Группа Telegram LSNguyen", "about_contact": "Связаться со мной",
+            "settings_thanks_to": "Благодарности", "credit_yang_support": "За поддержку во время разработки", "credit_yang_original": "Оригинальный разработчик EnsWilde",
+            "credit_ls_new": "Разработчик нового EnsWilde", "credit_forcequit_badquery": "Эксплойт Bad_query", "credit_johnny_airlift": "Эксплойт Airlift",
+            "credit_mak5er_aod": "Airlift-On-Device", "credit_jailbreak_config": "Настройка конфигурации, новая логика MobileGestalt", "credit_likepass_sound": "Отключить звук записи звонков (iOS 27)",
+            "credit_little_34306_concept": "Оригинальная концепция отключения звука записи звонков", "credit_yihooong_silent": "За ресурсы беззвучного тона и исследования замены.",
+            "credit_kianuni_erosion": "Разработчик Erosion-cn - Логика применения и отмены твиков", "credit_community": "За поддержку моего проекта.",
+            "settings_translators": "Переводчики", "translation_by": "Перевод %@ (%@)",
+            "enable_tweak": "Включить твик", "save_changes": "Сохранить изменения", "apply_enabled_tweaks": "Применить включенные твики",
+            "applying": "Применение...", "apply_starting": "Запуск последовательности...", "respring_after_apply": "Перезапуск после применения",
+            "using_neospring": "Использование Neospring для перезапуска устройства", "apply_no_tweaks": "Нет включенных твиков", "apply_done": "Успешно применено",
+            "msg_apply_status_ready": "Готово. Это запустит все включенные инструменты по порядку.",
+            "manual_editor_fields": "Поля", "manual_editor_empty": "CacheExtra пуст.", "manual_editor_delete": "Удалить", "manual_editor_save": "Сохранить",
+            "manual_editor_saving": "Сохранение…", "manual_editor_revert": "Отменить", "manual_editor_reverting": "Отмена…", "manual_editor_save_revert": "Сохранить и отменить",
+            "manual_editor_invalid_value": "Неверное значение", "manual_editor_search": "Поиск ключей…", "manual_editor_revert_confirm_title": "Отменить все твики MobileGestalt?",
+            "manual_editor_revert_confirm_message": "Это удалит активный файл кэша MobileGestalt. iOS создаст чистую копию при следующей перезагрузке.",
+            "manual_editor_key": "Ключ", "manual_editor_key_placeholder": "Обфусцированный ключ (22 символа)", "manual_editor_type": "Тип", "manual_editor_value": "Значение",
+            "manual_editor_add_field": "Добавить поле", "manual_editor_edit_field": "Редактировать поле", "manual_editor_placeholder_int": "напр. 1", "manual_editor_placeholder_real": "напр. 1.5",
+            "manual_editor_placeholder_string": "Строковое значение", "manual_editor_placeholder_base64": "Base64", "manual_editor_placeholder_date": "ISO 8601",
+            "manual_editor_placeholder_xml": "Фрагмент XML plist", "manual_editor_err_invalid_int": "Введите корректное целое число.",
+            "manual_editor_err_invalid_real": "Введите корректное десятичное число.", "manual_editor_err_invalid_bool": "Используйте true или false для логического значения.",
+            "manual_editor_err_invalid_date": "Введите дату в формате ISO 8601.", "manual_editor_err_invalid_data": "Введите корректные данные Base64.", "manual_editor_err_invalid_xml": "Введите корректный фрагмент XML plist.",
+            "pair_enter_pin_title": "Введите этот PIN-код в Настройках", "pair_step_instruction": "Настройки > Конфиденциальность и безопасность > Режим разработчика > Pair with EnsWilde",
+            "pair_success_title": "Сопряжение успешно!", "pair_start_btn": "Начать сопряжение на устройстве", "pair_background_info": "В приложении включено бесконечное фоновое выполнение. Вы можете безопасно перейти в Настройки, чтобы ввести PIN-код, не опасаясь, что iOS закроет приложение.",
+            "pair_on_device": "Сопряжение на устройстве (iOS 27+)", "logs": "Журналы",
+            "alert_ok": "ОК", "alert_cancel": "Отмена", "alert_accept": "Принять", "alert_close": "Закрыть", "alert_message_title": "Сообщение", "alert_error": "Ошибка",
+            "msg_error_unknown": "Произошла неизвестная ошибка.", "button_add": "Добавить",
+            "mg_err_cache_missing": "Кэш MobileGestalt отсутствует. Пожалуйста, перезагрузите устройство, чтобы iOS восстановила его перед применением.",
+            "mg_log_reading": "[MG] Чтение текущего MobileGestalt...",
+            "mg_err_parse_failed": "Не удалось проанализировать текущий MobileGestalt",
+            "mg_log_syncing_cachedata": "[MG] Синхронизация CacheData (raw byte diff)...",
+            "mg_log_patched_bytes": "[MG] Исправлено %d байт в CacheData.",
+            "mg_log_cache_size_mismatch": "[MG] ⚠️ Размер CacheData не совпадает, пропуск исправления CacheData.",
+            "mg_log_syncing_cacheextra": "[MG] Синхронизация CacheExtra...",
+            "mg_log_new_size": "[MG] Новый размер файла: %d байт (Старый: %d байт)",
+            "mg_log_writing": "[MG] Запись файла (pwrite + F_FULLFSYNC)...",
+            "mg_err_open_failed": "Не удалось открыть файл для записи.",
+            "mg_err_pwrite_failed": "Ошибка pwrite. Записано %d/%d байт.",
+            "mg_log_fullfsync_failed": "[MG] ⚠️ F_FULLFSYNC не удался, используется fsync.",
+            "mg_log_fullfsync_success": "[MG] ✅ F_FULLFSYNC успешно (принудительно на диск).",
+            "mg_log_write_success": "[MG] 🎉 ЗАПИСЬ УСПЕШНА. Выключите устройство (Hard Reboot), чтобы iOS перезагрузила конфигурацию.",
+            "mg_log_restored": "[MG] ✅ Кэш MobileGestalt удален. Перезагрузите, чтобы iOS восстановила оригинальный файл."
+        ]
+    ]
+
+    private init() {
+        // FIX CRASH: Không gọi objectWillChange.send() ở đây
+        let savedLang = UserDefaults.standard.string(forKey: "SelectedLanguage") ?? "en"
+        self.currentLanguage = savedLang
+    }
+
+    func string(for key: String) -> String {
+        let rawCode = currentLanguage.lowercased()
+        var langCode = rawCode.components(separatedBy: CharacterSet(charactersIn: "-_")).first ?? "en"
+        
+        if rawCode.contains("zh") {
+            langCode = rawCode.contains("tw") || rawCode.contains("hant") ? "zh-TW" : "zh-CN"
+        }
+        
+        if let val = dict[langCode]?[key] { return val }
+        if let val = dict["en"]?[key] { return val }
+        
+        return key.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    func hasLanguage(_ code: String) -> Bool {
+        let rawCode = code.lowercased()
+        if rawCode.contains("zh") { return true }
+        let langCode = rawCode.components(separatedBy: CharacterSet(charactersIn: "-_")).first ?? ""
+        return dict[langCode] != nil
+    }
+}
+
+func L(_ key: String) -> String {
+    return LocalizationManager.shared.string(for: key)
+}
