@@ -235,8 +235,24 @@ struct MobileGestaltView: View {
         }
     }
 
+    // MARK: - Missing loadData function added here
+    private func loadData() {
+        let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
+        _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
+        
+        if let liveData = try? Data(contentsOf: liveURL),
+           let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
+            store.mgCurrentDict = liveDict
+            self.mobileGestalt = liveDict
+            try? liveData.write(to: modMGURL)
+        } else {
+            store.loadFromPlist(url: modMGURL)
+            mobileGestalt = store.mgCurrentDict
+        }
+        hydrateFromDict()
+    }
+
     private func hydrateFromDict() {
-        // Reset trước
         dynamicIslandType = 0
         enableCustomSubtype = false
         customSubtypeValue = ""
