@@ -235,13 +235,16 @@ struct MobileGestaltView: View {
         }
     }
 
-    // MARK: - Missing loadData function added here
     private func loadData() {
         let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
         _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
         
         if let liveData = try? Data(contentsOf: liveURL),
-           let liveDict = try? PropertyListSerialization.propertyList(from: liveData, options: [.mutableContainersAndLeaves], format: nil) as? NSMutableDictionary {
+           let liveDict = try? PropertyListSerialization.propertyList(
+               from: liveData,
+               options: [.mutableContainersAndLeaves],
+               format: nil
+           ) as? NSMutableDictionary {
             store.mgCurrentDict = liveDict
             self.mobileGestalt = liveDict
             try? liveData.write(to: modMGURL)
@@ -262,7 +265,7 @@ struct MobileGestaltView: View {
 
         guard let cacheExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary else { return }
         
-        productType = cacheExtra[MGKey.prodType] as? String ?? productType
+        productType = cacheExtra[MGKey.productType] as? String ?? productType
         
         let sysconfig = cacheExtra[MGKey.regionSysconfig] as? String ?? ""
         let regionCode = cacheExtra[MGKey.regionCode] as? String ?? ""
@@ -308,91 +311,76 @@ struct MobileGestaltView: View {
     private func saveChanges() {
         Task {
             do {
-                if let ce = store.mgCurrentDict["CacheExtra"] as? NSMutableDictionary {
-                    let targetProductType = productType
+                let ce = store.cacheExtra
+                let targetProductType = productType
+                
+                let spoofMap: [String: (hw: String, cpu: String, reg: String)] = [
+                    "iPhone16,1": ("D83AP", "t8130", "A2848"),
+                    "iPhone16,2": ("D84AP", "t8130", "A2849"),
+                    "iPhone17,3": ("D47AP", "t8140", "A3081"),
+                    "iPhone17,4": ("D48AP", "t8140", "A3082"),
+                    "iPhone17,1": ("D93AP", "t8140", "A3083"),
+                    "iPhone17,2": ("D94AP", "t8140", "A3084"),
+                    "iPhone17,5": ("V59AP", "t8140", "A3212"),
+                    "iPhone18,3": ("V57AP", "t8150", "A3258"),
+                    "iPhone18,1": ("V53AP", "t8150", "A3256"),
+                    "iPhone18,2": ("V54AP", "t8150", "A3257"),
+                    "iPhone18,4": ("D23AP", "t8150", "A3260"),
+                    "iPhone18,5": ("V59AP", "t8150", "A3575"),
+                    "iPhone19,2": ("V63AP", "t8160", "A3472"),
+                    "iPhone19,3": ("V64AP", "t8160", "A3473"),
+                    "iPhone19,7": ("V64sAP", "t8160", "A3717"),
+                    "iPhone19,4": ("V68AP", "t8160", "A3447")
+                ]
+                
+                if targetProductType != ogMachineName, let info = spoofMap[targetProductType] {
+                    ce[MGKey.productType] = targetProductType
+                    ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
+                    ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
+                    ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
                     
-                    let spoofMap: [String: (hw: String, cpu: String, reg: String)] = [
-                        "iPhone16,1": ("D83AP", "t8130", "A2848"),
-                        "iPhone16,2": ("D84AP", "t8130", "A2849"),
-                        "iPhone17,3": ("D47AP", "t8140", "A3081"),
-                        "iPhone17,4": ("D48AP", "t8140", "A3082"),
-                        "iPhone17,1": ("D93AP", "t8140", "A3083"),
-                        "iPhone17,2": ("D94AP", "t8140", "A3084"),
-                        "iPhone17,5": ("V59AP", "t8140", "A3212"),
-                        "iPhone18,3": ("V57AP", "t8150", "A3258"),
-                        "iPhone18,1": ("V53AP", "t8150", "A3256"),
-                        "iPhone18,2": ("V54AP", "t8150", "A3257"),
-                        "iPhone18,4": ("D23AP", "t8150", "A3260"),
-                        "iPhone18,5": ("V59AP", "t8150", "A3575"),
-                        "iPhone19,2": ("V63AP", "t8160", "A3472"),
-                        "iPhone19,3": ("V64AP", "t8160", "A3473"),
-                        "iPhone19,7": ("V64sAP", "t8160", "A3717"),
-                        "iPhone19,4": ("V68AP", "t8160", "A3447")
-                    ]
+                    ce["A62OafQ85EJAiiqKn4agtg"] = 1
+                    ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2
+                    ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
+                    ce["YgYIIViDt1kgzyIsIV61vA"] = 1
+                    ce["h63QSdBCiT/z0WU6rdQv6Q"] = "LL"
+                    ce["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A"
                     
-                    if targetProductType != ogMachineName, let info = spoofMap[targetProductType] {
-                        ce[MGKey.prodType] = targetProductType
-                        ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
-                        ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
-                        ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
-                        
-                        ce["A62OafQ85EJAiiqKn4agtg"] = 1
-                        ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2
-                        ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
-                        ce["YgYIIViDt1kgzyIsIV61vA"] = 1
-                        ce["h63QSdBCiT/z0WU6rdQv6Q"] = "LL"
-                        ce["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A"
-                        
-                        ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw")
-                        ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg")
-                        ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ")
-                        
-                        self.selectedRegionCode = "LL"
-                    } else if targetProductType == ogMachineName {
-                        if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
-                            for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
-                                if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
-                            }
+                    ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw")
+                    ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg")
+                    ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ")
+                    
+                    self.selectedRegionCode = "LL"
+                } else if targetProductType == ogMachineName {
+                    if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
+                        for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
+                            if let val = ogCE[key] { ce[key] = val } else { ce.removeObject(forKey: key) }
                         }
                     }
-                    
-                    if targetProductType != ogMachineName {
-                        if case .success((let layout, var data)) = MGCacheDataCoordinator.shared.resolveValidated(for: store.mgCurrentDict) {
-                            for key in MGKey.appIntellAllKeys {
-                                if let slotIdx = layout.featureSlotIndices[key], layout.validateSingleBooleanSlot(slotIdx, in: data) {
-                                    data[slotIdx * 8] = 1
-                                }
-                            }
-                            data[layout.greenTeaOffset] = 0
-                            data[layout.notGreenTeaOffset] = 1
-                            
-                            let testDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
-                            testDict["CacheData"] = data
-                            if case .success = layout.validatePlist(testDict) {
-                                store.mgCurrentDict["CacheData"] = data
-                            }
-                        }
-                    }
-                    
-                    let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
-                    if dynamicIslandType == 0 { art.removeObject(forKey: "ArtworkDeviceSubType") }
-                    else if dynamicIslandType > 0 {
-                        let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
-                        art["ArtworkDeviceSubType"] = subtypes[dynamicIslandType]
-                        ce["YlEtTtHlNesRBMal1CqRaA"] = 1
-                    } else if enableCustomSubtype, let val = Int(customSubtypeValue) {
-                        art["ArtworkDeviceSubType"] = val
-                        ce["YlEtTtHlNesRBMal1CqRaA"] = 1
-                    }
-                    if enableModelName { art["ArtworkDeviceProductDescription"] = modelName }
-                    else { art.removeObject(forKey: "ArtworkDeviceProductDescription") }
-                    ce[MGKey.artwork] = art
-                    
-                    if selectedRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
-                        ce[MGKey.regionCode] = preset.id
-                        ce[MGKey.regionSysconfig] = preset.suffix
-                        ce[MGKey.regionInfo] = preset.suffix
-                    }
+                }
+                
+                let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
+                if dynamicIslandType == 0 {
+                    art.removeObject(forKey: "ArtworkDeviceSubType")
+                } else if dynamicIslandType > 0 {
+                    let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
+                    art["ArtworkDeviceSubType"] = subtypes[dynamicIslandType]
+                    ce["YlEtTtHlNesRBMal1CqRaA"] = 1
+                } else if enableCustomSubtype, let val = Int(customSubtypeValue) {
+                    art["ArtworkDeviceSubType"] = val
+                    ce["YlEtTtHlNesRBMal1CqRaA"] = 1
+                }
+                if enableModelName {
+                    art["ArtworkDeviceProductDescription"] = modelName
+                } else {
+                    art.removeObject(forKey: "ArtworkDeviceProductDescription")
+                }
+                ce[MGKey.artwork] = art
+                
+                if selectedRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
+                    ce[MGKey.regionCode] = preset.id
+                    ce[MGKey.regionSysconfig] = preset.suffix
+                    ce[MGKey.regionInfo] = preset.suffix
                 }
                 
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
