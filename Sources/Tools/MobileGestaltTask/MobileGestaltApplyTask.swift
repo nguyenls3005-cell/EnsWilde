@@ -65,14 +65,17 @@ enum MobileGestaltApplyTask {
         if let liveCacheData = liveDict["CacheData"] as? Data,
            let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
            liveCacheData.count == storeCacheData.count {
+
             var patchedData = liveCacheData
             var patchedBytes = 0
+
             for i in 0..<patchedData.count {
                 if patchedData[i] != storeCacheData[i] {
                     patchedData[i] = storeCacheData[i]
                     patchedBytes += 1
                 }
             }
+
             candidateDict["CacheData"] = patchedData
             onLogUpdate(String(format: L("mg_log_patched_bytes"), patchedBytes))
         } else {
@@ -120,6 +123,7 @@ enum MobileGestaltApplyTask {
         for blocked in blockedKeys {
             liveExtra.removeObject(forKey: blocked)
         }
+
         candidateDict["CacheExtra"] = liveExtra
 
         guard PropertyListSerialization.propertyList(candidateDict, isValidFor: .binary) else {
@@ -129,13 +133,36 @@ enum MobileGestaltApplyTask {
         onLogUpdate(String(format: L("mg_log_new_size"), finalData.count, liveData.count))
 
         onLogUpdate(L("mg_log_writing"))
-        let writeResult = writeFileAtomically(finalData, to: liveURL)
-        guard writeResult.0 else {
-            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: writeResult.1])
+        let fd = open(onDeviceMGPath, O_RDWR)
+        guard fd >= 0 else {
+            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: L("mg_err_open_failed")])
+        }
+        defer { close(fd) }
+
+        let oldSize = lseek(fd, 0, SEEK_END)
+
+        let written = finalData.withUnsafeBytes { ptr -> Int in
+            guard let base = ptr.baseAddress else { return -1 }
+            return pwrite(fd, base, finalData.count, 0)
         }
 
-        let verifyData = try Data(contentsOf: liveURL)
-        guard verifyData == finalData else {
+        guard written == finalData.count else {
+            throw NSError(domain: "MG", code: -21, userInfo: [NSLocalizedDescriptionKey: String(format: L("mg_err_pwrite_failed"), written, finalData.count)])
+        }
+
+        if oldSize > off_t(finalData.count) {
+            ftruncate(fd, off_t(finalData.count))
+        }
+
+        if fcntl(fd, F_FULLFSYNC) == -1 {
+            fsync(fd)
+            onLogUpdate(L("mg_log_fullfsync_failed"))
+        } else {
+            onLogUpdate(L("mg_log_fullfsync_success"))
+        }
+
+        let readback = try Data(contentsOf: liveURL)
+        guard readback == finalData else {
             throw NSError(domain: "MG", code: -22, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
         }
 
@@ -147,41 +174,56 @@ enum MobileGestaltApplyTask {
         try ensureAccess()
 
         let liveURL = MGURL.fsGestaltURL
-        guard FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) else {
-            if FileManager.default.fileExists(atPath: liveURL.path) {
-                try FileManager.default.removeItem(at: liveURL)
-                onLogUpdate(L("mg_log_restored"))
+        if FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) {
+            let savedData = try Data(contentsOf: MGURL.savedGestaltURL)
+            if let shaData = try? Data(contentsOf: MGURL.savedGestaltSHA256URL),
+               let expectedHash = String(data: shaData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !expectedHash.isEmpty {
+                guard sha256Hex(savedData) == expectedHash else {
+                    throw NSError(domain: "MG", code: -30, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
+                }
             }
+
+            let fd = open(onDeviceMGPath, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+            guard fd >= 0 else {
+                throw NSError(domain: "MG", code: -31, userInfo: [NSLocalizedDescriptionKey: L("mg_err_open_failed")])
+            }
+            defer { close(fd) }
+
+            let oldSize = lseek(fd, 0, SEEK_END)
+            let written = savedData.withUnsafeBytes { ptr -> Int in
+                guard let base = ptr.baseAddress else { return -1 }
+                return pwrite(fd, base, savedData.count, 0)
+            }
+            guard written == savedData.count else {
+                throw NSError(domain: "MG", code: -32, userInfo: [NSLocalizedDescriptionKey: String(format: L("mg_err_pwrite_failed"), written, savedData.count)])
+            }
+            if oldSize > off_t(savedData.count) {
+                ftruncate(fd, off_t(savedData.count))
+            }
+            if fcntl(fd, F_FULLFSYNC) == -1 {
+                fsync(fd)
+            }
+
+            let readback = try Data(contentsOf: liveURL)
+            guard readback == savedData else {
+                throw NSError(domain: "MG", code: -33, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
+            }
+
+            if let dict = try? PropertyListSerialization.propertyList(
+                from: savedData,
+                options: [.mutableContainersAndLeaves],
+                format: nil
+            ) as? NSMutableDictionary {
+                GestaltStore.shared.mgCurrentDict = dict
+            }
+            onLogUpdate(L("mg_log_restored"))
             return
         }
 
-        let savedData = try Data(contentsOf: MGURL.savedGestaltURL)
-        if let shaData = try? Data(contentsOf: MGURL.savedGestaltSHA256URL),
-           let expectedHash = String(data: shaData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !expectedHash.isEmpty {
-            guard sha256Hex(savedData) == expectedHash else {
-                throw NSError(domain: "MG", code: -30, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
-            }
+        if FileManager.default.fileExists(atPath: onDeviceMGPath) {
+            try FileManager.default.removeItem(atPath: onDeviceMGPath)
+            onLogUpdate(L("mg_log_restored"))
         }
-
-        onLogUpdate(L("mg_log_writing"))
-        let writeResult = writeFileAtomically(savedData, to: liveURL)
-        guard writeResult.0 else {
-            throw NSError(domain: "MG", code: -31, userInfo: [NSLocalizedDescriptionKey: writeResult.1])
-        }
-
-        let verifyData = try Data(contentsOf: liveURL)
-        guard verifyData == savedData else {
-            throw NSError(domain: "MG", code: -32, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
-        }
-
-        if let dict = try? PropertyListSerialization.propertyList(
-            from: savedData,
-            options: [.mutableContainersAndLeaves],
-            format: nil
-        ) as? NSMutableDictionary {
-            GestaltStore.shared.mgCurrentDict = dict
-        }
-        onLogUpdate(L("mg_log_restored"))
     }
 }
