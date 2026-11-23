@@ -392,17 +392,13 @@ final class GestaltStore: ObservableObject {
         switch mode {
         case .fullUS:
             self.cacheExtra[MGKey.regionSysconfig] = "LL/A"
-            if !raveSupported(), self.originalCacheExtraValue(forKey: MGKey.regionInfo) != nil {
+            if self.originalCacheExtraValue(forKey: MGKey.regionInfo) != nil {
                 self.cacheExtra[MGKey.regionInfo] = "LL/A"
             } else {
                 self.cacheExtra.removeObject(forKey: MGKey.regionInfo)
             }
         case .regionCodeOnly:
-            if raveSupported() {
-                self.cacheExtra.removeObject(forKey: MGKey.regionInfo)
-            } else {
-                self.restoreOrRemoveKey(MGKey.regionInfo)
-            }
+            self.restoreOrRemoveKey(MGKey.regionInfo)
             self.restoreOrRemoveKey(MGKey.regionSysconfig)
             self.restoreOrRemoveKey(MGKey.regModelNumber)
         }
