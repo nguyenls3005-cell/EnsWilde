@@ -20,7 +20,7 @@ final class LocalizationManager: ObservableObject {
     private let dict: [String: [String: String]] = [
         "en": [
             "nav_home": "Home", "nav_theme_store": "Theme Store", "nav_settings": "Settings", "nav_about": "About", "nav_apply": "Apply",
-            "system_status": "System Status", "status_ready": "Ready", "section_tweaks": "Tweaks",
+            "system_status": "System Status", "status_ready": "Ready", "section_tweaks": "Tweaks", "section_status": "Status",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "Modify MobileGestalt file",
             "manual_editor_title": "CacheExtra Editor", "manual_editor_subtitle": "Manually edit MobileGestalt keys",
             "tool_config_tweaks": "Config Tweaks", "tool_config_tweaks_desc": "Custom Lock Screen Footnote",
@@ -98,7 +98,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "Enter an ISO 8601 date.", "manual_editor_err_invalid_data": "Enter valid Base64 data.", "manual_editor_err_invalid_xml": "Enter a valid XML plist fragment.",
             "pair_enter_pin_title": "Enter this PIN in Settings", "pair_step_instruction": "Settings > Privacy & Security > Developer Mode > Pair with EnsWilde",
             "pair_success_title": "Pairing Successful!", "pair_start_btn": "Start Pair On Device", "pair_background_info": "The app has infinite background execution enabled. You can safely switch to Settings to enter the PIN without iOS terminating it.",
-            "pair_on_device": "Pair On Device (iOS 27+)", "logs": "Logs",
+            "logs": "Logs",
             "alert_ok": "OK", "alert_cancel": "Cancel", "alert_accept": "Accept", "alert_close": "Close", "alert_message_title": "Message", "alert_error": "Error",
             "msg_error_unknown": "An unknown error occurred.", "button_add": "Add",
             "mg_err_cache_missing": "MobileGestalt cache is missing. Please respring or reboot your device to let iOS regenerate it before applying.",
@@ -119,7 +119,7 @@ final class LocalizationManager: ObservableObject {
         ],
         "vi": [
             "nav_home": "Trang chủ", "nav_theme_store": "Kho giao diện", "nav_settings": "Cài đặt", "nav_about": "Giới thiệu", "nav_apply": "Áp dụng",
-            "system_status": "Trạng thái hệ thống", "status_ready": "Sẵn sàng", "section_tweaks": "Tinh chỉnh",
+            "system_status": "Trạng thái hệ thống", "status_ready": "Sẵn sàng", "section_tweaks": "Tinh chỉnh", "section_status": "Trạng thái",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "Chỉnh sửa file MobileGestalt",
             "manual_editor_title": "Chỉnh sửa CacheExtra", "manual_editor_subtitle": "Chỉnh tay các key MobileGestalt",
             "tool_config_tweaks": "Tinh chỉnh Config", "tool_config_tweaks_desc": "Tùy chỉnh chú thích màn hình khóa",
@@ -197,7 +197,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "Nhập ngày theo ISO 8601.", "manual_editor_err_invalid_data": "Nhập Base64 hợp lệ.", "manual_editor_err_invalid_xml": "Nhập đoạn XML plist hợp lệ.",
             "pair_enter_pin_title": "Nhập mã PIN này vào Cài đặt", "pair_step_instruction": "Cài đặt > Quyền riêng tư & Bảo mật > Chế độ nhà phát triển > Pair with EnsWilde",
             "pair_success_title": "Pairing Thành Công!", "pair_start_btn": "Bắt đầu Pair On Device", "pair_background_info": "App đã được bật chế độ chạy ngầm vô hạn. Bạn có thể yên tâm chuyển sang Settings để nhập PIN mà không lo bị iOS tắt.",
-            "pair_on_device": "Ghép nối trên thiết bị (iOS 27+)", "logs": "Nhật ký",
+            "logs": "Nhật ký",
             "alert_ok": "OK", "alert_cancel": "Hủy", "alert_accept": "Đồng ý", "alert_close": "Đóng", "alert_message_title": "Thông báo", "alert_error": "Lỗi",
             "msg_error_unknown": "Đã xảy ra lỗi không xác định.", "button_add": "Thêm",
             "mg_err_cache_missing": "File cache MobileGestalt bị thiếu. Vui lòng Respring hoặc khởi động lại máy để iOS tạo lại file trước khi áp dụng.",
@@ -218,7 +218,7 @@ final class LocalizationManager: ObservableObject {
         ],
         "ja": [
             "nav_home": "ホーム", "nav_theme_store": "テーマストア", "nav_settings": "設定", "nav_about": "情報", "nav_apply": "適用",
-            "system_status": "システムステータス", "status_ready": "準備完了", "section_tweaks": "微調整",
+            "system_status": "システムステータス", "status_ready": "準備完了", "section_tweaks": "微調整", "section_status": "ステータス",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "MobileGestaltファイルを変更",
             "manual_editor_title": "CacheExtraエディタ", "manual_editor_subtitle": "MobileGestaltキーを手動で編集",
             "tool_config_tweaks": "Config 微調整", "tool_config_tweaks_desc": "ロック画面のフッターをカスタマイズ",
@@ -296,7 +296,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "ISO 8601形式の日付を入力してください。", "manual_editor_err_invalid_data": "有効なBase64データを入力してください。", "manual_editor_err_invalid_xml": "有効なXML plistフラグメントを入力してください。",
             "pair_enter_pin_title": "設定でこのPINを入力してください", "pair_step_instruction": "設定 > プライバシーとセキュリティ > デベロッパモード > Pair with EnsWilde",
             "pair_success_title": "ペアリング成功！", "pair_start_btn": "デバイスでのペアリングを開始", "pair_background_info": "アプリは無限のバックグラウンド実行が有効になっています。iOSによって終了されることなく、設定に移動してPINを安全に入力できます。",
-            "pair_on_device": "デバイスでペアリング (iOS 27+)", "logs": "ログ",
+            "logs": "ログ",
             "alert_ok": "OK", "alert_cancel": "キャンセル", "alert_accept": "同意する", "alert_close": "閉じる", "alert_message_title": "メッセージ", "alert_error": "エラー",
             "msg_error_unknown": "不明なエラーが発生しました。", "button_add": "追加",
             "mg_err_cache_missing": "MobileGestaltキャッシュがありません。適用する前にiOSが再生成できるよう、再スプリングするか再起動してください。",
@@ -317,7 +317,7 @@ final class LocalizationManager: ObservableObject {
         ],
         "zh-CN": [
             "nav_home": "主页", "nav_theme_store": "主题商店", "nav_settings": "设置", "nav_about": "关于", "nav_apply": "应用",
-            "system_status": "系统状态", "status_ready": "准备就绪", "section_tweaks": "微调",
+            "system_status": "系统状态", "status_ready": "准备就绪", "section_tweaks": "微调", "section_status": "状态",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "修改 MobileGestalt 文件",
             "manual_editor_title": "CacheExtra 编辑器", "manual_editor_subtitle": "手动编辑 MobileGestalt 键",
             "tool_config_tweaks": "配置微调", "tool_config_tweaks_desc": "自定义锁屏页脚",
@@ -395,7 +395,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "请输入 ISO 8601 日期。", "manual_editor_err_invalid_data": "请输入有效的 Base64 数据。", "manual_editor_err_invalid_xml": "请输入有效的 XML plist 片段。",
             "pair_enter_pin_title": "在设置中输入此 PIN 码", "pair_step_instruction": "设置 > 隐私与安全性 > 开发者模式 > Pair with EnsWilde",
             "pair_success_title": "配对成功！", "pair_start_btn": "开始在设备上配对", "pair_background_info": "应用已启用无限后台运行。您可以安全地切换到设置输入 PIN，而不必担心被 iOS 终止。",
-            "pair_on_device": "在设备上配对 (iOS 27+)", "logs": "日志",
+            "logs": "日志",
             "alert_ok": "确定", "alert_cancel": "取消", "alert_accept": "接受", "alert_close": "关闭", "alert_message_title": "消息", "alert_error": "错误",
             "msg_error_unknown": "发生未知错误。", "button_add": "添加",
             "mg_err_cache_missing": "MobileGestalt 缓存缺失。请注销或重启设备让 iOS 重新生成后再应用。",
@@ -416,7 +416,7 @@ final class LocalizationManager: ObservableObject {
         ],
         "zh-TW": [
             "nav_home": "主頁", "nav_theme_store": "主題商店", "nav_settings": "設定", "nav_about": "關於", "nav_apply": "套用",
-            "system_status": "系統狀態", "status_ready": "準備就緒", "section_tweaks": "微調",
+            "system_status": "系統狀態", "status_ready": "準備就緒", "section_tweaks": "微調", "section_status": "狀態",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "修改 MobileGestalt 檔案",
             "manual_editor_title": "CacheExtra 編輯器", "manual_editor_subtitle": "手動編輯 MobileGestalt 鍵",
             "tool_config_tweaks": "設定微調", "tool_config_tweaks_desc": "自訂鎖定畫面頁尾",
@@ -494,7 +494,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "請輸入 ISO 8601 日期。", "manual_editor_err_invalid_data": "請輸入有效的 Base64 資料。", "manual_editor_err_invalid_xml": "請輸入有效的 XML plist 片段。",
             "pair_enter_pin_title": "在設定中輸入此 PIN 碼", "pair_step_instruction": "設定 > 隱私權與安全性 > 開發者模式 > Pair with EnsWilde",
             "pair_success_title": "配對成功！", "pair_start_btn": "開始在裝置上配對", "pair_background_info": "應用程式已啟用無限背景執行。您可以安全地切換到設定輸入 PIN，而不必擔心被 iOS 終止。",
-            "pair_on_device": "在裝置上配對 (iOS 27+)", "logs": "日誌",
+            "logs": "日誌",
             "alert_ok": "確定", "alert_cancel": "取消", "alert_accept": "接受", "alert_close": "關閉", "alert_message_title": "訊息", "alert_error": "錯誤",
             "msg_error_unknown": "發生未知錯誤。", "button_add": "新增",
             "mg_err_cache_missing": "MobileGestalt 快取遺失。請重新載入或重啟裝置讓 iOS 重新產生後再套用。",
@@ -515,7 +515,7 @@ final class LocalizationManager: ObservableObject {
         ],
         "fr": [
             "nav_home": "Accueil", "nav_theme_store": "Boutique de thèmes", "nav_settings": "Réglages", "nav_about": "À propos", "nav_apply": "Appliquer",
-            "system_status": "État du système", "status_ready": "Prêt", "section_tweaks": "Ajustements",
+            "system_status": "État du système", "status_ready": "Prêt", "section_tweaks": "Ajustements", "section_status": "État",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "Modifier le fichier MobileGestalt",
             "manual_editor_title": "Éditeur CacheExtra", "manual_editor_subtitle": "Modifier manuellement les clés MobileGestalt",
             "tool_config_tweaks": "Ajustements de configuration", "tool_config_tweaks_desc": "Note de bas de page de l'écran de verrouillage",
@@ -593,7 +593,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "Entrez une date ISO 8601.", "manual_editor_err_invalid_data": "Entrez des données Base64 valides.", "manual_editor_err_invalid_xml": "Entrez un fragment XML plist valide.",
             "pair_enter_pin_title": "Entrez ce code PIN dans Réglages", "pair_step_instruction": "Réglages > Confidentialité et sécurité > Mode développeur > Pair with EnsWilde",
             "pair_success_title": "Appairage réussi !", "pair_start_btn": "Démarrer l'appairage sur l'appareil", "pair_background_info": "L'application a une exécution en arrière-plan infinie activée. Vous pouvez passer en toute sécurité aux Réglages pour saisir le code PIN sans qu'iOS ne la ferme.",
-            "pair_on_device": "Appairer sur l'appareil (iOS 27+)", "logs": "Journaux",
+            "logs": "Journaux",
             "alert_ok": "OK", "alert_cancel": "Annuler", "alert_accept": "Accepter", "alert_close": "Fermer", "alert_message_title": "Message", "alert_error": "Erreur",
             "msg_error_unknown": "Une erreur inconnue s'est produite.", "button_add": "Ajouter",
             "mg_err_cache_missing": "Le cache MobileGestalt est manquant. Veuillez redémarrer l'appareil pour qu'iOS le régénère avant d'appliquer.",
@@ -614,7 +614,7 @@ final class LocalizationManager: ObservableObject {
         ],
         "ar": [
             "nav_home": "الرئيسية", "nav_theme_store": "متجر الثيمات", "nav_settings": "الإعدادات", "nav_about": "حول", "nav_apply": "تطبيق",
-            "system_status": "حالة النظام", "status_ready": "جاهز", "section_tweaks": "تعديلات",
+            "system_status": "حالة النظام", "status_ready": "جاهز", "section_tweaks": "تعديلات", "section_status": "الحالة",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "تعديل ملف MobileGestalt",
             "manual_editor_title": "محرر CacheExtra", "manual_editor_subtitle": "تعديل مفاتيح MobileGestalt يدويًا",
             "tool_config_tweaks": "تعديلات التكوين", "tool_config_tweaks_desc": "تخصيص تذييل شاشة القفل",
@@ -692,7 +692,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "أدخل تاريخ ISO 8601.", "manual_editor_err_invalid_data": "أدخل بيانات Base64 صالحة.", "manual_editor_err_invalid_xml": "أدخل جزء XML plist صالح.",
             "pair_enter_pin_title": "أدخل رمز PIN هذا في الإعدادات", "pair_step_instruction": "الإعدادات > الخصوصية والأمان > وضع المطور > Pair with EnsWilde",
             "pair_success_title": "نجح الاقتران!", "pair_start_btn": "بدء الاقتران على الجهاز", "pair_background_info": "تم تفعيل التشغيل غير المحدود في الخلفية للتطبيق. يمكنك الانتقال بأمان إلى الإعدادات لإدخال رمز PIN دون قلق من إيقاف iOS له.",
-            "pair_on_device": "الاقتران على الجهاز (iOS 27+)", "logs": "سجلات",
+            "logs": "سجلات",
             "alert_ok": "موافق", "alert_cancel": "إلغاء", "alert_accept": "قبول", "alert_close": "إغلاق", "alert_message_title": "رسالة", "alert_error": "خطأ",
             "msg_error_unknown": "حدث خطأ غير معروف.", "button_add": "إضافة",
             "mg_err_cache_missing": "ذاكرة التخزين المؤقت MobileGestalt مفقودة. يرجى إعادة التشغيل للسماح لـ iOS بإعادة إنشائها قبل التطبيق.",
@@ -707,13 +707,13 @@ final class LocalizationManager: ObservableObject {
             "mg_err_open_failed": "تعذر فتح الملف للكتابة.",
             "mg_err_pwrite_failed": "خطأ pwrite. تمت كتابة %d/%d بايت.",
             "mg_log_fullfsync_failed": "[MG] ⚠️ فشل F_FULLFSYNC، استخدام fsync بدلاً من ذلك.",
-            "mg_log_fullfsync_success": "[MG] ✅ نجح F_FULLFSYNC (فُرض على القرص).",
+            "mg_log_fullfsync_success": "[MG] ✅ F_FULLFSYNC نجح (فُرض على القرص).",
             "mg_log_write_success": "[MG] 🎉 نجحت الكتابة. قم بإيقاف التشغيل (Hard Reboot) لإعادة تحميل التكوين.",
             "mg_log_restored": "[MG] ✅ تم حذف ذاكرة التخزين المؤقت MobileGestalt. أعد التشغيل للسماح لـ iOS بإعادة إنشاء الملف الأصلي."
         ],
         "es": [
             "nav_home": "Inicio", "nav_theme_store": "Tienda de temas", "nav_settings": "Ajustes", "nav_about": "Acerca de", "nav_apply": "Aplicar",
-            "system_status": "Estado del sistema", "status_ready": "Listo", "section_tweaks": "Ajustes",
+            "system_status": "Estado del sistema", "status_ready": "Listo", "section_tweaks": "Ajustes", "section_status": "Estado",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "Modificar archivo MobileGestalt",
             "manual_editor_title": "Editor CacheExtra", "manual_editor_subtitle": "Editar manualmente claves MobileGestalt",
             "tool_config_tweaks": "Ajustes de configuración", "tool_config_tweaks_desc": "Nota al pie de pantalla de bloqueo",
@@ -791,7 +791,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "Ingresa una fecha ISO 8601.", "manual_editor_err_invalid_data": "Ingresa datos Base64 válidos.", "manual_editor_err_invalid_xml": "Ingresa un fragmento XML plist válido.",
             "pair_enter_pin_title": "Ingresa este PIN en Ajustes", "pair_step_instruction": "Ajustes > Privacidad y seguridad > Modo desarrollador > Pair with EnsWilde",
             "pair_success_title": "¡Emparejamiento exitoso!", "pair_start_btn": "Iniciar emparejamiento en el dispositivo", "pair_background_info": "La app tiene habilitada la ejecución en segundo plano infinita. Puedes cambiar a Ajustes de forma segura para ingresar el PIN sin que iOS la cierre.",
-            "pair_on_device": "Emparejar en dispositivo (iOS 27+)", "logs": "Registros",
+            "logs": "Registros",
             "alert_ok": "OK", "alert_cancel": "Cancelar", "alert_accept": "Aceptar", "alert_close": "Cerrar", "alert_message_title": "Mensaje", "alert_error": "Error",
             "msg_error_unknown": "Ocurrió un error desconocido.", "button_add": "Añadir",
             "mg_err_cache_missing": "Falta el caché de MobileGestalt. Reinicia el dispositivo para que iOS lo regenere antes de aplicar.",
@@ -812,7 +812,7 @@ final class LocalizationManager: ObservableObject {
         ],
         "ru": [
             "nav_home": "Главная", "nav_theme_store": "Магазин тем", "nav_settings": "Настройки", "nav_about": "О программе", "nav_apply": "Применить",
-            "system_status": "Состояние системы", "status_ready": "Готово", "section_tweaks": "Твики",
+            "system_status": "Состояние системы", "status_ready": "Готово", "section_tweaks": "Твики", "section_status": "Статус",
             "tool_mobile_gestalt": "MobileGestalt", "tool_mobile_gestalt_desc": "Изменить файл MobileGestalt",
             "manual_editor_title": "Редактор CacheExtra", "manual_editor_subtitle": "Ручное редактирование ключей MobileGestalt",
             "tool_config_tweaks": "Настройка конфигурации", "tool_config_tweaks_desc": "Сноска на экране блокировки",
@@ -890,7 +890,7 @@ final class LocalizationManager: ObservableObject {
             "manual_editor_err_invalid_date": "Введите дату в формате ISO 8601.", "manual_editor_err_invalid_data": "Введите корректные данные Base64.", "manual_editor_err_invalid_xml": "Введите корректный фрагмент XML plist.",
             "pair_enter_pin_title": "Введите этот PIN-код в Настройках", "pair_step_instruction": "Настройки > Конфиденциальность и безопасность > Режим разработчика > Pair with EnsWilde",
             "pair_success_title": "Сопряжение успешно!", "pair_start_btn": "Начать сопряжение на устройстве", "pair_background_info": "В приложении включено бесконечное фоновое выполнение. Вы можете безопасно перейти в Настройки, чтобы ввести PIN-код, не опасаясь, что iOS закроет приложение.",
-            "pair_on_device": "Сопряжение на устройстве (iOS 27+)", "logs": "Журналы",
+            "logs": "Журналы",
             "alert_ok": "ОК", "alert_cancel": "Отмена", "alert_accept": "Принять", "alert_close": "Закрыть", "alert_message_title": "Сообщение", "alert_error": "Ошибка",
             "msg_error_unknown": "Произошла неизвестная ошибка.", "button_add": "Добавить",
             "mg_err_cache_missing": "Кэш MobileGestalt отсутствует. Пожалуйста, перезагрузите устройство, чтобы iOS восстановила его перед применением.",
@@ -912,7 +912,6 @@ final class LocalizationManager: ObservableObject {
     ]
 
     private init() {
-        // FIX CRASH: Không gọi objectWillChange.send() ở đây
         let savedLang = UserDefaults.standard.string(forKey: "SelectedLanguage") ?? "en"
         self.currentLanguage = savedLang
     }
@@ -920,14 +919,14 @@ final class LocalizationManager: ObservableObject {
     func string(for key: String) -> String {
         let rawCode = currentLanguage.lowercased()
         var langCode = rawCode.components(separatedBy: CharacterSet(charactersIn: "-_")).first ?? "en"
-        
+
         if rawCode.contains("zh") {
             langCode = rawCode.contains("tw") || rawCode.contains("hant") ? "zh-TW" : "zh-CN"
         }
-        
+
         if let val = dict[langCode]?[key] { return val }
         if let val = dict["en"]?[key] { return val }
-        
+
         return key.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
