@@ -12,6 +12,8 @@ import Darwin
 import MachO
 import UIKit
 
+private let mgProductTypeKey = "ProductType"
+
 struct MGDiffItem: Identifiable {
     let id: String
     let label: String
@@ -126,7 +128,7 @@ func mgKeyDisplayName(_ key: String) -> String {
         MGKey.intInstall: L("Apple 内部安装模式"),
         MGKey.intBuild: L("内部版本标识"),
         MGKey.srd: L("安全研究设备 (SRD)"),
-        MGKey.prodType: L("机型标识符 (ProductType)"),
+        mgProductTypeKey: L("机型标识符 (ProductType)"),
         MGKey.modelNameOuter1: L("设备产品名称"),
         MGKey.modelNameOuter2: L("设备市场名称"),
         MGKey.crashDet: L("车祸检测"),
@@ -330,7 +332,7 @@ func mgHasSyncedSystemVault() -> Bool {
 func mgDetectSuspectedThirdPartyModification(in dict: NSDictionary) -> String? {
     let extra = dict["CacheExtra"] as? NSDictionary ?? [:]
     let kernelMachine = machineName()
-    if let plistProd = extra[MGKey.prodType] as? String,
+    if let plistProd = extra[mgProductTypeKey] as? String,
        !plistProd.isEmpty,
        !kernelMachine.isEmpty,
        plistProd != kernelMachine {
@@ -396,7 +398,7 @@ func mgEnsureOriginalBackupWithVault(liveData: Data) throws -> (recoveredFromVau
         let vaultBuild = vaultDict["CacheVersion"] as? String ?? ""
         let vaultUUID = vaultDict["CacheUUID"] as? String ?? ""
         let vaultExtra = vaultDict["CacheExtra"] as? NSDictionary
-        let vaultProd = vaultExtra?[MGKey.prodType] as? String ?? ""
+        let vaultProd = vaultExtra?[mgProductTypeKey] as? String ?? ""
         let vaultLen = (vaultDict["CacheData"] as? Data)?.count ?? 0
         let liveLen = (liveDict["CacheData"] as? Data)?.count ?? 0
 
@@ -436,7 +438,7 @@ func mgImportExternalOriginalBackup(from externalURL: URL) -> Result<String, Err
         }
 
         let impExtra = importedDict["CacheExtra"] as? NSDictionary
-        let impProd = impExtra?[MGKey.prodType] as? String ?? ""
+        let impProd = impExtra?[mgProductTypeKey] as? String ?? ""
         let kernelHW = machineName()
         if !impProd.isEmpty && !kernelHW.isEmpty && impProd != kernelHW {
             throw NSError(domain: "Erosion.MGImport", code: 2, userInfo: [NSLocalizedDescriptionKey: L("拒绝导入：该备份机型 (\(impProd)) 与本机真实硬件 (\(kernelHW)) 不一致！")])
@@ -593,7 +595,7 @@ func mgExecuteFactoryRestore(alsoResetConfigAndKeypad: Bool) -> MGFactoryRestore
         }
 
         let ogExtra = mgDictToApply["CacheExtra"] as? NSDictionary
-        let ogProd = ogExtra?[MGKey.prodType] as? String ?? ""
+        let ogProd = ogExtra?[mgProductTypeKey] as? String ?? ""
         let actualHW = machineName()
         if !ogProd.isEmpty && !actualHW.isEmpty && ogProd != actualHW {
             return .blockedNeedsCleanRebuild(
@@ -745,7 +747,7 @@ func currentOriginalMachineName() -> String {
 func originalHardwareProductType() -> String {
     if let ogDict = NSDictionary(contentsOf: MGURL.savedGestaltURL),
        let ogExtra = ogDict["CacheExtra"] as? NSDictionary,
-       let ogProd = ogExtra[MGKey.prodType] as? String,
+       let ogProd = ogExtra[mgProductTypeKey] as? String,
        !ogProd.isEmpty {
         return ogProd
     }
@@ -1103,9 +1105,6 @@ func isAdvAppleIntellHD() -> Bool {
     let m = currentOriginalMachineName()
     if m.hasPrefix("iPhone") || m.hasPrefix("iPad") {
         return false
-    }
-    if GestaltStore.shared.isSlotRulesNativeSatisfied(MGKey.advAppIntellRules) {
-        return true
     }
     if let ogDict = NSDictionary(contentsOf: MGURL.savedGestaltURL),
        case .success((let layout, _)) = MGCacheDataCoordinator.shared.resolveValidated(for: ogDict) {
