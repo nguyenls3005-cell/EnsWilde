@@ -1,4 +1,12 @@
-// SPDX-License-Identifier: GPL-3.0-only
+//
+//  MGImageReader.h
+//  EnsWilde
+//
+
 #import <Foundation/Foundation.h>
 
-FOUNDATION_EXPORT NSDictionary<NSString *, id> * _Nullable GXCopyMobileGestaltImage(void);
+NS_ASSUME_NONNULL_BEGIN
+
+FOUNDATION_EXPORT NSDictionary<NSString *, id> * _Nullable MGCopyMobileGestaltImage(void);
+
+NS_ASSUME_NONNULL_END
