@@ -489,7 +489,8 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E14761F82DF135F100FC89FB /* Build configuration list for PBXNativeTarget "EnsWilde" */;
+		E14761F82DF135F100FC89FB /* Build configuration list for PBXNativeTarget "EnsWilde" */ = {
+			isa = XCConfigurationList;
 			buildConfigurations = (
 				E14761F92DF135F100FC89FB /* Debug */,
 				E14761FA2DF135F100FC89FB /* Release */,
@@ -553,13 +554,13 @@
 			productName = NIOHTTP1;
 		};
 		E15588872ECF25A000D0BF93 /* FlyingFox */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/swhitty/FlyingFox";
+			isa = XCSwiftPackageProductDependency;
+			package = E15588862ECF25A000D0BF93 /* XCRemoteSwiftPackageReference "FlyingFox" */;
 			productName = FlyingFox;
 		};
 		EDFB130F2F13FBC900309613 /* ZIPFoundation */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/weichsel/ZIPFoundation.git";
+			isa = XCSwiftPackageProductDependency;
+			package = EDFB130E2F13FBC900309613 /* XCRemoteSwiftPackageReference "ZIPFoundation" */;
 			productName = ZIPFoundation;
 		};
 /* End XCSwiftPackageProductDependency section */
