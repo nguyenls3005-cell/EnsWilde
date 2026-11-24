@@ -56,13 +56,6 @@ class ToolRunner: ObservableObject {
                 onLogUpdate(">> Disable Call Recording Sound Done.")
             }
 
-            let patchEnabled = store.zPatchCustomEnabled || CustomPatchStore.shared.config.enabled
-            if patchEnabled {
-                onLogUpdate(">> Applying Custom Patch...")
-                try await CustomPatchApplyTask.apply(store: store, onLogUpdate: onLogUpdate)
-                onLogUpdate(">> Custom Patch Done.")
-            }
-
             state = .success
             onLogUpdate("All tweaks applied successfully.")
 
