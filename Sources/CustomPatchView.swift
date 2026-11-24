@@ -1,5 +1,5 @@
 //
-//  EnsWildeCustomPatchView.swift
+//  CustomPatchView.swift
 //  EnsWilde
 //
 
@@ -7,7 +7,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-struct EnsWildeCustomPatchRule: Identifiable, Codable, Equatable {
+struct CustomPatchRule: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var projectName: String = "Default Rule"
     var bundleID: String = ""
@@ -17,7 +17,7 @@ struct EnsWildeCustomPatchRule: Identifiable, Codable, Equatable {
     var fileSizeBytes: Int64 = 0
 }
 
-struct EnsWildePatch3105Package: Codable {
+struct Patch3105Package: Codable {
     var formatVersion: Int = 1
     var projectName: String
     var bundleID: String
@@ -26,18 +26,18 @@ struct EnsWildePatch3105Package: Codable {
     var fileDataBase64: String
 }
 
-struct EnsWildeCustomPatchConfig: Codable, Equatable {
+struct CustomPatchConfig: Codable, Equatable {
     var enabled: Bool = false
-    var activeRule: EnsWildeCustomPatchRule = EnsWildeCustomPatchRule()
-    var savedRules: [EnsWildeCustomPatchRule] = []
+    var activeRule: CustomPatchRule = CustomPatchRule()
+    var savedRules: [CustomPatchRule] = []
 }
 
-final class EnsWildeCustomPatchStore: ObservableObject {
-    static let shared = EnsWildeCustomPatchStore()
+final class CustomPatchStore: ObservableObject {
+    static let shared = CustomPatchStore()
 
-    private let storageKey = "EnsWilde.EnsWildeCustomPatchConfig.v2"
+    private let storageKey = "EnsWilde.CustomPatchConfig.v2"
 
-    @Published var config: EnsWildeCustomPatchConfig {
+    @Published var config: CustomPatchConfig {
         didSet {
             saveToDefaults()
             objectWillChange.send()
@@ -46,10 +46,10 @@ final class EnsWildeCustomPatchStore: ObservableObject {
 
     init() {
         if let data = UserDefaults.standard.data(forKey: storageKey),
-           let decoded = try? JSONDecoder().decode(EnsWildeCustomPatchConfig.self, from: data) {
+           let decoded = try? JSONDecoder().decode(CustomPatchConfig.self, from: data) {
             self.config = decoded
         } else {
-            self.config = EnsWildeCustomPatchConfig()
+            self.config = CustomPatchConfig()
         }
     }
 
@@ -72,7 +72,7 @@ final class EnsWildeCustomPatchStore: ObservableObject {
         return folder
     }
 
-    func importReplacementFile(from url: URL, intoRule target: inout EnsWildeCustomPatchRule) throws {
+    func importReplacementFile(from url: URL, intoRule target: inout CustomPatchRule) throws {
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
             if accessed { url.stopAccessingSecurityScopedResource() }
@@ -100,7 +100,7 @@ final class EnsWildeCustomPatchStore: ObservableObject {
         relativePath: String,
         sourceStoredPath: String,
         sourceFileName: String
-    ) throws -> EnsWildeCustomPatchRule {
+    ) throws -> CustomPatchRule {
         let cleanName = projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
             : projectName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -112,7 +112,7 @@ final class EnsWildeCustomPatchStore: ObservableObject {
             data = Data()
         }
 
-        let pkg = EnsWildePatch3105Package(
+        let pkg = Patch3105Package(
             projectName: cleanName.isEmpty ? "EnsWildeCustomPatch" : cleanName,
             bundleID: bundleID.trimmingCharacters(in: .whitespacesAndNewlines),
             relativePath: relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -129,7 +129,7 @@ final class EnsWildeCustomPatchStore: ObservableObject {
         let extractedURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(pkg.fileName)")
         try data.write(to: extractedURL, options: .atomic)
 
-        let rule = EnsWildeCustomPatchRule(
+        let rule = CustomPatchRule(
             projectName: pkg.projectName,
             bundleID: pkg.bundleID,
             relativePath: pkg.relativePath,
@@ -144,7 +144,7 @@ final class EnsWildeCustomPatchStore: ObservableObject {
         return rule
     }
 
-    func import3105Package(from url: URL) throws -> EnsWildeCustomPatchRule {
+    func import3105Package(from url: URL) throws -> CustomPatchRule {
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
             if accessed { url.stopAccessingSecurityScopedResource() }
@@ -153,12 +153,12 @@ final class EnsWildeCustomPatchStore: ObservableObject {
         let rawData = try Data(contentsOf: url, options: .mappedIfSafe)
         let folder = try patchFolderURL()
 
-        if let pkg = try? JSONDecoder().decode(EnsWildePatch3105Package.self, from: rawData),
+        if let pkg = try? JSONDecoder().decode(Patch3105Package.self, from: rawData),
            let payload = Data(base64Encoded: pkg.fileDataBase64) {
             let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(pkg.fileName)")
             try payload.write(to: outURL, options: .atomic)
 
-            let rule = EnsWildeCustomPatchRule(
+            let rule = CustomPatchRule(
                 projectName: pkg.projectName,
                 bundleID: pkg.bundleID,
                 relativePath: pkg.relativePath,
@@ -171,12 +171,11 @@ final class EnsWildeCustomPatchStore: ObservableObject {
             return rule
         }
 
-        // Fallback nếu file .3105 là dữ liệu nhị phân / plist trực tiếp
         let fallbackName = url.deletingPathExtension().lastPathComponent
         let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(url.lastPathComponent)")
         try rawData.write(to: outURL, options: .atomic)
 
-        let rule = EnsWildeCustomPatchRule(
+        let rule = CustomPatchRule(
             projectName: fallbackName.isEmpty ? "Imported .3105" : fallbackName,
             bundleID: config.activeRule.bundleID,
             relativePath: config.activeRule.relativePath,
@@ -189,7 +188,7 @@ final class EnsWildeCustomPatchStore: ObservableObject {
         return rule
     }
 
-    func selectRule(_ rule: EnsWildeCustomPatchRule) {
+    func selectRule(_ rule: CustomPatchRule) {
         config.activeRule = rule
     }
 
@@ -210,11 +209,11 @@ final class EnsWildeCustomPatchStore: ObservableObject {
         if !config.activeRule.sourceStoredPath.isEmpty {
             try? FileManager.default.removeItem(atPath: config.activeRule.sourceStoredPath)
         }
-        config = EnsWildeCustomPatchConfig()
+        config = CustomPatchConfig()
     }
 }
 
-enum EnsWildeCustomPatchError: LocalizedError {
+enum CustomPatchError: LocalizedError {
     case disabled
     case missingBundleID
     case missingSourceFile
@@ -226,7 +225,7 @@ enum EnsWildeCustomPatchError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .disabled:
-            return "EnsWilde Custom Patch đang tắt."
+            return "Custom Patch đang tắt."
         case .missingBundleID:
             return "Vui lòng nhập Bundle ID của app."
         case .missingSourceFile:
@@ -243,7 +242,7 @@ enum EnsWildeCustomPatchError: LocalizedError {
     }
 }
 
-enum EnsWildeCustomPatchApplyTask {
+enum CustomPatchApplyTask {
     private static func estimatedMaxInode() -> UInt64 {
         let tmpURL = URL.documentsDirectory.appendingPathComponent(".enswilde_inode_probe_\(UUID().uuidString)")
         FileManager.default.createFile(atPath: tmpURL.path, contents: Data([0x00]), attributes: nil)
@@ -260,16 +259,16 @@ enum EnsWildeCustomPatchApplyTask {
         if let appProxyClass = NSClassFromString("LSApplicationProxy") as? NSObject.Type,
            let proxy = appProxyClass.perform(Selector("applicationProxyForIdentifier:"), with: bundleID)?.takeUnretainedValue() as? NSObject {
             if preferDataContainer, let dataURL = proxy.value(forKey: "dataContainerURL") as? URL {
-                log("[EnsWildeCustomPatch] Tìm thấy Data Container qua LSApplicationProxy: \(dataURL.path)")
+                log("[CustomPatch] Tìm thấy Data Container qua LSApplicationProxy: \(dataURL.path)")
                 return dataURL.path
             }
             if let bundleURL = proxy.value(forKey: "bundleURL") as? URL {
-                log("[EnsWildeCustomPatch] Tìm thấy Bundle qua LSApplicationProxy: \(bundleURL.path)")
+                log("[CustomPatch] Tìm thấy Bundle qua LSApplicationProxy: \(bundleURL.path)")
                 return bundleURL.path
             }
         }
 
-        log("[EnsWildeCustomPatch] Đang dò \(bundleID) bằng pathleak...")
+        log("[CustomPatch] Đang dò \(bundleID) bằng pathleak...")
         let maxInode = estimatedMaxInode()
         let roots = preferDataContainer
             ? ["/var/mobile/Containers/Data/Application", "/private/var/mobile/Containers/Data/Application", "/var/containers/Bundle/Application"]
@@ -284,7 +283,7 @@ enum EnsWildeCustomPatchApplyTask {
                     if let meta = NSDictionary(contentsOfFile: metaPlist),
                        let id = meta["MCMMetadataIdentifier"] as? String,
                        id == bundleID {
-                        log("[EnsWildeCustomPatch] Khớp MCMMetadataIdentifier tại: \(dir)")
+                        log("[CustomPatch] Khớp MCMMetadataIdentifier tại: \(dir)")
                         return dir
                     }
                     if let items = try? FileManager.default.contentsOfDirectory(atPath: dir) {
@@ -294,7 +293,7 @@ enum EnsWildeCustomPatchApplyTask {
                             if let info = NSDictionary(contentsOfFile: infoPath),
                                let cfID = info["CFBundleIdentifier"] as? String,
                                cfID == bundleID {
-                                log("[EnsWildeCustomPatch] Khớp CFBundleIdentifier tại: \(appPath)")
+                                log("[CustomPatch] Khớp CFBundleIdentifier tại: \(appPath)")
                                 return appPath
                             }
                         }
@@ -305,9 +304,9 @@ enum EnsWildeCustomPatchApplyTask {
         return nil
     }
 
-    static func resolveTargetPath(rule: EnsWildeCustomPatchRule, log: (String) -> Void = { _ in }) throws -> String {
+    static func resolveTargetPath(rule: CustomPatchRule, log: (String) -> Void = { _ in }) throws -> String {
         let bid = rule.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !bid.isEmpty else { throw EnsWildeCustomPatchError.missingBundleID }
+        guard !bid.isEmpty else { throw CustomPatchError.missingBundleID }
 
         let rel = rule.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
         let wantsDataContainer = rel.lowercased().hasPrefix("library/")
@@ -315,7 +314,7 @@ enum EnsWildeCustomPatchApplyTask {
             || rel.lowercased().hasPrefix("tmp/")
 
         guard let basePath = findContainerBasePath(for: bid, preferDataContainer: wantsDataContainer, log: log) else {
-            throw EnsWildeCustomPatchError.targetNotFound(bid)
+            throw CustomPatchError.targetNotFound(bid)
         }
 
         if rel.isEmpty {
@@ -325,9 +324,9 @@ enum EnsWildeCustomPatchApplyTask {
     }
 
     static func applyIfEnabled(log: (String) -> Void = { _ in }) async throws {
-        let cfg = EnsWildeCustomPatchStore.shared.config
+        let cfg = CustomPatchStore.shared.config
         guard cfg.enabled else {
-            log("[EnsWildeCustomPatch] Đang tắt, bỏ qua.")
+            log("[CustomPatch] Đang tắt, bỏ qua.")
             return
         }
 
@@ -335,32 +334,32 @@ enum EnsWildeCustomPatchApplyTask {
         guard !rule.sourceStoredPath.isEmpty,
               FileManager.default.fileExists(atPath: rule.sourceStoredPath),
               let patchData = try? Data(contentsOf: URL(filePath: rule.sourceStoredPath)) else {
-            throw EnsWildeCustomPatchError.missingSourceFile
+            throw CustomPatchError.missingSourceFile
         }
 
         let targetPath = try resolveTargetPath(rule: rule, log: log)
         let targetURL = URL(filePath: targetPath)
         let parentDir = targetURL.deletingLastPathComponent().path
 
-        log("[EnsWildeCustomPatch] Cấp quyền WorseQuery cho thư mục cha: \(parentDir)")
+        log("[CustomPatch] Cấp quyền WorseQuery cho thư mục cha: \(parentDir)")
         _ = wq.grantAccess(path: parentDir, requireWrite: true)
 
-        log("[EnsWildeCustomPatch] Cấp quyền WorseQuery cho file đích: \(targetPath)")
+        log("[CustomPatch] Cấp quyền WorseQuery cho file đích: \(targetPath)")
         let granted = wq.grantAccess(path: targetPath, requireWrite: true)
         if !granted.0 {
-            log("[EnsWildeCustomPatch] ⚠️ WorseQuery: \(granted.2) (code \(granted.1))")
+            log("[CustomPatch] ⚠️ WorseQuery: \(granted.2) (code \(granted.1))")
         }
 
         try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         let fd = open(targetPath, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
         guard fd >= 0 else {
-            throw EnsWildeCustomPatchError.openFailed(String(cString: strerror(errno)))
+            throw CustomPatchError.openFailed(String(cString: strerror(errno)))
         }
         defer { close(fd) }
 
         if ftruncate(fd, 0) != 0 {
-            throw EnsWildeCustomPatchError.truncateFailed(String(cString: strerror(errno)))
+            throw CustomPatchError.truncateFailed(String(cString: strerror(errno)))
         }
 
         var totalWritten = 0
@@ -369,7 +368,7 @@ enum EnsWildeCustomPatchApplyTask {
             while totalWritten < patchData.count {
                 let n = pwrite(fd, base.advanced(by: totalWritten), patchData.count - totalWritten, off_t(totalWritten))
                 if n <= 0 {
-                    throw EnsWildeCustomPatchError.writeFailed(totalWritten, patchData.count)
+                    throw CustomPatchError.writeFailed(totalWritten, patchData.count)
                 }
                 totalWritten += n
             }
@@ -379,18 +378,18 @@ enum EnsWildeCustomPatchApplyTask {
             _ = fsync(fd)
         }
         chmod(targetPath, 0o644)
-        log("[EnsWildeCustomPatch] ✅ Đã ghi \(totalWritten) bytes vào \(targetPath)")
+        log("[CustomPatch] ✅ Đã ghi \(totalWritten) bytes vào \(targetPath)")
     }
 }
 
-struct EnsWildeCreatePatchSheetView: View {
+struct CreatePatchSheetView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var patchStore: EnsWildeCustomPatchStore
+    @ObservedObject var patchStore: CustomPatchStore
 
     @State private var projectName: String = ""
     @State private var bundleID: String = ""
     @State private var relativePath: String = ""
-    @State private var draftRule: EnsWildeCustomPatchRule = EnsWildeCustomPatchRule()
+    @State private var draftRule: CustomPatchRule = CustomPatchRule()
     @State private var showFilePicker = false
     @State private var errMessage: String?
 
@@ -435,7 +434,7 @@ struct EnsWildeCreatePatchSheetView: View {
                         HStack {
                             Text("Size")
                             Spacer()
-                            Text(EnsWildeCustomPatchStore.formattedSize(draftRule.fileSizeBytes))
+                            Text(CustomPatchStore.formattedSize(draftRule.fileSizeBytes))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -493,9 +492,9 @@ struct EnsWildeCreatePatchSheetView: View {
     }
 }
 
-struct EnsWildeCustomPatchView: View {
+struct CustomPatchView: View {
     @ObservedObject private var localizationManager = LocalizationManager.shared
-    @StateObject private var patchStore = EnsWildeCustomPatchStore.shared
+    @StateObject private var patchStore = CustomPatchStore.shared
     @ObservedObject var toolStore: ToolStore
 
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
@@ -556,7 +555,7 @@ struct EnsWildeCustomPatchView: View {
                     HStack {
                         Text("Size")
                         Spacer()
-                        Text(EnsWildeCustomPatchStore.formattedSize(patchStore.config.activeRule.fileSizeBytes))
+                        Text(CustomPatchStore.formattedSize(patchStore.config.activeRule.fileSizeBytes))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -602,7 +601,7 @@ struct EnsWildeCustomPatchView: View {
 
                 Button(role: .destructive) {
                     patchStore.restoreDefaults()
-                    statusMessage = "Đã khôi phục mặc định EnsWilde Custom Patch."
+                    statusMessage = "Đã khôi phục mặc định Custom Patch."
                     showAlert = true
                 } label: {
                     Label(L("mg_revert_tweaks"), systemImage: "arrow.counterclockwise")
@@ -639,7 +638,7 @@ struct EnsWildeCustomPatchView: View {
             }
         }
         .sheet(isPresented: $showCreatePatchSheet) {
-            EnsWildeCreatePatchSheetView(patchStore: patchStore)
+            CreatePatchSheetView(patchStore: patchStore)
         }
         .sheet(isPresented: $showSavedRulesMenu) {
             NavigationStack {
@@ -652,7 +651,7 @@ struct EnsWildeCustomPatchView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(rule.projectName)
                                     .foregroundStyle(.primary)
-                                Text("\(rule.bundleID) — \(rule.sourceFileName) (\(EnsWildeCustomPatchStore.formattedSize(rule.fileSizeBytes)))")
+                                Text("\(rule.bundleID) — \(rule.sourceFileName) (\(CustomPatchStore.formattedSize(rule.fileSizeBytes)))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -744,3 +743,12 @@ struct EnsWildeCustomPatchView: View {
         showAlert = true
     }
 }
+
+typealias EnsWildeCustomPatchRule = CustomPatchRule
+typealias EnsWildePatch3105Package = Patch3105Package
+typealias EnsWildeCustomPatchConfig = CustomPatchConfig
+typealias EnsWildeCustomPatchStore = CustomPatchStore
+typealias EnsWildeCustomPatchError = CustomPatchError
+typealias EnsWildeCustomPatchApplyTask = CustomPatchApplyTask
+typealias EnsWildeCreatePatchSheetView = CreatePatchSheetView
+typealias EnsWildeCustomPatchView = CustomPatchView
