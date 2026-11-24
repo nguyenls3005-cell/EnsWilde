@@ -74,16 +74,13 @@ final class CustomPatchStore: ObservableObject {
     static let shared = CustomPatchStore()
 
     private let storageKey = "EnsWilde.CustomPatchConfig.v2"
-    private let legacyAppliedKey = "EnsWilde.CustomPatch.AppliedIDs.v1"
 
     @Published var config: CustomPatchConfig {
         didSet {
-            saveToDefaults()
+            syncToToolStoreAndDefaults()
             objectWillChange.send()
         }
     }
-
-    @Published var appliedRuleIDs: Set<UUID> = []
 
     init() {
         if let data = UserDefaults.standard.data(forKey: storageKey),
@@ -92,27 +89,15 @@ final class CustomPatchStore: ObservableObject {
         } else {
             self.config = CustomPatchConfig()
         }
-
-        if let rawIDs = UserDefaults.standard.stringArray(forKey: legacyAppliedKey) {
-            self.appliedRuleIDs = Set(rawIDs.compactMap { UUID(uuidString: $0) })
-        }
+        syncToToolStoreAndDefaults()
     }
 
-    private func saveToDefaults() {
+    func syncToToolStoreAndDefaults() {
         if let encoded = try? JSONEncoder().encode(config) {
             UserDefaults.standard.set(encoded, forKey: storageKey)
         }
-        UserDefaults.standard.set(Array(appliedRuleIDs).map { $0.uuidString }, forKey: legacyAppliedKey)
+        UserDefaults.standard.set(config.enabled, forKey: "zPatchCustomEnabled")
         UserDefaults.standard.synchronize()
-    }
-
-    func markRuleApplied(_ ruleID: UUID) {
-        appliedRuleIDs.insert(ruleID)
-        saveToDefaults()
-    }
-
-    func isRuleApplied(_ ruleID: UUID) -> Bool {
-        appliedRuleIDs.contains(ruleID)
     }
 
     static func formattedSize(_ bytes: Int64) -> String {
@@ -192,7 +177,7 @@ final class CustomPatchStore: ObservableObject {
             config.enabled = enableTweak
         }
 
-        saveToDefaults()
+        syncToToolStoreAndDefaults()
         return updated
     }
 
@@ -430,7 +415,7 @@ final class CustomPatchStore: ObservableObject {
 
     func selectRule(_ rule: CustomPatchRule) {
         config.activeRule = rule
-        saveToDefaults()
+        syncToToolStoreAndDefaults()
     }
 
     func saveChanges(showApplyTab: inout Bool) {
@@ -441,7 +426,7 @@ final class CustomPatchStore: ObservableObject {
             config.savedRules.removeAll { $0.id == active.id }
             config.savedRules.insert(active, at: 0)
         }
-        saveToDefaults()
+        syncToToolStoreAndDefaults()
         showApplyTab = true
     }
 
@@ -459,11 +444,10 @@ final class CustomPatchStore: ObservableObject {
             }
         }
         config.savedRules.remove(atOffsets: offsets)
-        appliedRuleIDs.subtract(removedIDs)
         if let activeID = config.activeRule?.id, removedIDs.contains(activeID) {
             config.activeRule = config.savedRules.first
         }
-        saveToDefaults()
+        syncToToolStoreAndDefaults()
     }
 
     func restoreDefaults() {
@@ -484,9 +468,8 @@ final class CustomPatchStore: ObservableObject {
             }
         }
         config = CustomPatchConfig()
-        appliedRuleIDs.removeAll()
         UserDefaults.standard.removeObject(forKey: storageKey)
-        UserDefaults.standard.removeObject(forKey: legacyAppliedKey)
+        UserDefaults.standard.set(false, forKey: "zPatchCustomEnabled")
         UserDefaults.standard.synchronize()
     }
 }
@@ -532,7 +515,8 @@ enum CustomPatchError: LocalizedError {
 enum CustomPatchApplyTask {
     static func activeRulesToApply() -> [CustomPatchRule] {
         let cfg = CustomPatchStore.shared.config
-        guard cfg.enabled else { return [] }
+        let flagEnabled = cfg.enabled || UserDefaults.standard.bool(forKey: "zPatchCustomEnabled")
+        guard flagEnabled else { return [] }
         if let active = cfg.activeRule {
             return [active]
         }
@@ -679,13 +663,13 @@ enum CustomPatchApplyTask {
             _ = fsync(fd)
         }
         chmod(targetPath, 0o644)
-        CustomPatchStore.shared.markRuleApplied(rule.id)
         log("[CustomPatch] ✅ Đã ghi \(totalWritten) bytes vào \(targetPath)")
     }
 
     static func applyIfEnabled(log: (String) -> Void = { _ in }) async throws {
         let cfg = CustomPatchStore.shared.config
-        guard cfg.enabled else {
+        let flagEnabled = cfg.enabled || UserDefaults.standard.bool(forKey: "zPatchCustomEnabled")
+        guard flagEnabled else {
             log("[CustomPatch] Đang tắt, bỏ qua.")
             return
         }
@@ -695,6 +679,10 @@ enum CustomPatchApplyTask {
         }
 
         try await applyRule(rule, log: log)
+    }
+
+    static func apply(store: ToolStore, onLogUpdate: @escaping (String) -> Void) async throws {
+        try await applyIfEnabled(log: onLogUpdate)
     }
 }
 
@@ -939,7 +927,6 @@ struct PatchDetailView: View {
     @State private var exportItem: ExportFileItem?
     @State private var alertMessage: String?
     @State private var showAlert = false
-    @State private var isApplyingPatch = false
 
     private let deepOrange = Color(red: 0.90, green: 0.42, blue: 0.05)
 
@@ -1024,40 +1011,6 @@ struct PatchDetailView: View {
                 footer: Text("Before writing, 3105 resolves each bundle on this device and saves every original file for recovery.")
             ) {
                 Button {
-                    guard !isApplyingPatch else { return }
-                    isApplyingPatch = true
-                    patchStore.config.enabled = true
-                    patchStore.selectRule(rule)
-                    Task {
-                        do {
-                            try await CustomPatchApplyTask.applyRule(rule)
-                            await MainActor.run {
-                                isApplyingPatch = false
-                                alertMessage = "Đã áp dụng patch: \(patchTitle)"
-                                showAlert = true
-                            }
-                        } catch {
-                            await MainActor.run {
-                                isApplyingPatch = false
-                                alertMessage = error.localizedDescription
-                                showAlert = true
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .foregroundStyle(deepOrange)
-                        Text("Apply Patch")
-                            .foregroundStyle(deepOrange)
-                        Spacer()
-                        if isApplyingPatch {
-                            ProgressView()
-                        }
-                    }
-                }
-
-                Button {
                     do {
                         let url = try patchStore.export3105URL(for: rule)
                         exportItem = ExportFileItem(url: url)
@@ -1114,13 +1067,12 @@ struct CustomPatchView: View {
     @State private var pendingPasswordImport: PendingPasswordImport?
     @State private var activeAlert: ImportAlert?
 
-    private let deepOrange = Color(red: 0.90, green: 0.42, blue: 0.05)
-
     var body: some View {
         List {
             Section {
                 Toggle(L("enable_tweak"), isOn: $patchStore.config.enabled)
-                    .onChange(of: patchStore.config.enabled) { _ in
+                    .onChange(of: patchStore.config.enabled) { newValue in
+                        toolStore.zPatchCustomEnabled = newValue
                         var dummy = showApplyTab
                         patchStore.saveChanges(showApplyTab: &dummy)
                     }
@@ -1137,6 +1089,7 @@ struct CustomPatchView: View {
                     }
                     .onDelete { offsets in
                         patchStore.deleteRule(at: offsets)
+                        toolStore.zPatchCustomEnabled = patchStore.config.enabled
                     }
                 }
             }
@@ -1149,6 +1102,7 @@ struct CustomPatchView: View {
                     if !patchStore.config.savedRules.isEmpty {
                         patchStore.config.enabled = true
                     }
+                    toolStore.zPatchCustomEnabled = patchStore.config.enabled
                     patchStore.saveChanges(showApplyTab: &showApplyTab)
                     activeAlert = .info("Đã lưu thay đổi và đồng bộ trạng thái Apply.")
                 } label: {
@@ -1157,6 +1111,7 @@ struct CustomPatchView: View {
 
                 Button(role: .destructive) {
                     patchStore.restoreDefaults()
+                    toolStore.zPatchCustomEnabled = false
                     showApplyTab = false
                     activeAlert = .info("Đã khôi phục mặc định và xóa toàn bộ patch đã tạo.")
                 } label: {
@@ -1289,6 +1244,7 @@ struct CustomPatchView: View {
             case .imported(let rule):
                 pendingPasswordImport = nil
                 selectedDetailRuleID = rule.id
+                toolStore.zPatchCustomEnabled = patchStore.config.enabled
                 activeAlert = .info("Đã import patch: \(displayTitle(for: rule))")
             }
         } catch {
