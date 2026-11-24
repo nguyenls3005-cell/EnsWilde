@@ -6,6 +6,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import CryptoKit
 
 struct CustomPatchRule: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
@@ -24,6 +25,16 @@ struct Patch3105Package: Codable {
     var relativePath: String
     var fileName: String
     var fileDataBase64: String
+    // Hỗ trợ gói .3105 có đặt mật khẩu (SHA-256 hex) hoặc payload mã hóa XOR/AES-GCM theo key
+    var passwordRequired: Bool? = false
+    var passwordHashSHA256: String? = nil
+    var encryptedPayloadBase64: String? = nil
+    var encryptionNonceBase64: String? = nil
+}
+
+enum Patch3105ImportResult {
+    case imported(CustomPatchRule)
+    case needsPassword(url: URL, suggestedName: String, expectedHash: String?, pkg: Patch3105Package?)
 }
 
 struct CustomPatchConfig: Codable, Equatable {
@@ -66,6 +77,20 @@ final class CustomPatchStore: ObservableObject {
         return formatter.string(fromByteCount: bytes)
     }
 
+    static func sha256Hex(_ input: String) -> String {
+        let digest = SHA256.hash(data: Data(input.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func cleanPatchDisplayName(rawProjectName: String?, fileURL: URL) -> String {
+        if let name = rawProjectName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            return name
+        }
+        let base = fileURL.deletingPathExtension().lastPathComponent
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return base.isEmpty ? "Custom Patch" : base
+    }
+
     private func patchFolderURL() throws -> URL {
         let folder = URL.documentsDirectory.appendingPathComponent("CustomPatch", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -99,7 +124,8 @@ final class CustomPatchStore: ObservableObject {
         bundleID: String,
         relativePath: String,
         sourceStoredPath: String,
-        sourceFileName: String
+        sourceFileName: String,
+        password: String? = nil
     ) throws -> CustomPatchRule {
         let cleanBundleID = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanBundleID.isEmpty else {
@@ -118,12 +144,32 @@ final class CustomPatchStore: ObservableObject {
             ? URL(filePath: sourceStoredPath).lastPathComponent
             : sourceFileName.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        let trimmedPassword = password?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasPassword = !trimmedPassword.isEmpty
+        let pwdHash = hasPassword ? Self.sha256Hex(trimmedPassword) : nil
+
+        var payloadB64 = data.base64EncodedString()
+        var encPayloadB64: String? = nil
+        var nonceB64: String? = nil
+
+        if hasPassword {
+            let key = SymmetricKey(data: SHA256.hash(data: Data(trimmedPassword.utf8)))
+            let sealed = try AES.GCM.seal(data, using: key)
+            encPayloadB64 = sealed.ciphertext.base64EncodedString()
+            nonceB64 = Data(sealed.nonce).base64EncodedString()
+            payloadB64 = ""
+        }
+
         let pkg = Patch3105Package(
             projectName: cleanName,
             bundleID: cleanBundleID,
             relativePath: relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
             fileName: cleanFileName,
-            fileDataBase64: data.base64EncodedString()
+            fileDataBase64: payloadB64,
+            passwordRequired: hasPassword,
+            passwordHashSHA256: pwdHash,
+            encryptedPayloadBase64: encPayloadB64,
+            encryptionNonceBase64: nonceB64
         )
 
         let pkgData = try JSONEncoder().encode(pkg)
@@ -151,7 +197,7 @@ final class CustomPatchStore: ObservableObject {
         return rule
     }
 
-    func import3105Package(from url: URL) throws -> CustomPatchRule {
+    func prepareImport3105(from url: URL, password: String? = nil) throws -> Patch3105ImportResult {
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
             if accessed { url.stopAccessingSecurityScopedResource() }
@@ -160,39 +206,124 @@ final class CustomPatchStore: ObservableObject {
         let rawData = try Data(contentsOf: url, options: .mappedIfSafe)
         let folder = try patchFolderURL()
 
-        if let pkg = try? JSONDecoder().decode(Patch3105Package.self, from: rawData),
-           let payload = Data(base64Encoded: pkg.fileDataBase64) {
-            let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(pkg.fileName)")
-            try payload.write(to: outURL, options: .atomic)
+        if let pkg = try? JSONDecoder().decode(Patch3105Package.self, from: rawData) {
+            let displayName = Self.cleanPatchDisplayName(rawProjectName: pkg.projectName, fileURL: url)
+            let requiresPwd = (pkg.passwordRequired == true)
+                || !(pkg.passwordHashSHA256?.isEmpty ?? true)
+                || !(pkg.encryptedPayloadBase64?.isEmpty ?? true)
 
-            let rule = CustomPatchRule(
-                projectName: pkg.projectName,
-                bundleID: pkg.bundleID,
-                relativePath: pkg.relativePath,
-                sourceFileName: pkg.fileName,
-                sourceStoredPath: outURL.path,
-                fileSizeBytes: Int64(payload.count)
-            )
-            config.savedRules.insert(rule, at: 0)
-            config.activeRule = rule
-            return rule
+            if requiresPwd {
+                let enteredPwd = password ?? ""
+                if enteredPwd.isEmpty {
+                    return .needsPassword(
+                        url: url,
+                        suggestedName: displayName,
+                        expectedHash: pkg.passwordHashSHA256,
+                        pkg: pkg
+                    )
+                }
+
+                if let expectedHash = pkg.passwordHashSHA256, !expectedHash.isEmpty {
+                    if Self.sha256Hex(enteredPwd).lowercased() != expectedHash.lowercased() {
+                        throw CustomPatchError.invalidPassword
+                    }
+                }
+
+                let payloadData: Data
+                if let encB64 = pkg.encryptedPayloadBase64,
+                   !encB64.isEmpty,
+                   let nonceB64 = pkg.encryptionNonceBase64,
+                   let cipher = Data(base64Encoded: encB64),
+                   let nonceRaw = Data(base64Encoded: nonceB64) {
+                    let key = SymmetricKey(data: SHA256.hash(data: Data(enteredPwd.utf8)))
+                    let nonce = try AES.GCM.Nonce(data: nonceRaw)
+                    let box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: cipher, tag: Data())
+                    // Nếu gói tạo từ createAndSave3105 có combined format thì giải mã trực tiếp
+                    if let combined = Data(base64Encoded: encB64),
+                       let sealedBox = try? AES.GCM.SealedBox(combined: combined) {
+                        payloadData = try AES.GCM.open(sealedBox, using: key)
+                    } else {
+                        _ = box
+                        throw CustomPatchError.invalidPassword
+                    }
+                } else if let plainData = Data(base64Encoded: pkg.fileDataBase64), !plainData.isEmpty {
+                    payloadData = plainData
+                } else {
+                    throw CustomPatchError.invalidPackageData
+                }
+
+                let outName = pkg.fileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? url.lastPathComponent
+                    : pkg.fileName
+                let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(outName)")
+                try payloadData.write(to: outURL, options: .atomic)
+                chmod(outURL.path, 0o644)
+
+                let rule = CustomPatchRule(
+                    projectName: displayName,
+                    bundleID: pkg.bundleID.trimmingCharacters(in: .whitespacesAndNewlines),
+                    relativePath: pkg.relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
+                    sourceFileName: outName,
+                    sourceStoredPath: outURL.path,
+                    fileSizeBytes: Int64(payloadData.count)
+                )
+                saveImportedRule(rule)
+                return .imported(rule)
+            }
+
+            if let payload = Data(base64Encoded: pkg.fileDataBase64) {
+                let outName = pkg.fileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? url.lastPathComponent
+                    : pkg.fileName
+                let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(outName)")
+                try payload.write(to: outURL, options: .atomic)
+                chmod(outURL.path, 0o644)
+
+                let rule = CustomPatchRule(
+                    projectName: displayName,
+                    bundleID: pkg.bundleID.trimmingCharacters(in: .whitespacesAndNewlines),
+                    relativePath: pkg.relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
+                    sourceFileName: outName,
+                    sourceStoredPath: outURL.path,
+                    fileSizeBytes: Int64(payload.count)
+                )
+                saveImportedRule(rule)
+                return .imported(rule)
+            }
         }
 
-        let fallbackName = url.deletingPathExtension().lastPathComponent
+        // Fallback nếu file .3105 là dữ liệu nhị phân / plist trực tiếp
+        let displayName = Self.cleanPatchDisplayName(rawProjectName: nil, fileURL: url)
         let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(url.lastPathComponent)")
         try rawData.write(to: outURL, options: .atomic)
+        chmod(outURL.path, 0o644)
 
         let rule = CustomPatchRule(
-            projectName: fallbackName.isEmpty ? "Imported .3105" : fallbackName,
+            projectName: displayName,
             bundleID: config.activeRule?.bundleID ?? "",
             relativePath: config.activeRule?.relativePath ?? "",
             sourceFileName: url.lastPathComponent,
             sourceStoredPath: outURL.path,
             fileSizeBytes: Int64(rawData.count)
         )
+        saveImportedRule(rule)
+        return .imported(rule)
+    }
+
+    private func saveImportedRule(_ rule: CustomPatchRule) {
+        config.savedRules.removeAll { $0.id == rule.id }
         config.savedRules.insert(rule, at: 0)
         config.activeRule = rule
-        return rule
+    }
+
+    func import3105Package(from url: URL, password: String? = nil) throws -> CustomPatchRule {
+        let result = try prepareImport3105(from: url, password: password)
+        switch result {
+        case .imported(let rule):
+            return rule
+        case .needsPassword:
+            throw CustomPatchError.passwordRequired
+        }
     }
 
     func selectRule(_ rule: CustomPatchRule) {
@@ -230,6 +361,9 @@ enum CustomPatchError: LocalizedError {
     case disabled
     case missingBundleID
     case missingSourceFile
+    case passwordRequired
+    case invalidPassword
+    case invalidPackageData
     case targetNotFound(String)
     case openFailed(String)
     case truncateFailed(String)
@@ -243,6 +377,12 @@ enum CustomPatchError: LocalizedError {
             return "Vui lòng nhập Bundle ID của app."
         case .missingSourceFile:
             return "Chưa nhập Replacement File hoặc file không tồn tại."
+        case .passwordRequired:
+            return "File .3105 này yêu cầu mật khẩu."
+        case .invalidPassword:
+            return "Mật khẩu không đúng. Vui lòng thử lại."
+        case .invalidPackageData:
+            return "Dữ liệu trong file .3105 không hợp lệ hoặc bị hỏng."
         case .targetNotFound(let bid):
             return "Không tìm thấy thư mục của Bundle ID: \(bid)"
         case .openFailed(let reason):
@@ -405,6 +545,7 @@ struct CreatePatchSheetView: View {
     @State private var projectName: String = ""
     @State private var bundleID: String = ""
     @State private var relativePath: String = ""
+    @State private var password: String = ""
     @State private var draftRule: CustomPatchRule = CustomPatchRule()
     @State private var showFilePicker = false
     @State private var errMessage: String?
@@ -412,8 +553,8 @@ struct CreatePatchSheetView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Project Name")) {
-                    TextField("Tên project / app", text: $projectName)
+                Section(header: Text("Patch Name")) {
+                    TextField("Tên patch", text: $projectName)
                         .autocorrectionDisabled()
                 }
 
@@ -458,6 +599,12 @@ struct CreatePatchSheetView: View {
                     }
                 }
 
+                Section(header: Text("Password (Optional)")) {
+                    SecureField("Nhập mật khẩu nếu muốn khóa file .3105", text: $password)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+
                 if let errMessage {
                     Section {
                         Text(errMessage).foregroundStyle(.red).font(.footnote)
@@ -478,7 +625,8 @@ struct CreatePatchSheetView: View {
                                 bundleID: bundleID,
                                 relativePath: relativePath,
                                 sourceStoredPath: draftRule.sourceStoredPath,
-                                sourceFileName: draftRule.sourceFileName
+                                sourceFileName: draftRule.sourceFileName,
+                                password: password
                             )
                             dismiss()
                         } catch {
@@ -519,6 +667,13 @@ struct CustomPatchView: View {
 
     @State private var show3105FilePicker = false
     @State private var showCreatePatchSheet = false
+
+    // Popup nhập mật khẩu khi import file .3105 có khóa
+    @State private var showPasswordPrompt = false
+    @State private var pending3105URL: URL?
+    @State private var pending3105PatchName: String = ""
+    @State private var enteredPassword: String = ""
+
     @State private var statusMessage: String?
     @State private var showAlert = false
 
@@ -547,14 +702,16 @@ struct CustomPatchView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(rule.projectName.isEmpty ? rule.bundleID : rule.projectName)
+                                    Text(rule.projectName.isEmpty ? rule.sourceFileName : rule.projectName)
                                         .foregroundStyle(.primary)
                                         .font(.body.weight(.medium))
 
-                                    Text("\(rule.bundleID) • \(rule.relativePath)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                                    if !rule.bundleID.isEmpty || !rule.relativePath.isEmpty {
+                                        Text("\(rule.bundleID) • \(rule.relativePath)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
 
                                     Text("\(rule.sourceFileName) • \(CustomPatchStore.formattedSize(rule.fileSizeBytes))")
                                         .font(.caption2)
@@ -618,27 +775,65 @@ struct CustomPatchView: View {
         ) { result in
             switch result {
             case .success(let urls):
-                if let url = urls.first {
-                    do {
-                        let imported = try patchStore.import3105Package(from: url)
-                        patchStore.config.enabled = true
-                        showApplyTab = true
-                        statusMessage = "Đã thêm patch: \(imported.projectName)"
-                        showAlert = true
-                    } catch {
-                        statusMessage = error.localizedDescription
-                        showAlert = true
-                    }
-                }
+                guard let url = urls.first else { return }
+                handleImport3105(url: url, password: nil)
             case .failure(let error):
                 statusMessage = error.localizedDescription
                 showAlert = true
             }
         }
+        .alert("Nhập mật khẩu patch", isPresented: $showPasswordPrompt) {
+            SecureField("Mật khẩu", text: $enteredPassword)
+            Button(L("alert_cancel"), role: .cancel) {
+                pending3105URL = nil
+                pending3105PatchName = ""
+                enteredPassword = ""
+            }
+            Button(L("alert_ok")) {
+                guard let url = pending3105URL else { return }
+                let pwd = enteredPassword
+                enteredPassword = ""
+                handleImport3105(url: url, password: pwd)
+            }
+        } message: {
+            Text("Patch \"\(pending3105PatchName)\" yêu cầu mật khẩu để mở.")
+        }
         .alert(L("alert_message_title"), isPresented: $showAlert) {
             Button(L("alert_ok")) {}
         } message: {
             Text(statusMessage ?? L("msg_error_unknown"))
+        }
+    }
+
+    private func handleImport3105(url: URL, password: String?) {
+        do {
+            let outcome = try patchStore.prepareImport3105(from: url, password: password)
+            switch outcome {
+            case .needsPassword(let targetURL, let suggestedName, _, _):
+                pending3105URL = targetURL
+                pending3105PatchName = suggestedName
+                enteredPassword = ""
+                showPasswordPrompt = true
+
+            case .imported(let rule):
+                pending3105URL = nil
+                pending3105PatchName = ""
+                patchStore.config.enabled = true
+                showApplyTab = true
+                statusMessage = "Đã import patch: \(rule.projectName)"
+                showAlert = true
+            }
+        } catch {
+            if pending3105URL != nil, case CustomPatchError.invalidPassword = error {
+                // Giữ popup để nhập lại mật khẩu hoặc báo lỗi sai mật khẩu
+                statusMessage = error.localizedDescription
+                showAlert = true
+            } else {
+                pending3105URL = nil
+                pending3105PatchName = ""
+                statusMessage = error.localizedDescription
+                showAlert = true
+            }
         }
     }
 }
