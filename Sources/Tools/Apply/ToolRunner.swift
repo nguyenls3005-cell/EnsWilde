@@ -56,6 +56,13 @@ class ToolRunner: ObservableObject {
                 onLogUpdate(">> Disable Call Recording Sound Done.")
             }
 
+            let zPatch = zPatchStore()
+            if zPatch.isTweakEnabled || zPatch.pendingApply {
+                onLogUpdate(">> Applying zPatch Custom...")
+                try zPatch.applyAllUsingWorseQuery(onLog: onLogUpdate)
+                onLogUpdate(">> zPatch Custom Done.")
+            }
+
             state = .success
             onLogUpdate("All tweaks applied successfully.")
 
