@@ -20,7 +20,7 @@ struct MobileGestaltView: View {
     @StateObject private var store = GestaltStore.shared
 
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
-    @AppStorage("ogMachineName") private var ogMachineName = "" 
+    @AppStorage("ogMachineName") private var ogMachineName = ""
 
     @State var mbdb: Backup?
     @State var eligibilityData = Data()
@@ -33,15 +33,15 @@ struct MobileGestaltView: View {
     @State var taskRunning = false
     @State var initError: String?
     @State var lastError: String?
-    
+
     @State var dynamicIslandType: Int = 0
     @State var enableCustomSubtype: Bool = false
     @State var customSubtypeValue: String = ""
     @State var enableModelName: Bool = false
     @State var modelName: String = ""
-    
+
     @State private var showDIWarning = false
-    
+
     let regionPresets: [MGRegionPreset] = [
         MGRegionPreset(id: "VN", name: "Viet Nam", suffix: "VN/A"),
         MGRegionPreset(id: "LL", name: "United States", suffix: "LL/A"),
@@ -51,7 +51,7 @@ struct MobileGestaltView: View {
         MGRegionPreset(id: "VC", name: "Canada", suffix: "VC/A"),
         MGRegionPreset(id: "ZP", name: "Hong Kong", suffix: "ZP/A"),
     ]
-    
+
     @State private var selectedRegionCode: String = "CH"
     @State private var regionCustomSuffix: String? = nil
 
@@ -63,7 +63,7 @@ struct MobileGestaltView: View {
                         if !isEnabled { showApplyTab = false }
                     }
             }
-            
+
             Section(header: Text(L("section_device_subtype"))) {
                 Picker(selection: $dynamicIslandType) {
                     Text(L("mg_subtype_none")).tag(0)
@@ -81,16 +81,25 @@ struct MobileGestaltView: View {
                 }
                 .pickerStyle(.menu)
                 .onChange(of: dynamicIslandType) { newValue in
-                    if newValue == 8 { showDIWarning = true }
-                    else if newValue != -1 { enableCustomSubtype = false }
-                    else { enableCustomSubtype = true }
+                    if newValue == 8 {
+                        showDIWarning = true
+                        enableCustomSubtype = false
+                    } else if newValue == -1 {
+                        enableCustomSubtype = true
+                    } else {
+                        enableCustomSubtype = false
+                    }
                 }
                 .alert(L("mg_di_warning_title"), isPresented: $showDIWarning) {
-                    Button(L("alert_cancel"), role: .cancel) { dynamicIslandType = 0 }
-                    Button(L("alert_accept")) { enableCustomSubtype = false }
+                    Button(L("alert_cancel"), role: .cancel) {
+                        hydrateFromDict()
+                    }
+                    Button(L("alert_accept")) {
+                        enableCustomSubtype = false
+                    }
                 }
 
-                if enableCustomSubtype {
+                if enableCustomSubtype || dynamicIslandType == -1 {
                     Toggle(L("mg_enable_custom_subtype"), isOn: $enableCustomSubtype)
                     if enableCustomSubtype {
                         TextField(L("mg_custom_subtype_placeholder"), text: $customSubtypeValue)
@@ -123,7 +132,7 @@ struct MobileGestaltView: View {
                     .disabled(Utils.requiresVersion(18))
                 Toggle(L("mg_aod_vibrancy"), isOn: store.mgByteBinding(key: MGKey.AODVibrancy))
                     .disabled(Utils.requiresVersion(18))
-                
+
                 Toggle(L("mg_become_ipados"), isOn: Binding(
                     get: { return store.mgTrollPadBinding().wrappedValue },
                     set: { newValue in
@@ -137,7 +146,7 @@ struct MobileGestaltView: View {
                 Toggle(isOn: bindingForMGKeys(["9MZ5AdH43csAUajl/dU+IQ"], type: [Int].self, defaultValue: [1], enableValue: [1, 2])) {
                     Text(L("mg_install_ipad_apps"))
                 }
-                
+
                 Picker(selection: $selectedRegionCode) {
                     ForEach(regionPresets) { preset in
                         Text("\(preset.suffix) - \(preset.name)").tag(preset.id)
@@ -163,12 +172,12 @@ struct MobileGestaltView: View {
                 Toggle(L("mg_internal_storage"), isOn: store.mgByteBinding(key: MGKey.intBuild))
                 Toggle(L("mg_internal_stuff"), isOn: store.mgByteBinding(key: MGKey.intInstall))
                 Toggle(L("mg_security_research"), isOn: store.mgByteBinding(key: MGKey.srd))
-                
+
                 Toggle(isOn: bindingForAppleIntelligence()) {
                     Text(L("mg_apple_intelligence"))
                 }
                 .disabled(Utils.requiresVersion(18))
-                
+
                 if store.isEnabled(MGKey.appIntellAllKeys) {
                     Group {
                         Toggle(L("mg_ondevice_siri"), isOn: store.mgKeyBinding(["O/7gbXWA5X2IRPVtDRU+bw"]))
@@ -181,7 +190,7 @@ struct MobileGestaltView: View {
                     .padding(.leading, 16)
                     .transition(.opacity)
                 }
-                
+
                 Picker(selection: $productType) {
                     Text(L("mg_device_model_unchanged")).tag(MobileGestaltView.machineName())
                     if UIDevice.current.userInterfaceIdiom == .pad {
@@ -238,7 +247,7 @@ struct MobileGestaltView: View {
     private func loadData() {
         let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
         _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
-        
+
         if let liveData = try? Data(contentsOf: liveURL),
            let liveDict = try? PropertyListSerialization.propertyList(
                from: liveData,
@@ -255,6 +264,13 @@ struct MobileGestaltView: View {
         hydrateFromDict()
     }
 
+    private func parseSubtypeInt(_ raw: Any?) -> Int? {
+        if let n = raw as? NSNumber { return n.intValue }
+        if let i = raw as? Int { return i }
+        if let s = raw as? String { return Int(s.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return nil
+    }
+
     private func hydrateFromDict() {
         dynamicIslandType = 0
         enableCustomSubtype = false
@@ -263,47 +279,53 @@ struct MobileGestaltView: View {
         modelName = ""
         productType = MobileGestaltView.machineName()
 
-        guard let cacheExtra = store.mgCurrentDict["CacheExtra"] as? NSDictionary else { return }
-        
+        let activeDict: NSDictionary = store.mgCurrentDict.count > 0 ? store.mgCurrentDict : mobileGestalt
+        guard let cacheExtra = activeDict["CacheExtra"] as? NSDictionary else { return }
+
         productType = cacheExtra[MGKey.productType] as? String ?? productType
-        
+
         let sysconfig = cacheExtra[MGKey.regionSysconfig] as? String ?? ""
+        let regionInfo = cacheExtra[MGKey.regionInfo] as? String ?? ""
         let regionCode = cacheExtra[MGKey.regionCode] as? String ?? ""
-        
-        if let preset = regionPresets.first(where: { $0.suffix == sysconfig && $0.id == regionCode }) {
+        let effectiveSuffix = !sysconfig.isEmpty ? sysconfig : regionInfo
+
+        if let preset = regionPresets.first(where: {
+            (!effectiveSuffix.isEmpty && $0.suffix.caseInsensitiveCompare(effectiveSuffix) == .orderedSame) ||
+            (!regionCode.isEmpty && $0.id.caseInsensitiveCompare(regionCode) == .orderedSame && effectiveSuffix.isEmpty)
+        }) {
             self.selectedRegionCode = preset.id
             self.regionCustomSuffix = nil
-        } else {
+        } else if !regionCode.isEmpty || !effectiveSuffix.isEmpty {
             self.selectedRegionCode = "CUSTOM"
-            self.regionCustomSuffix = sysconfig.isEmpty ? "\(regionCode) - Custom" : sysconfig
+            self.regionCustomSuffix = effectiveSuffix.isEmpty ? "\(regionCode) - Custom" : effectiveSuffix
         }
-        
+
+        var foundSubtype: Int? = nil
         if let artwork = cacheExtra[MGKey.artwork] as? NSDictionary {
-            if let rawSubtype = artwork["ArtworkDeviceSubType"] {
-                var subtypeValue: Int? = nil
-                if let n = rawSubtype as? NSNumber { subtypeValue = n.intValue }
-                else if let i = rawSubtype as? Int { subtypeValue = i }
-                
-                if let subtype = subtypeValue {
-                    switch subtype {
-                    case 2436: dynamicIslandType = 1
-                    case 2556: dynamicIslandType = 2
-                    case 2796: dynamicIslandType = 3
-                    case 2976: dynamicIslandType = 4
-                    case 2622: dynamicIslandType = 5
-                    case 2868: dynamicIslandType = 6
-                    case 2736: dynamicIslandType = 7
-                    case 2662: dynamicIslandType = 8
-                    default:
-                        dynamicIslandType = -1
-                        enableCustomSubtype = true
-                        customSubtypeValue = "\(subtype)"
-                    }
-                }
-            }
+            foundSubtype = parseSubtypeInt(artwork["ArtworkDeviceSubType"])
             if let name = artwork["ArtworkDeviceProductDescription"] as? String, !name.isEmpty {
                 enableModelName = true
                 modelName = name
+            }
+        }
+        if foundSubtype == nil {
+            foundSubtype = parseSubtypeInt(cacheExtra["ArtworkDeviceSubType"])
+        }
+
+        if let subtype = foundSubtype {
+            switch subtype {
+            case 2436: dynamicIslandType = 1
+            case 2556: dynamicIslandType = 2
+            case 2796: dynamicIslandType = 3
+            case 2976: dynamicIslandType = 4
+            case 2622: dynamicIslandType = 5
+            case 2868: dynamicIslandType = 6
+            case 2736: dynamicIslandType = 7
+            case 2662: dynamicIslandType = 8
+            default:
+                dynamicIslandType = -1
+                enableCustomSubtype = true
+                customSubtypeValue = "\(subtype)"
             }
         }
     }
@@ -313,7 +335,8 @@ struct MobileGestaltView: View {
             do {
                 let ce = store.cacheExtra
                 let targetProductType = productType
-                
+                let chosenRegionCode = selectedRegionCode
+
                 let spoofMap: [String: (hw: String, cpu: String, reg: String)] = [
                     "iPhone16,1": ("D83AP", "t8130", "A2848"),
                     "iPhone16,2": ("D84AP", "t8130", "A2849"),
@@ -332,25 +355,21 @@ struct MobileGestaltView: View {
                     "iPhone19,7": ("V64sAP", "t8160", "A3717"),
                     "iPhone19,4": ("V68AP", "t8160", "A3447")
                 ]
-                
+
                 if targetProductType != ogMachineName, let info = spoofMap[targetProductType] {
                     ce[MGKey.productType] = targetProductType
                     ce["oYicEKzVTz4/CxxE05pEgQ"] = info.hw
                     ce["5pYKlGnYYBzGvAlIU8RjEQ"] = info.cpu
                     ce["97JDvERpVwO+GHtthIh7hA"] = info.reg
-                    
+
                     ce["A62OafQ85EJAiiqKn4agtg"] = 1
                     ce["a3n5T9sFtlyQ74NEp9ESxg"] = 2
                     ce["XNCjqOupLM/S8fNyxRNQTA"] = 1
                     ce["YgYIIViDt1kgzyIsIV61vA"] = 1
-                    ce["h63QSdBCiT/z0WU6rdQv6Q"] = "LL"
-                    ce["yK+xavymRGZ3xWc1tb8XDg"] = "LL/A"
-                    
+
                     ce.removeObject(forKey: "EqrsVvjcYDdxHBiQmGhAWw")
                     ce.removeObject(forKey: "LBJfwOEzExRxzlAnSuI7eg")
                     ce.removeObject(forKey: "waGD2UTpntjbDXD1r3oALQ")
-                    
-                    self.selectedRegionCode = "LL"
                 } else if targetProductType == ogMachineName {
                     if let ogCE = NSDictionary(contentsOf: MGURL.savedGestaltURL)?["CacheExtra"] as? NSDictionary {
                         for key in ["h9jDsbgj7xIVeIQ8S3/X3Q", "oYicEKzVTz4/CxxE05pEgQ", "5pYKlGnYYBzGvAlIU8RjEQ", "97JDvERpVwO+GHtthIh7hA"] {
@@ -358,7 +377,7 @@ struct MobileGestaltView: View {
                         }
                     }
                 }
-                
+
                 let art = (ce[MGKey.artwork] as? NSMutableDictionary) ?? NSMutableDictionary()
                 if dynamicIslandType == 0 {
                     art.removeObject(forKey: "ArtworkDeviceSubType")
@@ -366,7 +385,7 @@ struct MobileGestaltView: View {
                     let subtypes = [0, 2436, 2556, 2796, 2976, 2622, 2868, 2736, 2662]
                     art["ArtworkDeviceSubType"] = subtypes[dynamicIslandType]
                     ce["YlEtTtHlNesRBMal1CqRaA"] = 1
-                } else if enableCustomSubtype, let val = Int(customSubtypeValue) {
+                } else if enableCustomSubtype, let val = Int(customSubtypeValue.trimmingCharacters(in: .whitespacesAndNewlines)) {
                     art["ArtworkDeviceSubType"] = val
                     ce["YlEtTtHlNesRBMal1CqRaA"] = 1
                 }
@@ -376,23 +395,25 @@ struct MobileGestaltView: View {
                     art.removeObject(forKey: "ArtworkDeviceProductDescription")
                 }
                 ce[MGKey.artwork] = art
-                
-                if selectedRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == selectedRegionCode }) {
+
+                // Áp dụng vùng theo lựa chọn người dùng (ví dụ VN -> "VN" / "VN/A") sau cùng để không bị đè
+                if chosenRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == chosenRegionCode }) {
                     ce[MGKey.regionCode] = preset.id
                     ce[MGKey.regionSysconfig] = preset.suffix
                     ce[MGKey.regionInfo] = preset.suffix
+                    ce["yK+xavymRGZ3xWc1tb8XDg"] = preset.suffix
                 }
-                
+
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in
                     print(log)
                 }
-                
+
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
                 let expectedData = try Data(contentsOf: liveURL)
                 try expectedData.write(to: modMGURL)
-                
+
                 store.loadFromPlist(url: modMGURL)
-                
+
                 await MainActor.run {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
@@ -415,9 +436,9 @@ struct MobileGestaltView: View {
                 try await MobileGestaltApplyTask.restoreGestalt { log in
                     print(log)
                 }
-                
+
                 try? FileManager.default.removeItem(at: modMGURL)
-                
+
                 await MainActor.run {
                     store.mgCurrentDict = NSMutableDictionary()
                     self.mobileGestalt = store.mgCurrentDict
@@ -442,13 +463,13 @@ struct MobileGestaltView: View {
         origMGURL      = docs.appendingPathComponent("OriginalMobileGestalt.plist", conformingTo: .data)
         modMGURL       = docs.appendingPathComponent("ModifiedMobileGestalt.plist", conformingTo: .data)
         resolutionURL  = docs.appendingPathComponent("Resolution.plist", conformingTo: .data)
-        
+
         let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
         _ = wq.grantAccess(path: liveURL.deletingLastPathComponent().path)
-        
+
         var initialDict = NSMutableDictionary()
         var initErr: String? = nil
-        
+
         do {
             if FileManager.default.fileExists(atPath: liveURL.path) {
                 try? FileManager.default.removeItem(at: modMGURL)
@@ -457,12 +478,12 @@ struct MobileGestaltView: View {
                 try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
             }
             chmod(modMGURL.path, 0o644)
-            
+
             if !FileManager.default.fileExists(atPath: origMGURL.path) {
                 FileManager.default.createFile(atPath: origMGURL.path, contents: nil, attributes: nil)
             }
             chmod(origMGURL.path, 0o644)
-            
+
             if let mutable = GestaltStore.loadMutableDict(from: modMGURL) {
                 initialDict = mutable
             } else {
@@ -471,7 +492,7 @@ struct MobileGestaltView: View {
         } catch {
             initErr = "Failed to copy MobileGestalt: \(error)"
         }
-        
+
         _mobileGestalt = State(initialValue: initialDict)
         _initError = State(initialValue: initErr)
     }
