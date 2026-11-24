@@ -7,6 +7,8 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import CryptoKit
+import Foundation
+import Darwin
 
 enum ImportAlert: Identifiable {
     case info(String)
@@ -41,7 +43,7 @@ struct CustomPatchRule: Identifiable, Codable, Equatable {
     var packageStoredPath: String = ""
     var fileSizeBytes: Int64 = 0
     var passwordHashSHA256: String? = nil
-    var isLegacyV1: Bool = true
+    var isLegacyV1: Bool = false
 }
 
 struct Patch3105Package: Codable {
@@ -72,6 +74,7 @@ final class CustomPatchStore: ObservableObject {
     static let shared = CustomPatchStore()
 
     private let storageKey = "EnsWilde.CustomPatchConfig.v2"
+    private let legacyAppliedKey = "EnsWilde.CustomPatch.AppliedIDs.v1"
 
     @Published var config: CustomPatchConfig {
         didSet {
@@ -80,6 +83,8 @@ final class CustomPatchStore: ObservableObject {
         }
     }
 
+    @Published var appliedRuleIDs: Set<UUID> = []
+
     init() {
         if let data = UserDefaults.standard.data(forKey: storageKey),
            let decoded = try? JSONDecoder().decode(CustomPatchConfig.self, from: data) {
@@ -87,12 +92,27 @@ final class CustomPatchStore: ObservableObject {
         } else {
             self.config = CustomPatchConfig()
         }
+
+        if let rawIDs = UserDefaults.standard.stringArray(forKey: legacyAppliedKey) {
+            self.appliedRuleIDs = Set(rawIDs.compactMap { UUID(uuidString: $0) })
+        }
     }
 
     private func saveToDefaults() {
         if let encoded = try? JSONEncoder().encode(config) {
             UserDefaults.standard.set(encoded, forKey: storageKey)
         }
+        UserDefaults.standard.set(Array(appliedRuleIDs).map { $0.uuidString }, forKey: legacyAppliedKey)
+        UserDefaults.standard.synchronize()
+    }
+
+    func markRuleApplied(_ ruleID: UUID) {
+        appliedRuleIDs.insert(ruleID)
+        saveToDefaults()
+    }
+
+    func isRuleApplied(_ ruleID: UUID) -> Bool {
+        appliedRuleIDs.contains(ruleID)
     }
 
     static func formattedSize(_ bytes: Int64) -> String {
@@ -198,19 +218,34 @@ final class CustomPatchStore: ObservableObject {
         let data = try Data(contentsOf: URL(filePath: sourceStoredPath), options: .mappedIfSafe)
         let trimmedName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanName = trimmedName.isEmpty ? cleanBundleID : trimmedName
+        let cleanRel = relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanFileName = sourceFileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? URL(filePath: sourceStoredPath).lastPathComponent
+            ? (cleanRel.isEmpty ? URL(filePath: sourceStoredPath).lastPathComponent : URL(filePath: cleanRel).lastPathComponent)
             : sourceFileName.trimmingCharacters(in: .whitespacesAndNewlines)
 
+        let existingRule = existingID.flatMap { id in
+            config.savedRules.first(where: { $0.id == id }) ?? (config.activeRule?.id == id ? config.activeRule : nil)
+        }
+
         let trimmedPassword = password?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let hasPassword = !trimmedPassword.isEmpty
-        let pwdHash = hasPassword ? Self.sha256Hex(trimmedPassword) : nil
+        let pwdHash: String?
+        let hasPassword: Bool
+        if !trimmedPassword.isEmpty {
+            hasPassword = true
+            pwdHash = Self.sha256Hex(trimmedPassword)
+        } else if let existingHash = existingRule?.passwordHashSHA256, !existingHash.isEmpty {
+            hasPassword = true
+            pwdHash = existingHash
+        } else {
+            hasPassword = false
+            pwdHash = nil
+        }
 
         var payloadB64 = data.base64EncodedString()
         var encPayloadB64: String? = nil
         var nonceB64: String? = nil
 
-        if hasPassword {
+        if hasPassword, !trimmedPassword.isEmpty {
             let key = SymmetricKey(data: SHA256.hash(data: Data(trimmedPassword.utf8)))
             let sealed = try AES.GCM.seal(data, using: key)
             encPayloadB64 = sealed.combined?.base64EncodedString()
@@ -221,7 +256,7 @@ final class CustomPatchStore: ObservableObject {
         let pkg = Patch3105Package(
             projectName: cleanName,
             bundleID: cleanBundleID,
-            relativePath: relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
+            relativePath: cleanRel,
             fileName: cleanFileName,
             fileDataBase64: payloadB64,
             passwordRequired: hasPassword,
@@ -250,7 +285,7 @@ final class CustomPatchStore: ObservableObject {
             packageStoredPath: pkgURL.path,
             fileSizeBytes: Int64(data.count),
             passwordHashSHA256: pwdHash,
-            isLegacyV1: true
+            isLegacyV1: false
         )
 
         return upsertRule(rule, setActive: true, enableTweak: true)
@@ -336,7 +371,7 @@ final class CustomPatchStore: ObservableObject {
                     packageStoredPath: storedPkgURL.path,
                     fileSizeBytes: Int64(payloadData.count),
                     passwordHashSHA256: pkg.passwordHashSHA256,
-                    isLegacyV1: true
+                    isLegacyV1: false
                 )
                 return .imported(upsertRule(rule, setActive: true))
             }
@@ -358,7 +393,7 @@ final class CustomPatchStore: ObservableObject {
                     packageStoredPath: storedPkgURL.path,
                     fileSizeBytes: Int64(payload.count),
                     passwordHashSHA256: pkg.passwordHashSHA256,
-                    isLegacyV1: true
+                    isLegacyV1: false
                 )
                 return .imported(upsertRule(rule, setActive: true))
             }
@@ -371,14 +406,14 @@ final class CustomPatchStore: ObservableObject {
 
         let rule = CustomPatchRule(
             projectName: displayName,
-            bundleID: config.activeRule?.bundleID ?? "",
-            relativePath: config.activeRule?.relativePath ?? "",
+            bundleID: "",
+            relativePath: "",
             sourceFileName: url.lastPathComponent,
             sourceStoredPath: outURL.path,
             packageStoredPath: storedPkgURL.path,
             fileSizeBytes: Int64(rawData.count),
             passwordHashSHA256: nil,
-            isLegacyV1: true
+            isLegacyV1: false
         )
         return .imported(upsertRule(rule, setActive: true))
     }
@@ -424,6 +459,7 @@ final class CustomPatchStore: ObservableObject {
             }
         }
         config.savedRules.remove(atOffsets: offsets)
+        appliedRuleIDs.subtract(removedIDs)
         if let activeID = config.activeRule?.id, removedIDs.contains(activeID) {
             config.activeRule = config.savedRules.first
         }
@@ -448,7 +484,10 @@ final class CustomPatchStore: ObservableObject {
             }
         }
         config = CustomPatchConfig()
+        appliedRuleIDs.removeAll()
         UserDefaults.standard.removeObject(forKey: storageKey)
+        UserDefaults.standard.removeObject(forKey: legacyAppliedKey)
+        UserDefaults.standard.synchronize()
     }
 }
 
@@ -491,20 +530,25 @@ enum CustomPatchError: LocalizedError {
 }
 
 enum CustomPatchApplyTask {
-    static func enabledPatchLabels() -> [String] {
+    static func activeRulesToApply() -> [CustomPatchRule] {
         let cfg = CustomPatchStore.shared.config
         guard cfg.enabled else { return [] }
         if let active = cfg.activeRule {
-            let name = active.projectName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let label = name.isEmpty ? (active.sourceFileName.isEmpty ? "Custom Patch" : active.sourceFileName) : name
-            return ["Custom Patch: \(label)"]
+            return [active]
         }
         if let first = cfg.savedRules.first {
-            let name = first.projectName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let label = name.isEmpty ? (first.sourceFileName.isEmpty ? "Custom Patch" : first.sourceFileName) : name
-            return ["Custom Patch: \(label)"]
+            return [first]
         }
-        return ["Custom Patch"]
+        return []
+    }
+
+    static func enabledPatchLabels() -> [String] {
+        let rules = activeRulesToApply()
+        return rules.map { rule in
+            let name = rule.projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = name.isEmpty ? (rule.sourceFileName.isEmpty ? "Custom Patch" : rule.sourceFileName) : name
+            return "Custom Patch: \(label)"
+        }
     }
 
     private static func estimatedMaxInode() -> UInt64 {
@@ -587,17 +631,7 @@ enum CustomPatchApplyTask {
         return URL(filePath: basePath).appendingPathComponent(rel).path
     }
 
-    static func applyIfEnabled(log: (String) -> Void = { _ in }) async throws {
-        let cfg = CustomPatchStore.shared.config
-        guard cfg.enabled else {
-            log("[CustomPatch] Đang tắt, bỏ qua.")
-            return
-        }
-
-        guard let rule = cfg.activeRule ?? cfg.savedRules.first else {
-            throw CustomPatchError.missingSourceFile
-        }
-
+    static func applyRule(_ rule: CustomPatchRule, log: (String) -> Void = { _ in }) async throws {
         guard !rule.sourceStoredPath.isEmpty,
               FileManager.default.fileExists(atPath: rule.sourceStoredPath),
               let patchData = try? Data(contentsOf: URL(filePath: rule.sourceStoredPath)) else {
@@ -645,7 +679,22 @@ enum CustomPatchApplyTask {
             _ = fsync(fd)
         }
         chmod(targetPath, 0o644)
+        CustomPatchStore.shared.markRuleApplied(rule.id)
         log("[CustomPatch] ✅ Đã ghi \(totalWritten) bytes vào \(targetPath)")
+    }
+
+    static func applyIfEnabled(log: (String) -> Void = { _ in }) async throws {
+        let cfg = CustomPatchStore.shared.config
+        guard cfg.enabled else {
+            log("[CustomPatch] Đang tắt, bỏ qua.")
+            return
+        }
+
+        guard let rule = cfg.activeRule ?? cfg.savedRules.first else {
+            throw CustomPatchError.missingSourceFile
+        }
+
+        try await applyRule(rule, log: log)
     }
 }
 
@@ -715,6 +764,7 @@ struct EditPatchRuleSheetView: View {
     @State private var projectName: String
     @State private var bundleID: String
     @State private var relativePath: String
+    @State private var addRulePath: String
     @State private var password: String
     @State private var draftRule: CustomPatchRule
     @State private var showFilePicker = false
@@ -727,15 +777,44 @@ struct EditPatchRuleSheetView: View {
         _projectName = State(initialValue: base.projectName)
         _bundleID = State(initialValue: base.bundleID)
         _relativePath = State(initialValue: base.relativePath)
+        _addRulePath = State(initialValue: "")
         _password = State(initialValue: "")
         _draftRule = State(initialValue: base)
+    }
+
+    private var resolvedDestinationText: String {
+        let baseRel = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        let extraRule = addRulePath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        if extraRule.isEmpty {
+            return baseRel.isEmpty ? draftRule.sourceFileName : baseRel
+        }
+        if baseRel.isEmpty {
+            return extraRule
+        }
+        return "\(baseRel)/\(extraRule)"
+    }
+
+    private var resolvedReplacementFileText: String {
+        let extraRule = addRulePath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        if !extraRule.isEmpty {
+            let last = URL(filePath: extraRule).lastPathComponent
+            if !last.isEmpty { return last }
+        }
+        if !draftRule.sourceFileName.isEmpty {
+            return draftRule.sourceFileName
+        }
+        let baseRel = relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        if !baseRel.isEmpty {
+            return URL(filePath: baseRel).lastPathComponent
+        }
+        return "Choose file"
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section(header: Text("Patch Name")) {
-                    TextField("Tên patch", text: $projectName)
+                    TextField("Patch Name", text: $projectName)
                         .autocorrectionDisabled()
                 }
 
@@ -758,10 +837,9 @@ struct EditPatchRuleSheetView: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "doc.fill")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Color(red: 0.90, green: 0.42, blue: 0.05))
                             VStack(alignment: .leading, spacing: 3) {
-                                let fileTitle = draftRule.sourceFileName.isEmpty ? "Choose file" : draftRule.sourceFileName
-                                Text(fileTitle)
+                                Text(resolvedReplacementFileText)
                                     .foregroundStyle(.primary)
                                 Text("Tap to choose another file")
                                     .font(.caption)
@@ -784,8 +862,14 @@ struct EditPatchRuleSheetView: View {
                     }
                 }
 
+                Section(header: Text("Add Rules")) {
+                    TextField("Thêm đuôi cần patch (vd: Library/Preferences/file.plist)", text: $addRulePath)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+
                 Section(header: Text("Password (Optional)")) {
-                    SecureField("Nhập mật khẩu nếu muốn khóa file .3105", text: $password)
+                    SecureField("Password", text: $password)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
@@ -805,12 +889,14 @@ struct EditPatchRuleSheetView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         do {
+                            let finalDest = resolvedDestinationText
+                            let finalSourceName = resolvedReplacementFileText == "Choose file" ? draftRule.sourceFileName : resolvedReplacementFileText
                             _ = try patchStore.createAndSave3105(
                                 projectName: projectName,
                                 bundleID: bundleID,
-                                relativePath: relativePath,
+                                relativePath: finalDest,
                                 sourceStoredPath: draftRule.sourceStoredPath,
-                                sourceFileName: draftRule.sourceFileName,
+                                sourceFileName: finalSourceName,
                                 password: password,
                                 existingID: ruleID
                             )
@@ -850,11 +936,12 @@ struct PatchDetailView: View {
     let ruleID: UUID
 
     @State private var showEditRuleSheet = false
-    @State private var showSetPasswordAlert = false
-    @State private var newPasswordText = ""
     @State private var exportItem: ExportFileItem?
     @State private var alertMessage: String?
     @State private var showAlert = false
+    @State private var isApplyingPatch = false
+
+    private let deepOrange = Color(red: 0.90, green: 0.42, blue: 0.05)
 
     private var rule: CustomPatchRule {
         patchStore.config.savedRules.first(where: { $0.id == ruleID })
@@ -868,6 +955,22 @@ struct PatchDetailView: View {
         return rule.sourceFileName.isEmpty ? "Custom Patch" : rule.sourceFileName
     }
 
+    private var destinationDisplay: String {
+        let rel = rule.relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !rel.isEmpty { return rel }
+        return rule.sourceFileName
+    }
+
+    private var replacementDisplay: String {
+        let src = rule.sourceFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !src.isEmpty { return src }
+        let rel = rule.relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !rel.isEmpty {
+            return URL(filePath: rel).lastPathComponent
+        }
+        return ""
+    }
+
     var body: some View {
         List {
             Section(header: Text("Rules")) {
@@ -875,23 +978,23 @@ struct PatchDetailView: View {
                     patchStore.selectRule(rule)
                     showEditRuleSheet = true
                 } label: {
-                    HStack(alignment: .top, spacing: 10) {
+                    HStack(alignment: .center, spacing: 10) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(rule.bundleID.isEmpty ? "com.lemon.lvoverseas" : rule.bundleID)
+                            Text(rule.bundleID)
                                 .font(.body.weight(.semibold))
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(.black)
 
-                            Text(rule.relativePath.isEmpty ? rule.sourceFileName : rule.relativePath)
+                            Text(destinationDisplay)
                                 .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.gray)
 
                             HStack(spacing: 6) {
                                 Image(systemName: "arrow.triangle.2.circlepath")
-                                    .font(.caption)
-                                    .foregroundStyle(.orange)
-                                Text(rule.sourceFileName.isEmpty ? "No file" : rule.sourceFileName)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(deepOrange)
+                                Text(replacementDisplay)
                                     .font(.subheadline)
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(deepOrange)
                             }
                         }
 
@@ -904,24 +1007,15 @@ struct PatchDetailView: View {
                 }
             }
 
-            if rule.isLegacyV1 {
-                Section {
-                    Text("Legacy v1 patch. It remains fully usable in this version of 3105.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             Section(header: Text("Password")) {
                 Button {
-                    newPasswordText = ""
-                    showSetPasswordAlert = true
+                    // Bản gốc: ổ khoá màu cam đậm, chữ màu đen, ấn không hiện gì
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "lock.fill")
-                            .foregroundStyle(.orange)
-                        Text(rule.passwordHashSHA256 == nil ? "Set permanently" : "Password set permanently")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(deepOrange)
+                        Text("Set permanently")
+                            .foregroundStyle(.black)
                     }
                 }
             }
@@ -929,6 +1023,40 @@ struct PatchDetailView: View {
             Section(
                 footer: Text("Before writing, 3105 resolves each bundle on this device and saves every original file for recovery.")
             ) {
+                Button {
+                    guard !isApplyingPatch else { return }
+                    isApplyingPatch = true
+                    patchStore.config.enabled = true
+                    patchStore.selectRule(rule)
+                    Task {
+                        do {
+                            try await CustomPatchApplyTask.applyRule(rule)
+                            await MainActor.run {
+                                isApplyingPatch = false
+                                alertMessage = "Đã áp dụng patch: \(patchTitle)"
+                                showAlert = true
+                            }
+                        } catch {
+                            await MainActor.run {
+                                isApplyingPatch = false
+                                alertMessage = error.localizedDescription
+                                showAlert = true
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.shield.fill")
+                            .foregroundStyle(deepOrange)
+                        Text("Apply Patch")
+                            .foregroundStyle(deepOrange)
+                        Spacer()
+                        if isApplyingPatch {
+                            ProgressView()
+                        }
+                    }
+                }
+
                 Button {
                     do {
                         let url = try patchStore.export3105URL(for: rule)
@@ -940,9 +1068,9 @@ struct PatchDetailView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "square.and.arrow.up")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(deepOrange)
                         Text("Export .3105")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(deepOrange)
                     }
                 }
             }
@@ -955,6 +1083,7 @@ struct PatchDetailView: View {
                     patchStore.selectRule(rule)
                     showEditRuleSheet = true
                 }
+                .foregroundStyle(deepOrange)
             }
         }
         .sheet(isPresented: $showEditRuleSheet) {
@@ -962,33 +1091,6 @@ struct PatchDetailView: View {
         }
         .sheet(item: $exportItem) { item in
             ShareSheetView(activityItems: [item.url])
-        }
-        .alert("Set Password", isPresented: $showSetPasswordAlert) {
-            SecureField("Password", text: $newPasswordText)
-            Button(L("alert_cancel"), role: .cancel) {
-                newPasswordText = ""
-            }
-            Button(L("alert_ok")) {
-                let pwd = newPasswordText.trimmingCharacters(in: .whitespacesAndNewlines)
-                newPasswordText = ""
-                do {
-                    _ = try patchStore.createAndSave3105(
-                        projectName: rule.projectName,
-                        bundleID: rule.bundleID,
-                        relativePath: rule.relativePath,
-                        sourceStoredPath: rule.sourceStoredPath,
-                        sourceFileName: rule.sourceFileName,
-                        password: pwd,
-                        existingID: rule.id
-                    )
-                    alertMessage = pwd.isEmpty ? "Đã xóa mật khẩu patch." : "Đã đặt mật khẩu cho patch."
-                } catch {
-                    alertMessage = error.localizedDescription
-                }
-                showAlert = true
-            }
-        } message: {
-            Text("Nhập mật khẩu cố định cho file .3105 của patch này.")
         }
         .alert(L("alert_message_title"), isPresented: $showAlert) {
             Button(L("alert_ok")) {}
@@ -1012,10 +1114,16 @@ struct CustomPatchView: View {
     @State private var pendingPasswordImport: PendingPasswordImport?
     @State private var activeAlert: ImportAlert?
 
+    private let deepOrange = Color(red: 0.90, green: 0.42, blue: 0.05)
+
     var body: some View {
         List {
             Section {
                 Toggle(L("enable_tweak"), isOn: $patchStore.config.enabled)
+                    .onChange(of: patchStore.config.enabled) { _ in
+                        var dummy = showApplyTab
+                        patchStore.saveChanges(showApplyTab: &dummy)
+                    }
             }
 
             Section(header: Text("Created Patches")) {
@@ -1035,8 +1143,14 @@ struct CustomPatchView: View {
 
             Section(header: Text(L("section_save_reset"))) {
                 Button {
+                    if patchStore.config.activeRule == nil, let first = patchStore.config.savedRules.first {
+                        patchStore.selectRule(first)
+                    }
+                    if !patchStore.config.savedRules.isEmpty {
+                        patchStore.config.enabled = true
+                    }
                     patchStore.saveChanges(showApplyTab: &showApplyTab)
-                    activeAlert = .info("Đã lưu thay đổi. Chuyển sang trang Apply để áp dụng.")
+                    activeAlert = .info("Đã lưu thay đổi và đồng bộ trạng thái Apply.")
                 } label: {
                     Label("Save Changes", systemImage: "square.and.arrow.down")
                 }
