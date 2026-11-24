@@ -206,7 +206,6 @@ final class CustomPatchStore: ObservableObject {
         config.savedRules.removeAll { $0.id == rule.id }
         config.savedRules.insert(rule, at: 0)
         config.activeRule = rule
-        config.enabled = true
         return rule
     }
 
@@ -334,6 +333,18 @@ final class CustomPatchStore: ObservableObject {
         config.activeRule = rule
     }
 
+    func saveChanges(showApplyTab: inout Bool) {
+        if config.activeRule == nil, let first = config.savedRules.first {
+            config.activeRule = first
+        }
+        if let active = config.activeRule {
+            config.savedRules.removeAll { $0.id == active.id }
+            config.savedRules.insert(active, at: 0)
+        }
+        saveToDefaults()
+        showApplyTab = true
+    }
+
     func deleteRule(at offsets: IndexSet) {
         let removedIDs = Set(offsets.compactMap { idx in
             config.savedRules.indices.contains(idx) ? config.savedRules[idx].id : nil
@@ -358,6 +369,7 @@ final class CustomPatchStore: ObservableObject {
             try? FileManager.default.removeItem(atPath: activePath)
         }
         config = CustomPatchConfig()
+        UserDefaults.standard.removeObject(forKey: storageKey)
     }
 }
 
@@ -478,6 +490,10 @@ enum CustomPatchApplyTask {
             return basePath
         }
         return URL(filePath: basePath).appendingPathComponent(rel).path
+    }
+
+    static func runApplyIfEnabled(log: (String) -> Void = { _ in }) async throws {
+        try await applyIfEnabled(log: log)
     }
 
     static func applyIfEnabled(log: (String) -> Void = { _ in }) async throws {
@@ -680,9 +696,6 @@ struct CustomPatchView: View {
         List {
             Section {
                 Toggle(L("enable_tweak"), isOn: $patchStore.config.enabled)
-                    .onChange(of: patchStore.config.enabled) { enabled in
-                        if enabled { showApplyTab = true }
-                    }
             }
 
             Section(header: Text("Created Patches")) {
@@ -697,6 +710,23 @@ struct CustomPatchView: View {
                     .onDelete { offsets in
                         patchStore.deleteRule(at: offsets)
                     }
+                }
+            }
+
+            Section(header: Text(L("section_save_reset"))) {
+                Button {
+                    patchStore.saveChanges(showApplyTab: &showApplyTab)
+                    activeAlert = .info("Đã lưu thay đổi. Chuyển sang trang Apply để áp dụng.")
+                } label: {
+                    Label("Save Changes", systemImage: "square.and.arrow.down")
+                }
+
+                Button(role: .destructive) {
+                    patchStore.restoreDefaults()
+                    showApplyTab = false
+                    activeAlert = .info("Đã khôi phục mặc định và xóa toàn bộ patch đã tạo.")
+                } label: {
+                    Label(L("mg_revert_tweaks"), systemImage: "arrow.counterclockwise")
                 }
             }
         }
@@ -715,15 +745,6 @@ struct CustomPatchView: View {
                         show3105FilePicker = true
                     } label: {
                         Label("Import .3105 File", systemImage: "square.and.arrow.down")
-                    }
-
-                    if !patchStore.config.savedRules.isEmpty {
-                        Button(role: .destructive) {
-                            patchStore.restoreDefaults()
-                            activeAlert = .info("Đã xóa toàn bộ patch đã tạo.")
-                        } label: {
-                            Label(L("mg_revert_tweaks"), systemImage: "trash")
-                        }
                     }
                 } label: {
                     Image(systemName: "plus")
@@ -788,9 +809,6 @@ struct CustomPatchView: View {
 
         Button {
             patchStore.selectRule(rule)
-            patchStore.config.enabled = true
-            showApplyTab = true
-            activeAlert = .info("Đã chọn patch: \(title)")
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -831,8 +849,6 @@ struct CustomPatchView: View {
 
             case .imported(let rule):
                 enteredPassword = ""
-                patchStore.config.enabled = true
-                showApplyTab = true
                 activeAlert = .info("Đã import patch: \(displayTitle(for: rule))")
             }
         } catch {
