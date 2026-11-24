@@ -64,6 +64,8 @@
 		E1D10D492DF17DD700995A8E /* Exceptions for "Sources" folder in "EnsWilde" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				MobileDevice/MobileDevice.swift,
+				SparseRestore/README.txt,
 			);
 			target = E14761EC2DF135F000FC89FB /* EnsWilde */;
 		};
