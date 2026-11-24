@@ -9,17 +9,21 @@ import UniformTypeIdentifiers
 import CryptoKit
 
 enum ImportAlert: Identifiable {
-    case password(url: URL, name: String, error: String?)
     case info(String)
 
     var id: String {
         switch self {
-        case .password(let url, let name, let error):
-            return "password_\(url.absoluteString)_\(name)_\(error ?? "")"
         case .info(let message):
             return "info_\(message)"
         }
     }
+}
+
+struct PendingPasswordImport: Identifiable, Equatable {
+    let id = UUID()
+    let url: URL
+    let patchName: String
+    var errorMessage: String? = nil
 }
 
 struct CustomPatchRule: Identifiable, Codable, Equatable {
@@ -102,6 +106,14 @@ final class CustomPatchStore: ObservableObject {
         let base = fileURL.deletingPathExtension().lastPathComponent
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return base.isEmpty ? "Custom Patch" : base
+    }
+
+    static var supportedFileTypes: [UTType] {
+        var types: [UTType] = [.item, .data, .content]
+        if let t3105 = UTType(filenameExtension: "3105") {
+            types.insert(t3105, at: 0)
+        }
+        return types
     }
 
     private func patchFolderURL() throws -> URL {
@@ -412,6 +424,22 @@ enum CustomPatchError: LocalizedError {
 }
 
 enum CustomPatchApplyTask {
+    static func enabledPatchLabels() -> [String] {
+        let cfg = CustomPatchStore.shared.config
+        guard cfg.enabled else { return [] }
+        if let active = cfg.activeRule {
+            let name = active.projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = name.isEmpty ? (active.sourceFileName.isEmpty ? "Custom Patch" : active.sourceFileName) : name
+            return ["Custom Patch: \(label)"]
+        }
+        if let first = cfg.savedRules.first {
+            let name = first.projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = name.isEmpty ? (first.sourceFileName.isEmpty ? "Custom Patch" : first.sourceFileName) : name
+            return ["Custom Patch: \(label)"]
+        }
+        return ["Custom Patch"]
+    }
+
     private static func estimatedMaxInode() -> UInt64 {
         let tmpURL = URL.documentsDirectory.appendingPathComponent(".inode_probe_\(UUID().uuidString)")
         FileManager.default.createFile(atPath: tmpURL.path, contents: Data([0x00]), attributes: nil)
@@ -492,10 +520,6 @@ enum CustomPatchApplyTask {
         return URL(filePath: basePath).appendingPathComponent(rel).path
     }
 
-    static func runApplyIfEnabled(log: (String) -> Void = { _ in }) async throws {
-        try await applyIfEnabled(log: log)
-    }
-
     static func applyIfEnabled(log: (String) -> Void = { _ in }) async throws {
         let cfg = CustomPatchStore.shared.config
         guard cfg.enabled else {
@@ -555,6 +579,54 @@ enum CustomPatchApplyTask {
         }
         chmod(targetPath, 0o644)
         log("[CustomPatch] ✅ Đã ghi \(totalWritten) bytes vào \(targetPath)")
+    }
+}
+
+struct PasswordImportSheetView: View {
+    @Environment(\.dismiss) private var dismiss
+    let patchName: String
+    var errorMessage: String?
+    let onSubmit: (String) -> Void
+
+    @State private var passwordInput: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("Patch")) {
+                    Text(patchName)
+                        .font(.body.weight(.medium))
+                }
+
+                Section(header: Text("Mật khẩu")) {
+                    SecureField("Nhập mật khẩu file .3105", text: $passwordInput)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+
+                if let errorMessage, !errorMessage.isEmpty {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                            .font(.footnote)
+                    }
+                }
+            }
+            .navigationTitle("Nhập mật khẩu")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L("alert_cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("alert_ok")) {
+                        let pwd = passwordInput
+                        dismiss()
+                        onSubmit(pwd)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -658,7 +730,7 @@ struct CreatePatchSheetView: View {
             }
             .fileImporter(
                 isPresented: $showFilePicker,
-                allowedContentTypes: [.data, .item, .content],
+                allowedContentTypes: CustomPatchStore.supportedFileTypes,
                 allowsMultipleSelection: false
             ) { result in
                 switch result {
@@ -689,8 +761,8 @@ struct CustomPatchView: View {
     @State private var show3105FilePicker = false
     @State private var showCreatePatchSheet = false
 
+    @State private var pendingPasswordImport: PendingPasswordImport?
     @State private var activeAlert: ImportAlert?
-    @State private var enteredPassword: String = ""
 
     var body: some View {
         List {
@@ -754,9 +826,17 @@ struct CustomPatchView: View {
         .sheet(isPresented: $showCreatePatchSheet) {
             CreatePatchSheetView(patchStore: patchStore)
         }
+        .sheet(item: $pendingPasswordImport) { pending in
+            PasswordImportSheetView(
+                patchName: pending.patchName,
+                errorMessage: pending.errorMessage
+            ) { pwd in
+                handleImport3105(url: pending.url, password: pwd)
+            }
+        }
         .fileImporter(
             isPresented: $show3105FilePicker,
-            allowedContentTypes: [.data, .item, .content],
+            allowedContentTypes: CustomPatchStore.supportedFileTypes,
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -769,19 +849,6 @@ struct CustomPatchView: View {
         }
         .alert(item: $activeAlert) { alert in
             switch alert {
-            case .password(let url, let name, let errorMsg):
-                return Alert(
-                    title: Text("Nhập mật khẩu patch"),
-                    message: Text(errorMsg ?? "Patch \"\(name)\" yêu cầu mật khẩu để mở."),
-                    primaryButton: .default(Text(L("alert_ok"))) {
-                        let pwd = enteredPassword
-                        enteredPassword = ""
-                        handleImport3105(url: url, password: pwd)
-                    },
-                    secondaryButton: .cancel(Text(L("alert_cancel"))) {
-                        enteredPassword = ""
-                    }
-                )
             case .info(let message):
                 return Alert(
                     title: Text(L("alert_message_title")),
@@ -844,18 +911,26 @@ struct CustomPatchView: View {
             let outcome = try patchStore.prepareImport3105(from: url, password: password)
             switch outcome {
             case .needsPassword(let targetURL, let suggestedName, _, _):
-                enteredPassword = ""
-                activeAlert = .password(url: targetURL, name: suggestedName, error: nil)
+                pendingPasswordImport = PendingPasswordImport(
+                    url: targetURL,
+                    patchName: suggestedName,
+                    errorMessage: nil
+                )
 
             case .imported(let rule):
-                enteredPassword = ""
+                pendingPasswordImport = nil
                 activeAlert = .info("Đã import patch: \(displayTitle(for: rule))")
             }
         } catch {
             if case CustomPatchError.invalidPassword = error {
                 let fallbackName = CustomPatchStore.cleanPatchDisplayName(rawProjectName: nil, fileURL: url)
-                activeAlert = .password(url: url, name: fallbackName, error: error.localizedDescription)
+                pendingPasswordImport = PendingPasswordImport(
+                    url: url,
+                    patchName: fallbackName,
+                    errorMessage: error.localizedDescription
+                )
             } else {
+                pendingPasswordImport = nil
                 activeAlert = .info(error.localizedDescription)
             }
         }
