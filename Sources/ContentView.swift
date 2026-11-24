@@ -105,6 +105,13 @@ struct ContentView: View {
                 icon: "speaker.slash",
                 isEnabled: toolStore.disableCallRecordingSoundEnabled
             )
+            toolNavigationLink(
+                value: "CustomPatch",
+                title: "Custom Patch",
+                subtitle: "Ghi file đích hoặc theo Bundle ID bằng WorseQuery",
+                icon: "doc.badge.gearshape",
+                isEnabled: CustomPatchStore.shared.config.enabled
+            )
         }
     }
 
@@ -116,6 +123,7 @@ struct ContentView: View {
         else if route == "AppleWallet" { AppleWalletView(walletStore: walletStore) }
         else if route == "PasscodeTheme" { PasscodeThemeView(themeStore: themeStore) }
         else if route == "DisableCallRecordingSound" { DisableCallRecordingSoundView(toolStore: toolStore) }
+        else if route == "CustomPatch" { CustomPatchView(toolStore: toolStore) }
     }
 
     @ViewBuilder
