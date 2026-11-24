@@ -26,6 +26,11 @@ struct PendingPasswordImport: Identifiable, Equatable {
     var errorMessage: String? = nil
 }
 
+struct ExportFileItem: Identifiable, Equatable {
+    let id = UUID()
+    let url: URL
+}
+
 struct CustomPatchRule: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var projectName: String = ""
@@ -33,7 +38,10 @@ struct CustomPatchRule: Identifiable, Codable, Equatable {
     var relativePath: String = ""
     var sourceFileName: String = ""
     var sourceStoredPath: String = ""
+    var packageStoredPath: String = ""
     var fileSizeBytes: Int64 = 0
+    var passwordHashSHA256: String? = nil
+    var isLegacyV1: Bool = true
 }
 
 struct Patch3105Package: Codable {
@@ -134,7 +142,7 @@ final class CustomPatchStore: ObservableObject {
         let destURL = folder.appendingPathComponent(safeName)
 
         if FileManager.default.fileExists(atPath: destURL.path) {
-            try FileManager.default.removeItem(at: destURL)
+            try FileManager.default.removeItem(atPath: destURL.path)
         }
         try data.write(to: destURL, options: .atomic)
         chmod(destURL.path, 0o644)
@@ -144,13 +152,38 @@ final class CustomPatchStore: ObservableObject {
         target.fileSizeBytes = Int64(data.count)
     }
 
+    @discardableResult
+    func upsertRule(_ rule: CustomPatchRule, setActive: Bool = true, enableTweak: Bool? = nil) -> CustomPatchRule {
+        var updated = rule
+        if updated.projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            updated.projectName = updated.sourceFileName.isEmpty ? "Custom Patch" : updated.sourceFileName
+        }
+
+        config.savedRules.removeAll { $0.id == updated.id }
+        config.savedRules.insert(updated, at: 0)
+
+        if setActive {
+            config.activeRule = updated
+        } else if config.activeRule?.id == updated.id {
+            config.activeRule = updated
+        }
+
+        if let enableTweak {
+            config.enabled = enableTweak
+        }
+
+        saveToDefaults()
+        return updated
+    }
+
     func createAndSave3105(
         projectName: String,
         bundleID: String,
         relativePath: String,
         sourceStoredPath: String,
         sourceFileName: String,
-        password: String? = nil
+        password: String? = nil,
+        existingID: UUID? = nil
     ) throws -> CustomPatchRule {
         let cleanBundleID = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanBundleID.isEmpty else {
@@ -205,20 +238,37 @@ final class CustomPatchStore: ObservableObject {
 
         let extractedURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(pkg.fileName)")
         try data.write(to: extractedURL, options: .atomic)
+        chmod(extractedURL.path, 0o644)
 
         let rule = CustomPatchRule(
+            id: existingID ?? UUID(),
             projectName: pkg.projectName,
             bundleID: pkg.bundleID,
             relativePath: pkg.relativePath,
             sourceFileName: pkg.fileName,
             sourceStoredPath: extractedURL.path,
-            fileSizeBytes: Int64(data.count)
+            packageStoredPath: pkgURL.path,
+            fileSizeBytes: Int64(data.count),
+            passwordHashSHA256: pwdHash,
+            isLegacyV1: true
         )
 
-        config.savedRules.removeAll { $0.id == rule.id }
-        config.savedRules.insert(rule, at: 0)
-        config.activeRule = rule
-        return rule
+        return upsertRule(rule, setActive: true, enableTweak: true)
+    }
+
+    func export3105URL(for rule: CustomPatchRule) throws -> URL {
+        if !rule.packageStoredPath.isEmpty, FileManager.default.fileExists(atPath: rule.packageStoredPath) {
+            return URL(filePath: rule.packageStoredPath)
+        }
+        let created = try createAndSave3105(
+            projectName: rule.projectName,
+            bundleID: rule.bundleID,
+            relativePath: rule.relativePath,
+            sourceStoredPath: rule.sourceStoredPath,
+            sourceFileName: rule.sourceFileName,
+            existingID: rule.id
+        )
+        return URL(filePath: created.packageStoredPath)
     }
 
     func prepareImport3105(from url: URL, password: String? = nil) throws -> Patch3105ImportResult {
@@ -229,6 +279,8 @@ final class CustomPatchStore: ObservableObject {
 
         let rawData = try Data(contentsOf: url, options: .mappedIfSafe)
         let folder = try patchFolderURL()
+        let storedPkgURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(url.lastPathComponent)")
+        try rawData.write(to: storedPkgURL, options: .atomic)
 
         if let pkg = try? JSONDecoder().decode(Patch3105Package.self, from: rawData) {
             let displayName = Self.cleanPatchDisplayName(rawProjectName: pkg.projectName, fileURL: url)
@@ -240,7 +292,7 @@ final class CustomPatchStore: ObservableObject {
                 let enteredPwd = password ?? ""
                 if enteredPwd.isEmpty {
                     return .needsPassword(
-                        url: url,
+                        url: storedPkgURL,
                         suggestedName: displayName,
                         expectedHash: pkg.passwordHashSHA256,
                         pkg: pkg
@@ -281,10 +333,12 @@ final class CustomPatchStore: ObservableObject {
                     relativePath: pkg.relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
                     sourceFileName: outName,
                     sourceStoredPath: outURL.path,
-                    fileSizeBytes: Int64(payloadData.count)
+                    packageStoredPath: storedPkgURL.path,
+                    fileSizeBytes: Int64(payloadData.count),
+                    passwordHashSHA256: pkg.passwordHashSHA256,
+                    isLegacyV1: true
                 )
-                saveImportedRule(rule)
-                return .imported(rule)
+                return .imported(upsertRule(rule, setActive: true))
             }
 
             if let payload = Data(base64Encoded: pkg.fileDataBase64) {
@@ -301,10 +355,12 @@ final class CustomPatchStore: ObservableObject {
                     relativePath: pkg.relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
                     sourceFileName: outName,
                     sourceStoredPath: outURL.path,
-                    fileSizeBytes: Int64(payload.count)
+                    packageStoredPath: storedPkgURL.path,
+                    fileSizeBytes: Int64(payload.count),
+                    passwordHashSHA256: pkg.passwordHashSHA256,
+                    isLegacyV1: true
                 )
-                saveImportedRule(rule)
-                return .imported(rule)
+                return .imported(upsertRule(rule, setActive: true))
             }
         }
 
@@ -319,16 +375,12 @@ final class CustomPatchStore: ObservableObject {
             relativePath: config.activeRule?.relativePath ?? "",
             sourceFileName: url.lastPathComponent,
             sourceStoredPath: outURL.path,
-            fileSizeBytes: Int64(rawData.count)
+            packageStoredPath: storedPkgURL.path,
+            fileSizeBytes: Int64(rawData.count),
+            passwordHashSHA256: nil,
+            isLegacyV1: true
         )
-        saveImportedRule(rule)
-        return .imported(rule)
-    }
-
-    private func saveImportedRule(_ rule: CustomPatchRule) {
-        config.savedRules.removeAll { $0.id == rule.id }
-        config.savedRules.insert(rule, at: 0)
-        config.activeRule = rule
+        return .imported(upsertRule(rule, setActive: true))
     }
 
     func import3105Package(from url: URL, password: String? = nil) throws -> CustomPatchRule {
@@ -343,6 +395,7 @@ final class CustomPatchStore: ObservableObject {
 
     func selectRule(_ rule: CustomPatchRule) {
         config.activeRule = rule
+        saveToDefaults()
     }
 
     func saveChanges(showApplyTab: inout Bool) {
@@ -366,19 +419,33 @@ final class CustomPatchStore: ObservableObject {
             if !removed.sourceStoredPath.isEmpty {
                 try? FileManager.default.removeItem(atPath: removed.sourceStoredPath)
             }
+            if !removed.packageStoredPath.isEmpty {
+                try? FileManager.default.removeItem(atPath: removed.packageStoredPath)
+            }
         }
         config.savedRules.remove(atOffsets: offsets)
         if let activeID = config.activeRule?.id, removedIDs.contains(activeID) {
             config.activeRule = config.savedRules.first
         }
+        saveToDefaults()
     }
 
     func restoreDefaults() {
-        for r in config.savedRules where !r.sourceStoredPath.isEmpty {
-            try? FileManager.default.removeItem(atPath: r.sourceStoredPath)
+        for r in config.savedRules {
+            if !r.sourceStoredPath.isEmpty {
+                try? FileManager.default.removeItem(atPath: r.sourceStoredPath)
+            }
+            if !r.packageStoredPath.isEmpty {
+                try? FileManager.default.removeItem(atPath: r.packageStoredPath)
+            }
         }
-        if let activePath = config.activeRule?.sourceStoredPath, !activePath.isEmpty {
-            try? FileManager.default.removeItem(atPath: activePath)
+        if let active = config.activeRule {
+            if !active.sourceStoredPath.isEmpty {
+                try? FileManager.default.removeItem(atPath: active.sourceStoredPath)
+            }
+            if !active.packageStoredPath.isEmpty {
+                try? FileManager.default.removeItem(atPath: active.packageStoredPath)
+            }
         }
         config = CustomPatchConfig()
         UserDefaults.standard.removeObject(forKey: storageKey)
@@ -582,6 +649,55 @@ enum CustomPatchApplyTask {
     }
 }
 
+struct DocumentPickerView: UIViewControllerRepresentable {
+    let allowedContentTypes: [UTType]
+    let onPick: (URL) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: allowedContentTypes, asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (URL) -> Void
+        let onCancel: () -> Void
+
+        init(onPick: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
+            self.onPick = onPick
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            if let url = urls.first {
+                onPick(url)
+            }
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
+    }
+}
+
+struct ShareSheetView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 struct PasswordImportSheetView: View {
     @Environment(\.dismiss) private var dismiss
     let patchName: String
@@ -630,17 +746,29 @@ struct PasswordImportSheetView: View {
     }
 }
 
-struct CreatePatchSheetView: View {
+struct EditPatchRuleSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var patchStore: CustomPatchStore
 
-    @State private var projectName: String = ""
-    @State private var bundleID: String = ""
-    @State private var relativePath: String = ""
-    @State private var password: String = ""
-    @State private var draftRule: CustomPatchRule = CustomPatchRule()
+    let ruleID: UUID?
+    @State private var projectName: String
+    @State private var bundleID: String
+    @State private var relativePath: String
+    @State private var password: String
+    @State private var draftRule: CustomPatchRule
     @State private var showFilePicker = false
     @State private var errMessage: String?
+
+    init(patchStore: CustomPatchStore, initialRule: CustomPatchRule?) {
+        self.patchStore = patchStore
+        let base = initialRule ?? CustomPatchRule()
+        self.ruleID = initialRule?.id
+        _projectName = State(initialValue: base.projectName)
+        _bundleID = State(initialValue: base.bundleID)
+        _relativePath = State(initialValue: base.relativePath)
+        _password = State(initialValue: "")
+        _draftRule = State(initialValue: base)
+    }
 
     var body: some View {
         NavigationStack {
@@ -667,18 +795,21 @@ struct CreatePatchSheetView: View {
                     Button {
                         showFilePicker = true
                     } label: {
-                        HStack {
+                        HStack(spacing: 10) {
+                            Image(systemName: "doc.fill")
+                                .foregroundStyle(.orange)
                             VStack(alignment: .leading, spacing: 3) {
                                 let fileTitle = draftRule.sourceFileName.isEmpty ? "Choose file" : draftRule.sourceFileName
                                 Text(fileTitle)
                                     .foregroundStyle(.primary)
-                                Text("Tap to choose a replacement file")
+                                Text("Tap to choose another file")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Image(systemName: "folder")
-                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
                     }
 
@@ -704,14 +835,14 @@ struct CreatePatchSheetView: View {
                     }
                 }
             }
-            .navigationTitle("Create Patch")
+            .navigationTitle("Edit Rule")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L("alert_cancel")) { dismiss() }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(L("alert_ok")) {
+                    Button("Done") {
                         do {
                             _ = try patchStore.createAndSave3105(
                                 projectName: projectName,
@@ -719,7 +850,8 @@ struct CreatePatchSheetView: View {
                                 relativePath: relativePath,
                                 sourceStoredPath: draftRule.sourceStoredPath,
                                 sourceFileName: draftRule.sourceFileName,
-                                password: password
+                                password: password,
+                                existingID: ruleID
                             )
                             dismiss()
                         } catch {
@@ -728,25 +860,179 @@ struct CreatePatchSheetView: View {
                     }
                 }
             }
-            .fileImporter(
-                isPresented: $showFilePicker,
-                allowedContentTypes: CustomPatchStore.supportedFileTypes,
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first {
+            .sheet(isPresented: $showFilePicker) {
+                DocumentPickerView(
+                    allowedContentTypes: CustomPatchStore.supportedFileTypes,
+                    onPick: { url in
+                        showFilePicker = false
                         do {
                             try patchStore.importReplacementFile(from: url, intoRule: &draftRule)
+                            if relativePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                relativePath = url.lastPathComponent
+                            }
                             errMessage = nil
                         } catch {
                             errMessage = error.localizedDescription
                         }
+                    },
+                    onCancel: {
+                        showFilePicker = false
                     }
-                case .failure(let error):
-                    errMessage = error.localizedDescription
+                )
+            }
+        }
+    }
+}
+
+struct PatchDetailView: View {
+    @ObservedObject var patchStore: CustomPatchStore
+    let ruleID: UUID
+
+    @State private var showEditRuleSheet = false
+    @State private var showSetPasswordAlert = false
+    @State private var newPasswordText = ""
+    @State private var exportItem: ExportFileItem?
+    @State private var alertMessage: String?
+    @State private var showAlert = false
+
+    private var rule: CustomPatchRule {
+        patchStore.config.savedRules.first(where: { $0.id == ruleID })
+            ?? patchStore.config.activeRule
+            ?? CustomPatchRule(id: ruleID)
+    }
+
+    private var patchTitle: String {
+        let trimmed = rule.projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return rule.sourceFileName.isEmpty ? "Custom Patch" : rule.sourceFileName
+    }
+
+    var body: some View {
+        List {
+            Section(header: Text("Rules")) {
+                Button {
+                    patchStore.selectRule(rule)
+                    showEditRuleSheet = true
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(rule.bundleID.isEmpty ? "com.lemon.lvoverseas" : rule.bundleID)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.primary)
+
+                            Text(rule.relativePath.isEmpty ? rule.sourceFileName : rule.relativePath)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                Text(rule.sourceFileName.isEmpty ? "No file" : rule.sourceFileName)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
+
+            if rule.isLegacyV1 {
+                Section {
+                    Text("Legacy v1 patch. It remains fully usable in this version of 3105.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section(header: Text("Password")) {
+                Button {
+                    newPasswordText = ""
+                    showSetPasswordAlert = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.orange)
+                        Text(rule.passwordHashSHA256 == nil ? "Set permanently" : "Password set permanently")
+                            .foregroundStyle(.primary)
+                    }
+                }
+            }
+
+            Section(
+                footer: Text("Before writing, 3105 resolves each bundle on this device and saves every original file for recovery.")
+            ) {
+                Button {
+                    do {
+                        let url = try patchStore.export3105URL(for: rule)
+                        exportItem = ExportFileItem(url: url)
+                    } catch {
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(.orange)
+                        Text("Export .3105")
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+        }
+        .navigationTitle(patchTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") {
+                    patchStore.selectRule(rule)
+                    showEditRuleSheet = true
+                }
+            }
+        }
+        .sheet(isPresented: $showEditRuleSheet) {
+            EditPatchRuleSheetView(patchStore: patchStore, initialRule: rule)
+        }
+        .sheet(item: $exportItem) { item in
+            ShareSheetView(activityItems: [item.url])
+        }
+        .alert("Set Password", isPresented: $showSetPasswordAlert) {
+            SecureField("Password", text: $newPasswordText)
+            Button(L("alert_cancel"), role: .cancel) {
+                newPasswordText = ""
+            }
+            Button(L("alert_ok")) {
+                let pwd = newPasswordText.trimmingCharacters(in: .whitespacesAndNewlines)
+                newPasswordText = ""
+                do {
+                    _ = try patchStore.createAndSave3105(
+                        projectName: rule.projectName,
+                        bundleID: rule.bundleID,
+                        relativePath: rule.relativePath,
+                        sourceStoredPath: rule.sourceStoredPath,
+                        sourceFileName: rule.sourceFileName,
+                        password: pwd,
+                        existingID: rule.id
+                    )
+                    alertMessage = pwd.isEmpty ? "Đã xóa mật khẩu patch." : "Đã đặt mật khẩu cho patch."
+                } catch {
+                    alertMessage = error.localizedDescription
+                }
+                showAlert = true
+            }
+        } message: {
+            Text("Nhập mật khẩu cố định cho file .3105 của patch này.")
+        }
+        .alert(L("alert_message_title"), isPresented: $showAlert) {
+            Button(L("alert_ok")) {}
+        } message: {
+            Text(alertMessage ?? L("msg_error_unknown"))
         }
     }
 }
@@ -760,6 +1046,7 @@ struct CustomPatchView: View {
 
     @State private var show3105FilePicker = false
     @State private var showCreatePatchSheet = false
+    @State private var selectedDetailRuleID: UUID? = nil
 
     @State private var pendingPasswordImport: PendingPasswordImport?
     @State private var activeAlert: ImportAlert?
@@ -804,6 +1091,9 @@ struct CustomPatchView: View {
         }
         .navigationTitle("Custom Patch")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $selectedDetailRuleID) { ruleID in
+            PatchDetailView(patchStore: patchStore, ruleID: ruleID)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -824,7 +1114,19 @@ struct CustomPatchView: View {
             }
         }
         .sheet(isPresented: $showCreatePatchSheet) {
-            CreatePatchSheetView(patchStore: patchStore)
+            EditPatchRuleSheetView(patchStore: patchStore, initialRule: nil)
+        }
+        .sheet(isPresented: $show3105FilePicker) {
+            DocumentPickerView(
+                allowedContentTypes: CustomPatchStore.supportedFileTypes,
+                onPick: { url in
+                    show3105FilePicker = false
+                    handleImport3105(url: url, password: nil)
+                },
+                onCancel: {
+                    show3105FilePicker = false
+                }
+            )
         }
         .sheet(item: $pendingPasswordImport) { pending in
             PasswordImportSheetView(
@@ -832,19 +1134,6 @@ struct CustomPatchView: View {
                 errorMessage: pending.errorMessage
             ) { pwd in
                 handleImport3105(url: pending.url, password: pwd)
-            }
-        }
-        .fileImporter(
-            isPresented: $show3105FilePicker,
-            allowedContentTypes: CustomPatchStore.supportedFileTypes,
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-                handleImport3105(url: url, password: nil)
-            case .failure(let error):
-                activeAlert = .info(error.localizedDescription)
             }
         }
         .alert(item: $activeAlert) { alert in
@@ -876,6 +1165,7 @@ struct CustomPatchView: View {
 
         Button {
             patchStore.selectRule(rule)
+            selectedDetailRuleID = rule.id
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -902,6 +1192,10 @@ struct CustomPatchView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         }
     }
@@ -919,6 +1213,7 @@ struct CustomPatchView: View {
 
             case .imported(let rule):
                 pendingPasswordImport = nil
+                selectedDetailRuleID = rule.id
                 activeAlert = .info("Đã import patch: \(displayTitle(for: rule))")
             }
         } catch {
