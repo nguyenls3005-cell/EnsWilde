@@ -20,7 +20,9 @@ struct FolderPatchSelectionView: View {
         NavigationStack {
             Group {
                 if isLoading {
-                    ProgressView(language.text("patch.folder_scanning"))
+                    ProgressView {
+                        Text(language.text("patch.folder_scanning"))
+                    }
                 } else if candidates.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "folder")
