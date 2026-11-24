@@ -1,3 +1,8 @@
+//
+//  SettingsView.swift
+//  EnsWilde
+//
+
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -5,231 +10,12 @@ import Network
 import AirliftFFI
 import Darwin
 import Security
-import XPC
 
-// MARK: - Private Security Framework APIs
-@_silgen_name("SecTaskCreateFromSelf")
-func SecTaskCreateFromSelf(_ allocator: UnsafeRawPointer?) -> CFTypeRef?
-
-@_silgen_name("SecTaskCopyValueForEntitlement")
-func SecTaskCopyValueForEntitlement(
-    _ task: CFTypeRef,
-    _ entitlement: CFString,
-    _ error: UnsafeMutablePointer<Unmanaged<CFError>?>?
-) -> CFTypeRef?
-
-// MARK: - Private Sandbox & File APIs
-@_silgen_name("sandbox_extension_consume")
-private func sandbox_extension_consume(_ token: UnsafePointer<CChar>) -> Int64
-
-@_silgen_name("sandbox_extension_release")
-private func sandbox_extension_release(_ handle: Int64) -> Int
-
-@_silgen_name("fsgetpath")
-private func fsgetpath(_ buf: UnsafeMutablePointer<CChar>, _ buflen: Int, _ fsid: UnsafePointer<fsid_t>, _ objid: UInt64) -> Int
-
-// MARK: - Native WorseQuery Bridge (Bypass AirliftFFI)
-typealias ContainerQueryCreateFn = @convention(c) () -> OpaquePointer?
-typealias ContainerQuerySetClassFn = @convention(c) (OpaquePointer?, UInt64) -> Void
-typealias ContainerQuerySetGroupIdentifiersFn = @convention(c) (OpaquePointer?, xpc_object_t) -> Void
-typealias ContainerQuerySetFlagsFn = @convention(c) (OpaquePointer?, UInt64) -> Void
-typealias ContainerQuerySetPartFn = @convention(c) (OpaquePointer?, UInt64) -> Void
-typealias ContainerQueryGetSingleResultFn = @convention(c) (OpaquePointer?) -> OpaquePointer?
-typealias ContainerQueryFreeFn = @convention(c) (OpaquePointer?) -> Void
-typealias ContainerCopySandboxTokenFn = @convention(c) (OpaquePointer?) -> UnsafeMutablePointer<CChar>?
-typealias SandboxExtensionConsumeFn = @convention(c) (UnsafePointer<CChar>) -> Int64
-typealias SandboxExtensionReleaseFn = @convention(c) (Int64) -> Int32
-typealias XPCStringCreateFn = @convention(c) (UnsafePointer<CChar>) -> xpc_object_t
-typealias XPCReleaseFn = @convention(c) (xpc_object_t) -> Void
-
-final class NativeWorseQuery {
-    static let shared = NativeWorseQuery()
-    private var activeHandles: [Int64] = []
-
-    private let RTLD_DEFAULT_HANDLE = UnsafeMutableRawPointer(bitPattern: -2)
-
-    private var mcmHandle: UnsafeMutableRawPointer?
-    private var queryCreate: ContainerQueryCreateFn?
-    private var querySetClass: ContainerQuerySetClassFn?
-    private var querySetGroupIds: ContainerQuerySetGroupIdentifiersFn?
-    private var querySetFlags: ContainerQuerySetFlagsFn?
-    private var querySetPart: ContainerQuerySetPartFn?
-    private var queryGetSingleResult: ContainerQueryGetSingleResultFn?
-    private var queryFree: ContainerQueryFreeFn?
-    private var copySandboxToken: ContainerCopySandboxTokenFn?
-    private var sandboxConsume: SandboxExtensionConsumeFn?
-    private var sandboxRelease: SandboxExtensionReleaseFn?
-    private var xpcStringCreate: XPCStringCreateFn?
-    private var xpcRelease: XPCReleaseFn?
-
-    init() {
-        loadMCM()
-    }
-
-    private func loadMCM() {
-        mcmHandle = dlopen("/usr/lib/system/libsystem_containermanager.dylib", RTLD_NOW | RTLD_LOCAL)
-        guard let handle = mcmHandle else { return }
-
-        func sym<T>(_ name: String) -> T? {
-            guard let ptr = dlsym(handle, name) else { return nil }
-            return unsafeBitCast(ptr, to: T.self)
-        }
-
-        queryCreate = sym("container_query_create")
-        querySetClass = sym("container_query_set_class")
-        querySetGroupIds = sym("container_query_set_group_identifiers")
-        querySetFlags = sym("container_query_operation_set_flags")
-        querySetPart = sym("container_query_operation_set_part")
-        queryGetSingleResult = sym("container_query_get_single_result")
-        queryFree = sym("container_query_free")
-        copySandboxToken = sym("container_copy_sandbox_token")
-
-        sandboxConsume = unsafeBitCast(dlsym(RTLD_DEFAULT_HANDLE, "sandbox_extension_consume"), to: SandboxExtensionConsumeFn.self)
-        sandboxRelease = unsafeBitCast(dlsym(RTLD_DEFAULT_HANDLE, "sandbox_extension_release"), to: SandboxExtensionReleaseFn.self)
-        xpcStringCreate = unsafeBitCast(dlsym(RTLD_DEFAULT_HANDLE, "xpc_string_create"), to: XPCStringCreateFn.self)
-        xpcRelease = unsafeBitCast(dlsym(RTLD_DEFAULT_HANDLE, "xpc_release"), to: XPCReleaseFn.self)
-    }
-
-    private func getPathFromInode(_ inode: UInt64, volumePath: String = "/private/var") -> String? {
-        var sfs = statfs()
-        if statfs(volumePath, &sfs) != 0 { return nil }
-        var fsid = sfs.f_fsid
-
-        var pathBuffer = [CChar](repeating: 0, count: Int(PATH_MAX))
-        let result = pathBuffer.withUnsafeMutableBufferPointer { buffer -> Int in
-            guard let base = buffer.baseAddress else { return 0 }
-            return fsgetpath(base, Int(PATH_MAX), &fsid, inode)
-        }
-        guard result > 0 else { return nil }
-        return String(cString: pathBuffer)
-    }
-
-    private func scanInodes(in directory: String) -> [UInt64] {
-        var inodes: [UInt64] = []
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(atPath: directory) else { return [] }
-        for case let path as String in enumerator {
-            let fullPath = (directory as NSString).appendingPathComponent(path)
-            var st = stat()
-            if stat(fullPath, &st) == 0 { inodes.append(st.st_ino) }
-        }
-        return inodes
-    }
-
-    func grantAccess(targetPath: String, appGroupID: String) -> (Int64, String) {
-        guard let create = queryCreate, let setClass = querySetClass, let setGroupIds = querySetGroupIds,
-              let setFlags = querySetFlags, let setPart = querySetPart, let getResult = queryGetSingleResult,
-              let qFree = queryFree, let copyToken = copySandboxToken, let consume = sandboxConsume,
-              let strCreate = xpcStringCreate, let xpcRel = xpcRelease else {
-            return (-1, L("log_mcm_load_failed"))
-        }
-
-        let fm = FileManager.default
-        guard let groupURL = fm.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
-            return (-1, L("log_app_group_url_failed") + " \(appGroupID)")
-        }
-
-        let cachesPath = groupURL.appendingPathComponent("Library/Caches").path
-        let libPath = groupURL.appendingPathComponent("Library").path
-        let backupCaches = groupURL.appendingPathComponent("Library/Caches.bqtool").path
-
-        try? fm.createDirectory(atPath: libPath, withIntermediateDirectories: true)
-        try? fm.removeItem(atPath: backupCaches)
-        if fm.fileExists(atPath: cachesPath) { try? fm.moveItem(atPath: cachesPath, toPath: backupCaches) }
-
-        do {
-            try fm.createSymbolicLink(atPath: cachesPath, withDestinationPath: targetPath)
-        } catch {
-            return (-1, L("log_symlink_failed") + " \(error.localizedDescription)")
-        }
-
-        guard let query = create() else {
-            cleanup(cachesPath, backupCaches)
-            return (-2, L("log_query_failed"))
-        }
-
-        setClass(query, 7)
-        let ident = appGroupID.withCString { strCreate($0) }
-        setGroupIds(query, ident)
-        setPart(query, 3)
-
-        var result: OpaquePointer? = nil
-        setFlags(query, 0x8100000000)
-        result = getResult(query)
-
-        if result == nil {
-            setFlags(query, 0x8000000000)
-            result = getResult(query)
-        }
-
-        guard result != nil else {
-            qFree(query)
-            xpcRel(ident)
-            cleanup(cachesPath, backupCaches)
-            return (-3, L("log_xpc_error"))
-        }
-
-        guard let tokenPtr = copyToken(result) else {
-            qFree(query)
-            xpcRel(ident)
-            cleanup(cachesPath, backupCaches)
-            return (-4, L("log_kernel_token_failed"))
-        }
-
-        let consumed = consume(tokenPtr)
-        free(tokenPtr)
-        qFree(query)
-        xpcRel(ident)
-        cleanup(cachesPath, backupCaches)
-
-        if consumed < 0 { return (-5, L("log_consume_token_failed") + " \(errno))") }
-
-        activeHandles.append(consumed)
-        return (consumed, L("log_mcm_success"))
-    }
-
-    func grantViaFsgetpath(targetFile: String) -> (Int64, String) {
-        let targetDir = (targetFile as NSString).deletingLastPathComponent
-        let inodes = scanInodes(in: targetDir)
-
-        let wq = WorseQuery()
-        for inode in inodes {
-            guard let realPath = getPathFromInode(inode) else { continue }
-            let (granted, handle, _) = wq.grantAccess(atPath: realPath)
-            if granted, handle > 0 {
-                let res = consumeToken(handle: handle)
-                if res.0 > 0 { return (res.0, L("log_fsgetpath_success") + " \(realPath)") }
-            }
-        }
-        return (-1, L("log_fsgetpath_failed"))
-    }
-
-    private func consumeToken(handle: Int64) -> (Int64, String) {
-        guard let tokenPtr = UnsafePointer<CChar>(bitPattern: UInt(handle)) else { return (-1, L("log_pointer_error")) }
-        let consumed = sandboxConsume?(tokenPtr) ?? -1
-        if consumed < 0 { return (-1, L("log_consume_errno") + " \(errno)") }
-        activeHandles.append(consumed)
-        return (consumed, "OK")
-    }
-
-    private func cleanup(_ cachesPath: String, _ backupCaches: String) {
-        let fm = FileManager.default
-        try? fm.removeItem(atPath: cachesPath)
-        if fm.fileExists(atPath: backupCaches) { try? fm.moveItem(atPath: backupCaches, toPath: cachesPath) }
-    }
-
-    func releaseAll() {
-        if let release = sandboxRelease {
-            for h in activeHandles { _ = release(h) }
-        }
-        activeHandles.removeAll()
-    }
-}
-
-// MARK: - Document Picker
+// MARK: - Unified Document Picker
 struct DocumentPickerView: UIViewControllerRepresentable {
     var allowedContentTypes: [UTType] = [.data, .item]
     let onPick: (URL) -> Void
+    var onCancel: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
@@ -238,12 +24,15 @@ struct DocumentPickerView: UIViewControllerRepresentable {
         picker.allowsMultipleSelection = false
         return picker
     }
+
     func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, UIDocumentPickerDelegate {
         let parent: DocumentPickerView
         init(_ parent: DocumentPickerView) { self.parent = parent }
+
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
             guard let url = urls.first else { return }
             let shouldStop = url.startAccessingSecurityScopedResource()
@@ -251,7 +40,11 @@ struct DocumentPickerView: UIViewControllerRepresentable {
             parent.onPick(url)
             parent.dismiss()
         }
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { parent.dismiss() }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            parent.onCancel?()
+            parent.dismiss()
+        }
     }
 }
 
@@ -265,7 +58,7 @@ struct SettingsView: View {
     @State private var vpnActive: Bool = false
     @State private var monitor: NWPathMonitor?
     @AppStorage("isAirLiftMode") private var isAirLiftMode: Bool = false
-    
+
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
@@ -299,7 +92,10 @@ struct SettingsView: View {
         .onAppear { startMonitoringVPN() }
         .onDisappear { monitor?.cancel() }
         .sheet(isPresented: $showPairingPicker) {
-            DocumentPickerView(allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data]) { url in handlePairingImport(url) }
+            DocumentPickerView(
+                allowedContentTypes: [.propertyList, UTType(filenameExtension: "mobiledevicepairing") ?? .data],
+                onPick: { url in handlePairingImport(url) }
+            )
         }
         .sheet(isPresented: $showOnDevicePairing) {
             NavigationStack {
