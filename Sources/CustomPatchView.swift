@@ -7,36 +7,41 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-struct CustomPatchConfig: Codable, Equatable {
-    var enabled: Bool = false
-    var targetMode: TargetMode = .filePath
-    var targetFilePath: String = ""
-    var targetBundleID: String = ""
-    var bundleRelativeSubpath: String = ""
+struct CustomPatchRule: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
+    var projectName: String = "Default Rule"
+    var bundleID: String = ""
+    var relativePath: String = ""
     var sourceFileName: String = ""
     var sourceStoredPath: String = ""
+    var fileSizeBytes: Int64 = 0
+}
 
-    enum TargetMode: String, Codable, CaseIterable {
-        case filePath
-        case bundleID
-    }
+struct Patch3105Package: Codable {
+    var formatVersion: Int = 1
+    var projectName: String
+    var bundleID: String
+    var relativePath: String
+    var fileName: String
+    var fileDataBase64: String
+}
+
+struct CustomPatchConfig: Codable, Equatable {
+    var enabled: Bool = false
+    var activeRule: CustomPatchRule = CustomPatchRule()
+    var savedRules: [CustomPatchRule] = []
 }
 
 final class CustomPatchStore: ObservableObject {
     static let shared = CustomPatchStore()
 
-    private let storageKey = "EnsWilde.CustomPatchConfig.v1"
+    private let storageKey = "EnsWilde.CustomPatchConfig.v2"
 
     @Published var config: CustomPatchConfig {
         didSet {
             saveToDefaults()
             objectWillChange.send()
         }
-    }
-
-    var isEnabled: Bool {
-        get { config.enabled }
-        set { config.enabled = newValue }
     }
 
     init() {
@@ -54,41 +59,166 @@ final class CustomPatchStore: ObservableObject {
         }
     }
 
-    func importSourceFile(from url: URL) throws {
-        let needsAccess = url.startAccessingSecurityScopedResource()
-        defer {
-            if needsAccess { url.stopAccessingSecurityScopedResource() }
-        }
+    static func formattedSize(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useBytes]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
 
-        let data = try Data(contentsOf: url)
+    private func patchFolderURL() throws -> URL {
         let folder = URL.documentsDirectory.appendingPathComponent("CustomPatch", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
 
-        let destURL = folder.appendingPathComponent(url.lastPathComponent)
+    func importReplacementFile(from url: URL, intoRule target: inout CustomPatchRule) throws {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed { url.stopAccessingSecurityScopedResource() }
+        }
+
+        let data = try Data(contentsOf: url, options: .mappedIfSafe)
+        let folder = try patchFolderURL()
+        let safeName = "\(UUID().uuidString.prefix(8))_\(url.lastPathComponent)"
+        let destURL = folder.appendingPathComponent(safeName)
+
         if FileManager.default.fileExists(atPath: destURL.path) {
             try FileManager.default.removeItem(at: destURL)
         }
         try data.write(to: destURL, options: .atomic)
         chmod(destURL.path, 0o644)
 
-        config.sourceFileName = url.lastPathComponent
-        config.sourceStoredPath = destURL.path
+        target.sourceFileName = url.lastPathComponent
+        target.sourceStoredPath = destURL.path
+        target.fileSizeBytes = Int64(data.count)
     }
 
-    func clearSourceFile() {
-        if !config.sourceStoredPath.isEmpty {
-            try? FileManager.default.removeItem(at: URL(filePath: config.sourceStoredPath))
+    func createAndSave3105(
+        projectName: String,
+        bundleID: String,
+        relativePath: String,
+        sourceStoredPath: String,
+        sourceFileName: String
+    ) throws -> CustomPatchRule {
+        let cleanName = projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+            : projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let data: Data
+        if !sourceStoredPath.isEmpty, FileManager.default.fileExists(atPath: sourceStoredPath) {
+            data = try Data(contentsOf: URL(filePath: sourceStoredPath))
+        } else {
+            data = Data()
         }
-        config.sourceFileName = ""
-        config.sourceStoredPath = ""
+
+        let pkg = Patch3105Package(
+            projectName: cleanName.isEmpty ? "CustomPatch" : cleanName,
+            bundleID: bundleID.trimmingCharacters(in: .whitespacesAndNewlines),
+            relativePath: relativePath.trimmingCharacters(in: .whitespacesAndNewlines),
+            fileName: sourceFileName.isEmpty ? "patched.bin" : sourceFileName,
+            fileDataBase64: data.base64EncodedString()
+        )
+
+        let pkgData = try JSONEncoder().encode(pkg)
+        let folder = try patchFolderURL()
+        let fileSlug = pkg.projectName.replacingOccurrences(of: "[^A-Za-z0-9_-]", with: "_", options: .regularExpression)
+        let pkgURL = folder.appendingPathComponent("\(fileSlug)_\(UUID().uuidString.prefix(6)).3105")
+        try pkgData.write(to: pkgURL, options: .atomic)
+
+        let extractedURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(pkg.fileName)")
+        try data.write(to: extractedURL, options: .atomic)
+
+        let rule = CustomPatchRule(
+            projectName: pkg.projectName,
+            bundleID: pkg.bundleID,
+            relativePath: pkg.relativePath,
+            sourceFileName: pkg.fileName,
+            sourceStoredPath: extractedURL.path,
+            fileSizeBytes: Int64(data.count)
+        )
+
+        config.savedRules.removeAll { $0.id == rule.id }
+        config.savedRules.insert(rule, at: 0)
+        config.activeRule = rule
+        return rule
+    }
+
+    func import3105Package(from url: URL) throws -> CustomPatchRule {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed { url.stopAccessingSecurityScopedResource() }
+        }
+
+        let rawData = try Data(contentsOf: url, options: .mappedIfSafe)
+        let folder = try patchFolderURL()
+
+        if let pkg = try? JSONDecoder().decode(Patch3105Package.self, from: rawData),
+           let payload = Data(base64Encoded: pkg.fileDataBase64) {
+            let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(pkg.fileName)")
+            try payload.write(to: outURL, options: .atomic)
+
+            let rule = CustomPatchRule(
+                projectName: pkg.projectName,
+                bundleID: pkg.bundleID,
+                relativePath: pkg.relativePath,
+                sourceFileName: pkg.fileName,
+                sourceStoredPath: outURL.path,
+                fileSizeBytes: Int64(payload.count)
+            )
+            config.savedRules.insert(rule, at: 0)
+            config.activeRule = rule
+            return rule
+        }
+
+        // Fallback nếu file .3105 là dữ liệu nhị phân / plist trực tiếp
+        let fallbackName = url.deletingPathExtension().lastPathComponent
+        let outURL = folder.appendingPathComponent("\(UUID().uuidString.prefix(8))_\(url.lastPathComponent)")
+        try rawData.write(to: outURL, options: .atomic)
+
+        let rule = CustomPatchRule(
+            projectName: fallbackName.isEmpty ? "Imported .3105" : fallbackName,
+            bundleID: config.activeRule.bundleID,
+            relativePath: config.activeRule.relativePath,
+            sourceFileName: url.lastPathComponent,
+            sourceStoredPath: outURL.path,
+            fileSizeBytes: Int64(rawData.count)
+        )
+        config.savedRules.insert(rule, at: 0)
+        config.activeRule = rule
+        return rule
+    }
+
+    func selectRule(_ rule: CustomPatchRule) {
+        config.activeRule = rule
+    }
+
+    func deleteRule(at offsets: IndexSet) {
+        for idx in offsets {
+            let removed = config.savedRules[idx]
+            if !removed.sourceStoredPath.isEmpty {
+                try? FileManager.default.removeItem(atPath: removed.sourceStoredPath)
+            }
+        }
+        config.savedRules.remove(atOffsets: offsets)
+    }
+
+    func restoreDefaults() {
+        for r in config.savedRules where !r.sourceStoredPath.isEmpty {
+            try? FileManager.default.removeItem(atPath: r.sourceStoredPath)
+        }
+        if !config.activeRule.sourceStoredPath.isEmpty {
+            try? FileManager.default.removeItem(atPath: config.activeRule.sourceStoredPath)
+        }
+        config = CustomPatchConfig()
     }
 }
 
 enum CustomPatchError: LocalizedError {
     case disabled
+    case missingBundleID
     case missingSourceFile
-    case invalidTarget
-    case bundleNotFound(String)
+    case targetNotFound(String)
     case openFailed(String)
     case truncateFailed(String)
     case writeFailed(Int, Int)
@@ -97,14 +227,14 @@ enum CustomPatchError: LocalizedError {
         switch self {
         case .disabled:
             return "Custom Patch đang tắt."
+        case .missingBundleID:
+            return "Vui lòng nhập Bundle ID của app."
         case .missingSourceFile:
-            return "Chưa chọn file nguồn hoặc file patch không tồn tại."
-        case .invalidTarget:
-            return "Đường dẫn file đích hoặc Bundle ID đang trống."
-        case .bundleNotFound(let bid):
-            return "Không tìm thấy app/bundle cho Bundle ID: \(bid)"
+            return "Chưa nhập Replacement File hoặc file không tồn tại."
+        case .targetNotFound(let bid):
+            return "Không tìm thấy thư mục của Bundle ID: \(bid)"
         case .openFailed(let reason):
-            return "Không mở được file đích để ghi: \(reason)"
+            return "Không mở được file đích: \(reason)"
         case .truncateFailed(let reason):
             return "Lỗi ftruncate file đích: \(reason)"
         case .writeFailed(let written, let total):
@@ -123,71 +253,75 @@ enum CustomPatchApplyTask {
         if lstat(tmpURL.path, &st) == 0 && st.st_ino > 0 {
             return UInt64(st.st_ino) * 4
         }
-        return 10_000_000
+        return 12_000_000
     }
 
-    private static func findBundlePath(for bundleID: String, log: (String) -> Void) -> String? {
-        if let cls = NSClassFromString("LSApplicationWorkspace") as? NSObject.Type,
-           let _ = cls.perform(Selector("defaultWorkspace"))?.takeUnretainedValue() as? NSObject,
-           let appProxyClass = NSClassFromString("LSApplicationProxy") as? NSObject.Type,
-           let proxy = appProxyClass.perform(Selector("applicationProxyForIdentifier:"), with: bundleID)?.takeUnretainedValue() as? NSObject,
-           let bundleURL = proxy.value(forKey: "bundleURL") as? URL {
-            log("[CustomPatch] Tìm thấy bundle qua LSApplicationProxy: \(bundleURL.path)")
-            return bundleURL.path
+    private static func findContainerBasePath(for bundleID: String, preferDataContainer: Bool, log: (String) -> Void) -> String? {
+        if let appProxyClass = NSClassFromString("LSApplicationProxy") as? NSObject.Type,
+           let proxy = appProxyClass.perform(Selector("applicationProxyForIdentifier:"), with: bundleID)?.takeUnretainedValue() as? NSObject {
+            if preferDataContainer, let dataURL = proxy.value(forKey: "dataContainerURL") as? URL {
+                log("[CustomPatch] Tìm thấy Data Container qua LSApplicationProxy: \(dataURL.path)")
+                return dataURL.path
+            }
+            if let bundleURL = proxy.value(forKey: "bundleURL") as? URL {
+                log("[CustomPatch] Tìm thấy Bundle qua LSApplicationProxy: \(bundleURL.path)")
+                return bundleURL.path
+            }
         }
 
-        log("[CustomPatch] Đang dò bundle qua pathleak cho \(bundleID)...")
+        log("[CustomPatch] Đang dò \(bundleID) bằng pathleak...")
         let maxInode = estimatedMaxInode()
-        let searchRoots = ["/var/containers/Bundle/Application", "/private/var/containers/Bundle/Application"]
+        let roots = preferDataContainer
+            ? ["/var/mobile/Containers/Data/Application", "/private/var/mobile/Containers/Data/Application", "/var/containers/Bundle/Application"]
+            : ["/var/containers/Bundle/Application", "/private/var/containers/Bundle/Application", "/var/mobile/Containers/Data/Application"]
 
-        for root in searchRoots {
+        for root in roots {
             _ = wq.grantAccess(path: root, requireWrite: false)
             if let uuidDirs = pathleak(root, maxInode) as? [String] {
-                for uuidDir in uuidDirs {
-                    _ = wq.grantAccess(path: uuidDir, requireWrite: false)
-                    guard let items = try? FileManager.default.contentsOfDirectory(atPath: uuidDir) else { continue }
-                    for item in items where item.hasSuffix(".app") {
-                        let appPath = (uuidDir as NSString).appendingPathComponent(item)
-                        let infoPath = (appPath as NSString).appendingPathComponent("Info.plist")
-                        if let dict = NSDictionary(contentsOfFile: infoPath),
-                           let cfBundleID = dict["CFBundleIdentifier"] as? String,
-                           cfBundleID == bundleID {
-                            log("[CustomPatch] Tìm thấy bundle qua pathleak: \(appPath)")
-                            return appPath
+                for dir in uuidDirs {
+                    _ = wq.grantAccess(path: dir, requireWrite: false)
+                    let metaPlist = (dir as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
+                    if let meta = NSDictionary(contentsOfFile: metaPlist),
+                       let id = meta["MCMMetadataIdentifier"] as? String,
+                       id == bundleID {
+                        log("[CustomPatch] Khớp MCMMetadataIdentifier tại: \(dir)")
+                        return dir
+                    }
+                    if let items = try? FileManager.default.contentsOfDirectory(atPath: dir) {
+                        for item in items where item.hasSuffix(".app") {
+                            let appPath = (dir as NSString).appendingPathComponent(item)
+                            let infoPath = (appPath as NSString).appendingPathComponent("Info.plist")
+                            if let info = NSDictionary(contentsOfFile: infoPath),
+                               let cfID = info["CFBundleIdentifier"] as? String,
+                               cfID == bundleID {
+                                log("[CustomPatch] Khớp CFBundleIdentifier tại: \(appPath)")
+                                return appPath
+                            }
                         }
                     }
                 }
             }
         }
-
         return nil
     }
 
-    static func resolveTargetPath(config: CustomPatchConfig, log: (String) -> Void = { _ in }) throws -> String {
-        switch config.targetMode {
-        case .filePath:
-            let trimmed = config.targetFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { throw CustomPatchError.invalidTarget }
-            return (trimmed as NSString).standardizingPath
+    static func resolveTargetPath(rule: CustomPatchRule, log: (String) -> Void = { _ in }) throws -> String {
+        let bid = rule.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bid.isEmpty else { throw CustomPatchError.missingBundleID }
 
-        case .bundleID:
-            let bid = config.targetBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !bid.isEmpty else { throw CustomPatchError.invalidTarget }
+        let rel = rule.relativePath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
+        let wantsDataContainer = rel.lowercased().hasPrefix("library/")
+            || rel.lowercased().hasPrefix("documents/")
+            || rel.lowercased().hasPrefix("tmp/")
 
-            if bid.hasPrefix("/") {
-                return (bid as NSString).standardizingPath
-            }
-
-            guard let baseBundlePath = findBundlePath(for: bid, log: log) else {
-                throw CustomPatchError.bundleNotFound(bid)
-            }
-
-            let sub = config.bundleRelativeSubpath.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-            if sub.isEmpty {
-                return baseBundlePath
-            }
-            return URL(filePath: baseBundlePath).appendingPathComponent(sub).path
+        guard let basePath = findContainerBasePath(for: bid, preferDataContainer: wantsDataContainer, log: log) else {
+            throw CustomPatchError.targetNotFound(bid)
         }
+
+        if rel.isEmpty {
+            return basePath
+        }
+        return URL(filePath: basePath).appendingPathComponent(rel).path
     }
 
     static func applyIfEnabled(log: (String) -> Void = { _ in }) async throws {
@@ -197,13 +331,14 @@ enum CustomPatchApplyTask {
             return
         }
 
-        guard !cfg.sourceStoredPath.isEmpty,
-              FileManager.default.fileExists(atPath: cfg.sourceStoredPath),
-              let patchData = try? Data(contentsOf: URL(filePath: cfg.sourceStoredPath)) else {
+        let rule = cfg.activeRule
+        guard !rule.sourceStoredPath.isEmpty,
+              FileManager.default.fileExists(atPath: rule.sourceStoredPath),
+              let patchData = try? Data(contentsOf: URL(filePath: rule.sourceStoredPath)) else {
             throw CustomPatchError.missingSourceFile
         }
 
-        let targetPath = try resolveTargetPath(config: cfg, log: log)
+        let targetPath = try resolveTargetPath(rule: rule, log: log)
         let targetURL = URL(filePath: targetPath)
         let parentDir = targetURL.deletingLastPathComponent().path
 
@@ -213,10 +348,11 @@ enum CustomPatchApplyTask {
         log("[CustomPatch] Cấp quyền WorseQuery cho file đích: \(targetPath)")
         let granted = wq.grantAccess(path: targetPath, requireWrite: true)
         if !granted.0 {
-            log("[CustomPatch] ⚠️ WorseQuery cảnh báo: \(granted.2) (code \(granted.1))")
+            log("[CustomPatch] ⚠️ WorseQuery: \(granted.2) (code \(granted.1))")
         }
 
-        log("[CustomPatch] Đang ghi \(patchData.count) bytes vào \(targetPath)...")
+        try FileManager.default.createDirectory(at: targetURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+
         let fd = open(targetPath, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
         guard fd >= 0 else {
             throw CustomPatchError.openFailed(String(cString: strerror(errno)))
@@ -243,7 +379,117 @@ enum CustomPatchApplyTask {
             _ = fsync(fd)
         }
         chmod(targetPath, 0o644)
-        log("[CustomPatch] ✅ Ghi hoàn tất \(totalWritten) bytes.")
+        log("[CustomPatch] ✅ Đã ghi \(totalWritten) bytes vào \(targetPath)")
+    }
+}
+
+struct CreatePatchSheetView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var patchStore: CustomPatchStore
+
+    @State private var projectName: String = ""
+    @State private var bundleID: String = ""
+    @State private var relativePath: String = ""
+    @State private var draftRule: CustomPatchRule = CustomPatchRule()
+    @State private var showFilePicker = false
+    @State private var errMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("Project Name")) {
+                    TextField("Tên project / app", text: $projectName)
+                        .autocorrectionDisabled()
+                }
+
+                Section(header: Text("Destination"), footer: Text("Use the bundle identifier, for example com.lemon.lvoverseas. Never paste a container UUID or an absolute /var path.")) {
+                    TextField("com.lemon.lvoverseas", text: $bundleID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    TextField("Library/Cookies/Cookies.binarycookies", text: $relativePath)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+
+                Section(header: Text("Replacement File")) {
+                    Button {
+                        showFilePicker = true
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(draftRule.sourceFileName.isEmpty ? "Choose file" : draftRule.sourceFileName)
+                                    .foregroundStyle(.primary)
+                                Text("Tap to choose another file")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
+                    if !draftRule.sourceFileName.isEmpty {
+                        HStack {
+                            Text("Size")
+                            Spacer()
+                            Text(CustomPatchStore.formattedSize(draftRule.fileSizeBytes))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if let errMessage {
+                    Section {
+                        Text(errMessage).foregroundStyle(.red).font(.footnote)
+                    }
+                }
+            }
+            .navigationTitle("Create Patch")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L("alert_cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("alert_ok")) {
+                        do {
+                            _ = try patchStore.createAndSave3105(
+                                projectName: projectName,
+                                bundleID: bundleID,
+                                relativePath: relativePath,
+                                sourceStoredPath: draftRule.sourceStoredPath,
+                                sourceFileName: draftRule.sourceFileName
+                            )
+                            dismiss()
+                        } catch {
+                            errMessage = error.localizedDescription
+                        }
+                    }
+                }
+            }
+            .fileImporter(
+                isPresented: $showFilePicker,
+                allowedContentTypes: [.item],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    if let url = urls.first {
+                        do {
+                            try patchStore.importReplacementFile(from: url, intoRule: &draftRule)
+                            errMessage = nil
+                        } catch {
+                            errMessage = error.localizedDescription
+                        }
+                    }
+                case .failure(let error):
+                    errMessage = error.localizedDescription
+                }
+            }
+        }
     }
 }
 
@@ -254,10 +500,12 @@ struct CustomPatchView: View {
 
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
 
-    @State private var showFilePicker = false
+    @State private var showReplacementFilePicker = false
+    @State private var show3105FilePicker = false
+    @State private var showCreatePatchSheet = false
+    @State private var showSavedRulesMenu = false
     @State private var statusMessage: String?
     @State private var showAlert = false
-    @State private var isApplying = false
 
     var body: some View {
         Form {
@@ -268,74 +516,160 @@ struct CustomPatchView: View {
                     }
             }
 
-            Section(header: Text("Đích cần ghi")) {
-                Picker("Chế độ", selection: $patchStore.config.targetMode) {
-                    Text("Đường dẫn file").tag(CustomPatchConfig.TargetMode.filePath)
-                    Text("Bundle ID").tag(CustomPatchConfig.TargetMode.bundleID)
+            Section(
+                header: Text("Destination"),
+                footer: Text("Use the bundle identifier, for example com.lemon.lvoverseas. Never paste a container UUID or an absolute /var path.")
+            ) {
+                TextField("com.lemon.lvoverseas", text: $patchStore.config.activeRule.bundleID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                TextField("Library/Cookies/Cookies.binarycookies", text: $patchStore.config.activeRule.relativePath)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+
+            Section(header: Text("Replacement File")) {
+                Button {
+                    showReplacementFilePicker = true
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(
+                                patchStore.config.activeRule.sourceFileName.isEmpty
+                                    ? "Choose file (Cookies.binarycookies / .3105 / raw)"
+                                    : patchStore.config.activeRule.sourceFileName
+                            )
+                            .foregroundStyle(.primary)
+                            Text("Tap to choose another file")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-                .pickerStyle(.segmented)
 
-                if patchStore.config.targetMode == .filePath {
-                    TextField("/var/...", text: $patchStore.config.targetFilePath)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                } else {
-                    TextField("com.apple.example", text: $patchStore.config.targetBundleID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    TextField("File bên trong bundle (tuỳ chọn, vd: Info.plist)", text: $patchStore.config.bundleRelativeSubpath)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                if !patchStore.config.activeRule.sourceFileName.isEmpty {
+                    HStack {
+                        Text("Size")
+                        Spacer()
+                        Text(CustomPatchStore.formattedSize(patchStore.config.activeRule.fileSizeBytes))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
-            Section(header: Text("File cần thay đổi")) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(patchStore.config.sourceFileName.isEmpty ? "Chưa chọn file" : patchStore.config.sourceFileName)
-                            .font(.body)
-                        if !patchStore.config.sourceStoredPath.isEmpty {
-                            Text(patchStore.config.sourceStoredPath)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+            if !patchStore.config.savedRules.isEmpty {
+                Section(header: Text("Imported / Created Apps")) {
+                    ForEach(patchStore.config.savedRules) { rule in
+                        Button {
+                            patchStore.selectRule(rule)
+                            statusMessage = "Đã chọn: \(rule.projectName) (\(rule.bundleID))"
+                            showAlert = true
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(rule.projectName)
+                                        .foregroundStyle(.primary)
+                                    Text("\(rule.bundleID) • \(rule.relativePath)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                if patchStore.config.activeRule.id == rule.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                }
+                            }
                         }
                     }
-                    Spacer()
-                    Button("Chọn file") {
-                        showFilePicker = true
-                    }
-                }
-
-                if !patchStore.config.sourceFileName.isEmpty {
-                    Button(role: .destructive) {
-                        patchStore.clearSourceFile()
-                    } label: {
-                        Text("Xoá file")
+                    .onDelete { offsets in
+                        patchStore.deleteRule(at: offsets)
                     }
                 }
             }
 
             Section(header: Text(L("section_save_reset"))) {
                 Button {
-                    Task { await runApplyNow() }
+                    saveAndShowApply()
                 } label: {
-                    HStack {
-                        Label("Apply ngay", systemImage: "play.fill")
-                        if isApplying {
-                            Spacer()
-                            ProgressView()
+                    Label("Apply Changes", systemImage: "square.and.arrow.down")
+                }
+
+                Button(role: .destructive) {
+                    patchStore.restoreDefaults()
+                    statusMessage = "Đã khôi phục mặc định Custom Patch."
+                    showAlert = true
+                } label: {
+                    Label(L("mg_revert_tweaks"), systemImage: "arrow.counterclockwise")
+                }
+            }
+        }
+        .navigationTitle("Edit Rule")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button {
+                        show3105FilePicker = true
+                    } label: {
+                        Label("Import .3105 File", systemImage: "square.and.arrow.down")
+                    }
+
+                    Button {
+                        showCreatePatchSheet = true
+                    } label: {
+                        Label("Create Patch", systemImage: "plus.rectangle.on.folder")
+                    }
+
+                    if !patchStore.config.savedRules.isEmpty {
+                        Button {
+                            showSavedRulesMenu = true
+                        } label: {
+                            Label("Imported Apps Menu", systemImage: "list.bullet")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $showCreatePatchSheet) {
+            CreatePatchSheetView(patchStore: patchStore)
+        }
+        .sheet(isPresented: $showSavedRulesMenu) {
+            NavigationStack {
+                List {
+                    ForEach(patchStore.config.savedRules) { rule in
+                        Button {
+                            patchStore.selectRule(rule)
+                            showSavedRulesMenu = false
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(rule.projectName)
+                                    .foregroundStyle(.primary)
+                                Text("\(rule.bundleID) — \(rule.sourceFileName) (\(CustomPatchStore.formattedSize(rule.fileSizeBytes)))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
-                .disabled(isApplying)
+                .navigationTitle("Imported Apps")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(L("alert_close")) { showSavedRulesMenu = false }
+                    }
+                }
             }
         }
-        .navigationTitle("Custom Patch")
-        .navigationBarTitleDisplayMode(.inline)
         .fileImporter(
-            isPresented: $showFilePicker,
+            isPresented: $showReplacementFilePicker,
             allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
@@ -343,9 +677,36 @@ struct CustomPatchView: View {
             case .success(let urls):
                 if let url = urls.first {
                     do {
-                        try patchStore.importSourceFile(from: url)
+                        if url.pathExtension.lowercased() == "3105" {
+                            _ = try patchStore.import3105Package(from: url)
+                            statusMessage = "Đã nhập .3105: \(url.lastPathComponent)"
+                        } else {
+                            try patchStore.importReplacementFile(from: url, intoRule: &patchStore.config.activeRule)
+                            statusMessage = "Đã chọn file: \(url.lastPathComponent)"
+                        }
+                        showAlert = true
+                    } catch {
+                        statusMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+            case .failure(let error):
+                statusMessage = error.localizedDescription
+                showAlert = true
+            }
+        }
+        .fileImporter(
+            isPresented: $show3105FilePicker,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    do {
+                        let imported = try patchStore.import3105Package(from: url)
                         showApplyTab = true
-                        statusMessage = "Đã nạp file: \(url.lastPathComponent)"
+                        statusMessage = "Đã import \(imported.projectName) vào danh sách."
                         showAlert = true
                     } catch {
                         statusMessage = error.localizedDescription
@@ -364,16 +725,22 @@ struct CustomPatchView: View {
         }
     }
 
-    private func runApplyNow() async {
-        isApplying = true
-        defer { isApplying = false }
-        do {
-            try await CustomPatchApplyTask.applyIfEnabled()
-            statusMessage = L("apply_done")
-            showAlert = true
-        } catch {
-            statusMessage = error.localizedDescription
-            showAlert = true
+    private func saveAndShowApply() {
+        var rule = patchStore.config.activeRule
+        rule.bundleID = rule.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        rule.relativePath = rule.relativePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if rule.projectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            rule.projectName = rule.bundleID.isEmpty ? "Custom Rule" : rule.bundleID
         }
+        patchStore.config.activeRule = rule
+        patchStore.config.enabled = true
+
+        if let idx = patchStore.config.savedRules.firstIndex(where: { $0.id == rule.id }) {
+            patchStore.config.savedRules[idx] = rule
+        }
+
+        showApplyTab = true
+        statusMessage = "Đã lưu cấu hình. Hãy chuyển sang tab Apply và bấm Apply Enabled Tweaks."
+        showAlert = true
     }
 }
