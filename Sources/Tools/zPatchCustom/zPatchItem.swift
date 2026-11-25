@@ -16,14 +16,23 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
+    private static var cacheLock = NSLock()
+    private static var uuidCache: [String: String] = [:]
+    private static var didWarmupCache = false
+
+    private static func normalizedBundleID(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.caseInsensitiveCompare("con.lemon.lvoverseas") == .orderedSame {
+            return "com.lemon.lvoverseas"
+        }
+        return trimmed
+    }
+
     var fastPreviewPath: String {
         if let cached = cachedDestinationPath, !cached.isEmpty {
             return cached
         }
-        var cleanBundle = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleanBundle == "con.lemon.lvoverseas" {
-            cleanBundle = "com.lemon.lvoverseas"
-        }
+        let cleanBundle = Self.normalizedBundleID(bundleID)
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
@@ -36,35 +45,151 @@ struct zPatchItem: Identifiable, Codable {
         return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
     }
 
+    /// Tự quét UUID container cho Bundle ID một cách an toàn (có cache + giới hạn quét)
+    static func autoScanContainerUUID(for rawBundleID: String) -> String? {
+        let bid = normalizedBundleID(rawBundleID)
+        guard !bid.isEmpty else { return nil }
+
+        if bid.hasPrefix("/var/") || bid.hasPrefix("/private/var/") {
+            let priv = bid.hasPrefix("/private/") ? bid : "/private" + bid
+            return FileManager.default.fileExists(atPath: priv) ? priv : bid
+        }
+
+        if bid.hasPrefix("group."),
+           let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: bid) {
+            return groupURL.path
+        }
+
+        let key = bid.lowercased()
+        cacheLock.lock()
+        if let hit = uuidCache[key], !hit.isEmpty {
+            cacheLock.unlock()
+            return hit
+        }
+        cacheLock.unlock()
+
+        var foundPath: String? = nil
+
+        autoreleasepool {
+            // 1. Nạp cache một lần từ JITEnableContext nếu có
+            cacheLock.lock()
+            let shouldWarmup = !didWarmupCache
+            didWarmupCache = true
+            cacheLock.unlock()
+
+            if shouldWarmup {
+                if let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: Any] {
+                    var tempMap: [String: String] = [:]
+                    for (appKey, val) in allApps {
+                        if let dict = val as? [String: Any],
+                           let rawContainer = dict["Container"] as? String,
+                           !rawContainer.isEmpty {
+                            let clean = rawContainer
+                                .replacingOccurrences(of: "file://", with: "")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            let std = (clean as NSString).standardizingPath
+                            let priv = std.hasPrefix("/private/") ? std : "/private" + std
+                            tempMap[appKey.lowercased()] = FileManager.default.fileExists(atPath: priv) ? priv : std
+                        }
+                    }
+                    cacheLock.lock()
+                    for (k, v) in tempMap {
+                        uuidCache[k] = v
+                    }
+                    cacheLock.unlock()
+                }
+            }
+
+            cacheLock.lock()
+            foundPath = uuidCache[key]
+            cacheLock.unlock()
+            if foundPath != nil { return }
+
+            // 2. Thử tra nhanh qua CSStoreEngine / fsHandlers
+            let (_, fastHit) = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid)
+            if let fastHit, !fastHit.isEmpty, FileManager.default.fileExists(atPath: fastHit) {
+                foundPath = fastHit
+                return
+            }
+
+            fsHandlers.invalidateCache()
+            let viaHandler = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: bid)
+            if !viaHandler.isEmpty && FileManager.default.fileExists(atPath: viaHandler) {
+                foundPath = viaHandler
+                return
+            }
+
+            // 3. Quét có giới hạn thư mục trong Data/Application để tìm UUID khớp Bundle ID
+            let fm = FileManager.default
+            let roots = [
+                "/private/var/mobile/Containers/Data/Application",
+                "/var/mobile/Containers/Data/Application"
+            ]
+            for root in roots {
+                guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }
+                for entry in entries.prefix(150) {
+                    let fullDir = (root as NSString).appendingPathComponent(entry)
+                    var isDir: ObjCBool = false
+                    guard fm.fileExists(atPath: fullDir, isDirectory: &isDir), isDir.boolValue else { continue }
+
+                    if let xbid = getBIDFromXattr(URL(fileURLWithPath: fullDir)),
+                       xbid.caseInsensitiveCompare(bid) == .orderedSame {
+                        foundPath = fullDir
+                        return
+                    }
+
+                    let prefPath = (fullDir as NSString).appendingPathComponent("Library/Preferences/\(bid).plist")
+                    if fm.fileExists(atPath: prefPath) {
+                        foundPath = fullDir
+                        return
+                    }
+
+                    let metaPath = (fullDir as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
+                    if fm.fileExists(atPath: metaPath),
+                       let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
+                       let str = String(data: data, encoding: .utf8),
+                       str.contains(bid) {
+                        foundPath = fullDir
+                        return
+                    }
+                }
+            }
+        }
+
+        if let foundPath, !foundPath.isEmpty {
+            cacheLock.lock()
+            uuidCache[key] = foundPath
+            cacheLock.unlock()
+            return foundPath
+        }
+
+        return nil
+    }
+
     func resolveDestinationPathOnBackground() -> String {
-        if let cached = cachedDestinationPath, !cached.isEmpty {
+        if let cached = cachedDestinationPath, !cached.isEmpty, !cached.contains("/\(Self.normalizedBundleID(bundleID))/") {
             return cached
         }
 
-        var cleanBundle = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleanBundle == "con.lemon.lvoverseas" {
-            cleanBundle = "com.lemon.lvoverseas"
-        }
-
+        let cleanBundle = Self.normalizedBundleID(bundleID)
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
 
-        if cleanBundle.hasPrefix("/var/") || cleanBundle.hasPrefix("/private/var/") {
+        let baseRoot: String
+        if let scannedUUIDDir = Self.autoScanContainerUUID(for: cleanBundle) {
+            baseRoot = scannedUUIDDir
+        } else if cleanBundle.hasPrefix("/var/") || cleanBundle.hasPrefix("/private/var/") {
             let privateAlt = cleanBundle.hasPrefix("/private/") ? cleanBundle : "/private" + cleanBundle
-            let baseRoot = FileManager.default.fileExists(atPath: privateAlt) ? privateAlt : cleanBundle
-            return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
+            baseRoot = FileManager.default.fileExists(atPath: privateAlt) ? privateAlt : cleanBundle
+        } else {
+            let varPath = Self.baseContainerPrefix + cleanBundle
+            let privateVarPath = "/private" + varPath
+            baseRoot = FileManager.default.fileExists(atPath: privateVarPath) ? privateVarPath : varPath
         }
 
-        if cleanBundle.hasPrefix("group."),
-           let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: cleanBundle) {
-            return cleanRel.isEmpty ? groupURL.path : (groupURL.path as NSString).appendingPathComponent(cleanRel)
-        }
-
-        let varPath = Self.baseContainerPrefix + cleanBundle
-        let privateVarPath = "/private" + varPath
-        let baseRoot = FileManager.default.fileExists(atPath: privateVarPath) ? privateVarPath : varPath
-        return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
+        if cleanRel.isEmpty { return baseRoot }
+        return (baseRoot as NSString).appendingPathComponent(cleanRel)
     }
 
     init(
@@ -175,7 +300,7 @@ final class zPatchStore: ObservableObject {
                 guard let idx = self.patches.firstIndex(where: { $0.id == itemID }) else { return }
                 self.patches[idx].cachedDestinationPath = targetPath
                 self.savePatches()
-                onLog?("[zPatch] Đã lưu patch: \(targetPath)")
+                onLog?("[zPatch] Đã tự quét đích: \(targetPath)")
             }
         }
     }
@@ -183,9 +308,21 @@ final class zPatchStore: ObservableObject {
     func updatePatch(_ patch: zPatchItem) {
         if let idx = patches.firstIndex(where: { $0.id == patch.id }) {
             var updated = patch
-            updated.cachedDestinationPath = updated.resolveDestinationPathOnBackground()
+            updated.cachedDestinationPath = nil
             patches[idx] = updated
             savePatches()
+
+            let itemID = updated.id
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else { return }
+                let resolved = updated.resolveDestinationPathOnBackground()
+                DispatchQueue.main.async {
+                    if let currentIdx = self.patches.firstIndex(where: { $0.id == itemID }) {
+                        self.patches[currentIdx].cachedDestinationPath = resolved
+                        self.savePatches()
+                    }
+                }
+            }
         }
     }
 
