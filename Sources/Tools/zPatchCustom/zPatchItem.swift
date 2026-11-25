@@ -56,37 +56,36 @@ struct zPatchItem: Identifiable, Codable {
 }
 
 final class zPatchStore: ObservableObject {
+    static let shared = zPatchStore()
+
+    static let itemsKey = "zPatchCustomItems_v3"
+    static let enabledKey = "zPatchCustomEnabled"
+    static let pendingApplyKey = "zPatchPendingApply"
+
     @Published var patches: [zPatchItem] = []
+    @Published var isTweakEnabled: Bool = false
     @Published var pendingApply: Bool = false
 
-    private let itemsKey = "zPatchCustomItems_v3"
-    private let enabledKey = "zPatchCustomEnabled"
-    private let pendingApplyKey = "zPatchPendingApply"
-
-    var isTweakEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: enabledKey) }
-        set {
-            UserDefaults.standard.set(newValue, forKey: enabledKey)
-            objectWillChange.send()
-        }
-    }
-
     init() {
-        pendingApply = UserDefaults.standard.bool(forKey: pendingApplyKey)
-        loadPatches()
+        reloadFromStorage()
     }
 
-    func loadPatches() {
-        if let data = UserDefaults.standard.data(forKey: itemsKey),
+    func reloadFromStorage() {
+        isTweakEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+        pendingApply = UserDefaults.standard.bool(forKey: Self.pendingApplyKey)
+        if let data = UserDefaults.standard.data(forKey: Self.itemsKey),
            let decoded = try? JSONDecoder().decode([zPatchItem].self, from: data) {
             patches = decoded
+        } else {
+            patches = []
         }
     }
 
     func savePatches() {
         if let encoded = try? JSONEncoder().encode(patches) {
-            UserDefaults.standard.set(encoded, forKey: itemsKey)
+            UserDefaults.standard.set(encoded, forKey: Self.itemsKey)
         }
+        objectWillChange.send()
     }
 
     private func backupFileURL(for item: zPatchItem, targetPath: String) -> URL {
@@ -166,10 +165,20 @@ final class zPatchStore: ObservableObject {
         setPendingApply(true)
     }
 
+    func saveChange(enableTweak: Bool) {
+        isTweakEnabled = enableTweak
+        UserDefaults.standard.set(enableTweak, forKey: Self.enabledKey)
+        savePatches()
+        setPendingApply(true)
+        objectWillChange.send()
+    }
+
     func applyAllUsingWorseQuery(onLog: @escaping (String) -> Void) throws {
-        loadPatches()
-        guard isTweakEnabled || pendingApply else {
-            onLog("[zPatch] Tweak chưa bật và không có thay đổi chờ áp dụng, bỏ qua.")
+        reloadFromStorage()
+        let hasPendingRevert = patches.contains { $0.pendingRevert }
+        guard isTweakEnabled || hasPendingRevert else {
+            onLog("[zPatch] Tweak đang tắt và không có mục chờ Revert, bỏ qua.")
+            setPendingApply(false)
             return
         }
 
@@ -244,19 +253,12 @@ final class zPatchStore: ObservableObject {
         }
     }
 
-    func saveChange(enableTweak: Bool) {
-        UserDefaults.standard.set(enableTweak, forKey: enabledKey)
-        savePatches()
-        setPendingApply(true)
-        objectWillChange.send()
-    }
-
     func clearPendingApply() {
         setPendingApply(false)
     }
 
     private func setPendingApply(_ value: Bool) {
         pendingApply = value
-        UserDefaults.standard.set(value, forKey: pendingApplyKey)
+        UserDefaults.standard.set(value, forKey: Self.pendingApplyKey)
     }
 }
