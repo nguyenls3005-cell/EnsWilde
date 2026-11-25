@@ -110,10 +110,10 @@ struct ContentView: View {
             )
             toolNavigationLink(
                 value: "zPatchCustom",
-                title: L("tool_zpatch_custom"),
+                title: "zPatch Custom",
                 subtitle: L("tool_zpatch_custom_desc"),
                 icon: "wrench.and.screwdriver",
-                isEnabled: toolStore.zPatchCustomEnabled
+                isEnabled: zPatchStore.shared.isTweakEnabled || toolStore.zPatchCustomEnabled
             )
         }
     }
