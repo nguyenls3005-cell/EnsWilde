@@ -15,7 +15,6 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
-    /// Tính đường dẫn nhanh (chỉ ghép chuỗi fallback, không quét pathleak trên Main Thread)
     var fastPreviewPath: String {
         if let cached = cachedDestinationPath, !cached.isEmpty {
             return cached
@@ -24,26 +23,92 @@ struct zPatchItem: Identifiable, Codable {
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
+
+        // Hỗ trợ nếu người dùng nhập trực tiếp đường dẫn đầy đủ bắt đầu bằng /var hoặc /private/var
+        if cleanBundle.hasPrefix("/var/") || cleanBundle.hasPrefix("/private/var/") {
+            return cleanRel.isEmpty ? cleanBundle : (cleanBundle as NSString).appendingPathComponent(cleanRel)
+        }
+
         let baseRoot = Self.baseContainerPrefix + cleanBundle
         return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
     }
 
-    /// Resolve container thật (chạy ở background khi Save Patch hoặc Apply)
+    private func findRealContainerPath(for bundleID: String) -> String? {
+        let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Hỗ trợ App Group nếu bundleID bắt đầu bằng "group."
+        if trimmed.hasPrefix("group."),
+           let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: trimmed) {
+            return groupURL.path
+        }
+
+        let (_, fastHit) = CSStoreEngine.shared.lookupAppContainer(forBundleID: trimmed)
+        if let fastHit, !fastHit.isEmpty, FileManager.default.fileExists(atPath: fastHit) {
+            return fastHit
+        }
+
+        fsHandlers.invalidateCache()
+        let viaHandler = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: trimmed)
+        if !viaHandler.isEmpty && FileManager.default.fileExists(atPath: viaHandler) {
+            return viaHandler
+        }
+
+        let roots = [
+            "/var/mobile/Containers/Data/Application",
+            "/private/var/mobile/Containers/Data/Application",
+            "/var/mobile/Containers/Shared/AppGroup",
+            "/private/var/mobile/Containers/Shared/AppGroup"
+        ]
+        let fm = FileManager.default
+
+        for root in roots {
+            guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }
+            for entry in entries {
+                let fullDir = (root as NSString).appendingPathComponent(entry)
+                var isDir: ObjCBool = false
+                guard fm.fileExists(atPath: fullDir, isDirectory: &isDir), isDir.boolValue else { continue }
+
+                if let xbid = getBIDFromXattr(URL(fileURLWithPath: fullDir)),
+                   xbid.caseInsensitiveCompare(trimmed) == .orderedSame {
+                    return fullDir
+                }
+
+                let metaCandidates = [
+                    ".com.apple.mobile_container_manager.metadata.plist",
+                    "Library/Preferences/\(trimmed).plist"
+                ]
+                for metaRel in metaCandidates {
+                    let metaPath = (fullDir as NSString).appendingPathComponent(metaRel)
+                    if fm.fileExists(atPath: metaPath) {
+                        if metaRel.hasSuffix(".plist") && !metaRel.contains("metadata") {
+                            return fullDir
+                        }
+                        if let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
+                           let text = String(data: data, encoding: .utf8),
+                           text.contains(trimmed) {
+                            return fullDir
+                        }
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
     func resolveDestinationPathOnBackground() -> String {
         let cleanBundle = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
 
-        var containerPath = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: cleanBundle)
-        if containerPath.isEmpty {
-            fsHandlers.invalidateCache()
-            containerPath = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: cleanBundle)
-        }
-
         let baseRoot: String
-        if !containerPath.isEmpty {
-            baseRoot = containerPath
+        if cleanBundle.hasPrefix("/var/") || cleanBundle.hasPrefix("/private/var/") {
+            let privateAlt = cleanBundle.hasPrefix("/private/") ? cleanBundle : "/private" + cleanBundle
+            baseRoot = FileManager.default.fileExists(atPath: privateAlt) ? privateAlt : cleanBundle
+        } else if let realContainer = findRealContainerPath(for: cleanBundle) {
+            baseRoot = realContainer
         } else {
             let varPath = Self.baseContainerPrefix + cleanBundle
             let privateVarPath = "/private" + varPath
@@ -128,7 +193,43 @@ final class zPatchStore: ObservableObject {
         return backupDir.appendingPathComponent(name.isEmpty ? "target.bin" : name)
     }
 
-    /// Lưu patch ngay lập tức lên UI, sau đó resolve container & backup lần đầu ở background
+    private func grantAccessForAnySupportPath(_ targetPath: String, requireWrite: Bool) -> (Bool, [String], String) {
+        var grantedPaths: [String] = []
+        var lastErr = ""
+
+        // 1. Thử trực tiếp targetPath
+        let (okDirect, _, errDirect) = wq.grantAccess(path: targetPath, requireWrite: requireWrite)
+        if okDirect {
+            grantedPaths.append(targetPath)
+            return (true, grantedPaths, "succeeded")
+        }
+        lastErr = errDirect
+
+        // 2. Duyệt ngược lên các thư mục cha (từ gần nhất tới gốc container) và cấp quyền từng tầng nếu cần
+        var cur = URL(fileURLWithPath: targetPath).resolvingSymlinksInPath().path
+        while !cur.isEmpty && cur != "/" {
+            let parent = (cur as NSString).deletingLastPathComponent
+            if parent.isEmpty || parent == cur { break }
+            if FileManager.default.fileExists(atPath: parent) {
+                let (okParent, _, errParent) = wq.grantAccess(path: parent, requireWrite: requireWrite)
+                if okParent {
+                    grantedPaths.append(parent)
+                    return (true, grantedPaths, "succeeded")
+                }
+                lastErr = errParent
+            }
+            cur = parent
+        }
+
+        return (false, grantedPaths, lastErr)
+    }
+
+    private func releaseGrantedPaths(_ paths: [String]) {
+        for p in paths {
+            wq.releaseAccess(path: p)
+        }
+    }
+
     func saveNewPatch(bundleID: String, relativeDestPath: String, sourcePath: String, onLog: ((String) -> Void)? = nil) {
         let item = zPatchItem(
             bundleID: bundleID,
@@ -149,8 +250,8 @@ final class zPatchStore: ObservableObject {
             let bURL = self.backupFileURL(for: item, targetPath: targetPath)
 
             var backupSavedPath: String? = nil
-            let (granted, _, errMsg) = wq.grantAccess(path: targetPath, requireWrite: false)
-            defer { wq.releaseAccess(path: targetPath) }
+            let (granted, usedPaths, errMsg) = self.grantAccessForAnySupportPath(targetPath, requireWrite: false)
+            defer { self.releaseGrantedPaths(usedPaths) }
 
             if granted, FileManager.default.fileExists(atPath: targetPath),
                let originalData = try? Data(contentsOf: URL(fileURLWithPath: targetPath)) {
@@ -163,7 +264,7 @@ final class zPatchStore: ObservableObject {
                     onLog?("[zPatch/wq] Ghi backup lỗi: \(error.localizedDescription)")
                 }
             } else {
-                onLog?("[zPatch/wq] Không đọc được file gốc để backup (\(targetPath)): \(errMsg)")
+                onLog?("[zPatch/wq] Chưa có file gốc để backup tại: \(targetPath) (\(errMsg))")
             }
 
             DispatchQueue.main.async {
@@ -254,10 +355,10 @@ final class zPatchStore: ObservableObject {
                     continue
                 }
 
-                let (granted, _, errMsg) = wq.grantAccess(path: targetPath, requireWrite: true)
-                defer { wq.releaseAccess(path: targetPath) }
+                let (granted, usedPaths, errMsg) = grantAccessForAnySupportPath(targetPath, requireWrite: false)
+                defer { releaseGrantedPaths(usedPaths) }
                 guard granted else {
-                    onLog("[zPatch/wq] Không xin được quyền ghi revert (\(targetPath)): \(errMsg)")
+                    onLog("[zPatch/wq] Không xin được quyền revert (\(targetPath)): \(errMsg)")
                     continue
                 }
 
@@ -273,10 +374,10 @@ final class zPatchStore: ObservableObject {
             }
 
             if isTweakEnabled && patches[idx].isEnabled {
-                let (granted, _, errMsg) = wq.grantAccess(path: targetPath, requireWrite: true)
-                defer { wq.releaseAccess(path: targetPath) }
+                let (granted, usedPaths, errMsg) = grantAccessForAnySupportPath(targetPath, requireWrite: false)
+                defer { releaseGrantedPaths(usedPaths) }
                 guard granted else {
-                    onLog("[zPatch/wq] Không xin được quyền ghi (\(targetPath)): \(errMsg)")
+                    onLog("[zPatch/wq] Không xin được quyền (\(targetPath)): \(errMsg)")
                     continue
                 }
 
@@ -305,10 +406,10 @@ final class zPatchStore: ObservableObject {
     }
 
     private func writePayload(_ data: Data, to url: URL) -> (Bool, String) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: url.path) {
             return writeFileAtomically(data, to: url, allowEmpty: false)
         } else {
-            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             return writeFileTemp(data, to: url)
         }
     }
