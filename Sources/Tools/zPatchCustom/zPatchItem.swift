@@ -14,7 +14,6 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
-    /// Tự động resolve container UUID qua fsHandlers nếu có, fallback sang bundleID
     func resolvedDestinationPath() -> String {
         let cleanBundle = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanRel = relativeDestPath.hasPrefix("/")
@@ -99,7 +98,6 @@ final class zPatchStore: ObservableObject {
         return backupDir.appendingPathComponent(name.isEmpty ? "target.bin" : name)
     }
 
-    /// Ấn Save Patch: xin quyền qua wq và backup lần đầu file đích
     func saveNewPatch(bundleID: String, relativeDestPath: String, sourcePath: String, onLog: ((String) -> Void)? = nil) {
         var item = zPatchItem(
             bundleID: bundleID,
@@ -160,7 +158,6 @@ final class zPatchStore: ObservableObject {
         }
     }
 
-    /// Ấn Revert: đánh dấu pendingRevert, qua tab Apply sẽ khôi phục bản backup qua wq
     func requestRevert(_ patch: zPatchItem) {
         guard let idx = patches.firstIndex(where: { $0.id == patch.id }) else { return }
         patches[idx].isEnabled = false
@@ -169,11 +166,10 @@ final class zPatchStore: ObservableObject {
         setPendingApply(true)
     }
 
-    /// Chạy ở tab Apply (ToolRunner): xử lý pendingRevert trước, sau đó apply các patch đang bật
     func applyAllUsingWorseQuery(onLog: @escaping (String) -> Void) throws {
         loadPatches()
-        guard isTweakEnabled else {
-            onLog("[zPatch] Tweak chưa bật, bỏ qua.")
+        guard isTweakEnabled || pendingApply else {
+            onLog("[zPatch] Tweak chưa bật và không có thay đổi chờ áp dụng, bỏ qua.")
             return
         }
 
@@ -207,7 +203,7 @@ final class zPatchStore: ObservableObject {
                 continue
             }
 
-            if patches[idx].isEnabled {
+            if isTweakEnabled && patches[idx].isEnabled {
                 let (granted, _, errMsg) = wq.grantAccess(path: targetPath, requireWrite: true)
                 defer { wq.releaseAccess(path: targetPath) }
                 guard granted else {
@@ -215,7 +211,6 @@ final class zPatchStore: ObservableObject {
                     continue
                 }
 
-                // Backup lần đầu nếu chưa có
                 let bURL = backupFileURL(for: patches[idx], targetPath: targetPath)
                 if (!patches[idx].hasInitialBackup || patches[idx].backupPath == nil),
                    FileManager.default.fileExists(atPath: targetPath),
