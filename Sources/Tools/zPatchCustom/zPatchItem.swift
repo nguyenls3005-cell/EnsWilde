@@ -6,6 +6,7 @@ struct zPatchItem: Identifiable, Codable {
     var bundleID: String
     var relativeDestPath: String
     var sourcePath: String
+    var cachedDestinationPath: String?
     var backupPath: String?
     var hasInitialBackup: Bool
     var isEnabled: Bool
@@ -14,7 +15,21 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
-    func resolvedDestinationPath() -> String {
+    /// Tính đường dẫn nhanh (chỉ ghép chuỗi fallback, không quét pathleak trên Main Thread)
+    var fastPreviewPath: String {
+        if let cached = cachedDestinationPath, !cached.isEmpty {
+            return cached
+        }
+        let cleanBundle = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanRel = relativeDestPath.hasPrefix("/")
+            ? String(relativeDestPath.dropFirst())
+            : relativeDestPath
+        let baseRoot = Self.baseContainerPrefix + cleanBundle
+        return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
+    }
+
+    /// Resolve container thật (chạy ở background khi Save Patch hoặc Apply)
+    func resolveDestinationPathOnBackground() -> String {
         let cleanBundle = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
@@ -39,15 +54,12 @@ struct zPatchItem: Identifiable, Codable {
         return (baseRoot as NSString).appendingPathComponent(cleanRel)
     }
 
-    var fullDestinationPath: String {
-        resolvedDestinationPath()
-    }
-
     init(
         id: UUID = UUID(),
         bundleID: String,
         relativeDestPath: String,
         sourcePath: String,
+        cachedDestinationPath: String? = nil,
         backupPath: String? = nil,
         hasInitialBackup: Bool = false,
         isEnabled: Bool = true,
@@ -57,6 +69,7 @@ struct zPatchItem: Identifiable, Codable {
         self.bundleID = bundleID
         self.relativeDestPath = relativeDestPath
         self.sourcePath = sourcePath
+        self.cachedDestinationPath = cachedDestinationPath
         self.backupPath = backupPath
         self.hasInitialBackup = hasInitialBackup
         self.isEnabled = isEnabled
@@ -75,8 +88,16 @@ final class zPatchStore: ObservableObject {
     @Published var patches: [zPatchItem] = []
     @Published var isTweakEnabled: Bool = false
     @Published var pendingApply: Bool = false
+    private var hasLoaded = false
 
     init() {
+        isTweakEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+        pendingApply = UserDefaults.standard.bool(forKey: Self.pendingApplyKey)
+    }
+
+    func ensureLoaded() {
+        guard !hasLoaded else { return }
+        hasLoaded = true
         reloadFromStorage()
     }
 
@@ -89,13 +110,13 @@ final class zPatchStore: ObservableObject {
         } else {
             patches = []
         }
+        hasLoaded = true
     }
 
     func savePatches() {
         if let encoded = try? JSONEncoder().encode(patches) {
             UserDefaults.standard.set(encoded, forKey: Self.itemsKey)
         }
-        objectWillChange.send()
     }
 
     private func backupFileURL(for item: zPatchItem, targetPath: String) -> URL {
@@ -107,8 +128,9 @@ final class zPatchStore: ObservableObject {
         return backupDir.appendingPathComponent(name.isEmpty ? "target.bin" : name)
     }
 
+    /// Lưu patch ngay lập tức lên UI, sau đó resolve container & backup lần đầu ở background
     func saveNewPatch(bundleID: String, relativeDestPath: String, sourcePath: String, onLog: ((String) -> Void)? = nil) {
-        var item = zPatchItem(
+        let item = zPatchItem(
             bundleID: bundleID,
             relativeDestPath: relativeDestPath,
             sourcePath: sourcePath,
@@ -117,35 +139,63 @@ final class zPatchStore: ObservableObject {
             pendingRevert: false
         )
 
-        let targetPath = item.resolvedDestinationPath()
-        let bURL = backupFileURL(for: item, targetPath: targetPath)
-
-        let (granted, _, errMsg) = wq.grantAccess(path: targetPath, requireWrite: false)
-        defer { wq.releaseAccess(path: targetPath) }
-
-        if granted, FileManager.default.fileExists(atPath: targetPath),
-           let originalData = try? Data(contentsOf: URL(fileURLWithPath: targetPath)) {
-            do {
-                try FileManager.default.createDirectory(at: bURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try originalData.write(to: bURL, options: .atomic)
-                item.backupPath = bURL.path
-                item.hasInitialBackup = true
-                onLog?("[zPatch/wq] Đã backup lần đầu: \(targetPath)")
-            } catch {
-                onLog?("[zPatch/wq] Ghi backup lỗi: \(error.localizedDescription)")
-            }
-        } else {
-            onLog?("[zPatch/wq] Không đọc được file gốc để backup (\(targetPath)): \(errMsg)")
-        }
-
         patches.append(item)
         savePatches()
+
+        let itemID = item.id
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            let targetPath = item.resolveDestinationPathOnBackground()
+            let bURL = self.backupFileURL(for: item, targetPath: targetPath)
+
+            var backupSavedPath: String? = nil
+            let (granted, _, errMsg) = wq.grantAccess(path: targetPath, requireWrite: false)
+            defer { wq.releaseAccess(path: targetPath) }
+
+            if granted, FileManager.default.fileExists(atPath: targetPath),
+               let originalData = try? Data(contentsOf: URL(fileURLWithPath: targetPath)) {
+                do {
+                    try FileManager.default.createDirectory(at: bURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try originalData.write(to: bURL, options: .atomic)
+                    backupSavedPath = bURL.path
+                    onLog?("[zPatch/wq] Đã backup lần đầu: \(targetPath)")
+                } catch {
+                    onLog?("[zPatch/wq] Ghi backup lỗi: \(error.localizedDescription)")
+                }
+            } else {
+                onLog?("[zPatch/wq] Không đọc được file gốc để backup (\(targetPath)): \(errMsg)")
+            }
+
+            DispatchQueue.main.async {
+                guard let idx = self.patches.firstIndex(where: { $0.id == itemID }) else { return }
+                self.patches[idx].cachedDestinationPath = targetPath
+                if let backupSavedPath {
+                    self.patches[idx].backupPath = backupSavedPath
+                    self.patches[idx].hasInitialBackup = true
+                }
+                self.savePatches()
+            }
+        }
     }
 
     func updatePatch(_ patch: zPatchItem) {
         if let idx = patches.firstIndex(where: { $0.id == patch.id }) {
-            patches[idx] = patch
+            var updated = patch
+            updated.cachedDestinationPath = nil
+            patches[idx] = updated
             savePatches()
+
+            let itemID = updated.id
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self else { return }
+                let resolved = updated.resolveDestinationPathOnBackground()
+                DispatchQueue.main.async {
+                    if let currentIdx = self.patches.firstIndex(where: { $0.id == itemID }) {
+                        self.patches[currentIdx].cachedDestinationPath = resolved
+                        self.savePatches()
+                    }
+                }
+            }
         }
     }
 
@@ -175,6 +225,13 @@ final class zPatchStore: ObservableObject {
         setPendingApply(true)
     }
 
+    func saveChange(enableTweak: Bool) {
+        isTweakEnabled = enableTweak
+        UserDefaults.standard.set(enableTweak, forKey: Self.enabledKey)
+        savePatches()
+        setPendingApply(true)
+    }
+
     func applyAllUsingWorseQuery(onLog: @escaping (String) -> Void) throws {
         reloadFromStorage()
         let hasPendingRevert = patches.contains { $0.pendingRevert }
@@ -185,7 +242,8 @@ final class zPatchStore: ObservableObject {
         }
 
         for idx in patches.indices {
-            let targetPath = patches[idx].resolvedDestinationPath()
+            let targetPath = patches[idx].resolveDestinationPathOnBackground()
+            patches[idx].cachedDestinationPath = targetPath
             let targetURL = URL(fileURLWithPath: targetPath)
 
             if patches[idx].pendingRevert {
@@ -253,14 +311,6 @@ final class zPatchStore: ObservableObject {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             return writeFileTemp(data, to: url)
         }
-    }
-
-    func saveChange(enableTweak: Bool) {
-        isTweakEnabled = enableTweak
-        UserDefaults.standard.set(enableTweak, forKey: Self.enabledKey)
-        savePatches()
-        setPendingApply(true)
-        objectWillChange.send()
     }
 
     func clearPendingApply() {
