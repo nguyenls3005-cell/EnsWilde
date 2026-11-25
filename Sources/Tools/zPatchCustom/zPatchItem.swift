@@ -20,10 +20,20 @@ struct zPatchItem: Identifiable, Codable {
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
 
-        let containerPath = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: cleanBundle)
-        let baseRoot = containerPath.isEmpty
-            ? (Self.baseContainerPrefix + cleanBundle)
-            : containerPath
+        var containerPath = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: cleanBundle)
+        if containerPath.isEmpty {
+            fsHandlers.invalidateCache()
+            containerPath = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: cleanBundle)
+        }
+
+        let baseRoot: String
+        if !containerPath.isEmpty {
+            baseRoot = containerPath
+        } else {
+            let varPath = Self.baseContainerPrefix + cleanBundle
+            let privateVarPath = "/private" + varPath
+            baseRoot = FileManager.default.fileExists(atPath: privateVarPath) ? privateVarPath : varPath
+        }
 
         if cleanRel.isEmpty { return baseRoot }
         return (baseRoot as NSString).appendingPathComponent(cleanRel)
@@ -165,14 +175,6 @@ final class zPatchStore: ObservableObject {
         setPendingApply(true)
     }
 
-    func saveChange(enableTweak: Bool) {
-        isTweakEnabled = enableTweak
-        UserDefaults.standard.set(enableTweak, forKey: Self.enabledKey)
-        savePatches()
-        setPendingApply(true)
-        objectWillChange.send()
-    }
-
     func applyAllUsingWorseQuery(onLog: @escaping (String) -> Void) throws {
         reloadFromStorage()
         let hasPendingRevert = patches.contains { $0.pendingRevert }
@@ -251,6 +253,14 @@ final class zPatchStore: ObservableObject {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             return writeFileTemp(data, to: url)
         }
+    }
+
+    func saveChange(enableTweak: Bool) {
+        isTweakEnabled = enableTweak
+        UserDefaults.standard.set(enableTweak, forKey: Self.enabledKey)
+        savePatches()
+        setPendingApply(true)
+        objectWillChange.send()
     }
 
     func clearPendingApply() {
