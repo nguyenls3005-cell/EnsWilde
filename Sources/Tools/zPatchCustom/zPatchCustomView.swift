@@ -15,7 +15,7 @@ struct zPatchCustomView: View {
     @State private var showDocumentPicker = false
 
     @State private var showSavedPopup = false
-    @State private var popupMessage = "Đã lưu thay đổi. Vui lòng qua tab Apply để áp dụng."
+    @State private var popupMessage = "Đã lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
     @State private var showErrorAlert = false
     @State private var errorMessage = ""
     @State private var editingPatch: zPatchItem? = nil
@@ -23,14 +23,20 @@ struct zPatchCustomView: View {
     var body: some View {
         Form {
             Section(header: Text("zPatch Custom")) {
-                Toggle(L("enable_tweak"), isOn: $draftEnabled)
+                Toggle(L("enable_tweak"), isOn: Binding(
+                    get: { draftEnabled },
+                    set: { newValue in
+                        draftEnabled = newValue
+                        patchStore.setTweakEnabledImmediate(newValue)
+                    }
+                ))
 
                 Button {
                     patchStore.saveChange(enableTweak: draftEnabled)
                     UserDefaults.standard.set(true, forKey: "ShowApplyTab")
                     popupMessage = draftEnabled
-                        ? "Đã bật và lưu thay đổi. Hãy qua tab Apply để áp dụng."
-                        : "Đã tắt và lưu thay đổi. Hãy qua tab Apply để áp dụng."
+                        ? "Đã bật và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
+                        : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
                     showSavedPopup = true
                 } label: {
                     HStack {
@@ -55,7 +61,7 @@ struct zPatchCustomView: View {
             }
 
             Section(header: Text(L("section_info"))) {
-                Text("Bật/tắt Enable Tweak rồi bấm Save Change để lưu trạng thái và qua tab Apply.")
+                Text("Bật/tắt Enable Tweak rồi bấm Save Change để lưu. Sau khi hiện thông báo, bạn tự chuyển qua tab Apply để áp dụng.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -71,14 +77,14 @@ struct zPatchCustomView: View {
             addPatchSheet
         }
         .alert("Thông báo", isPresented: $showSavedPopup) {
-            Button("OK") {
-                onNavigateToApply?()
+            Button("OK", role: .cancel) {
+                showSavedPopup = false
             }
         } message: {
             Text(popupMessage)
         }
         .alert("Error", isPresented: $showErrorAlert) {
-            Button("OK") {}
+            Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage)
         }
@@ -133,7 +139,7 @@ struct zPatchCustomView: View {
 
                 Button {
                     patchStore.requestRevert(patch)
-                    popupMessage = "Đã chọn Revert cho \(patch.bundleID). Hãy qua tab Apply để khôi phục về patch cũ."
+                    popupMessage = "Đã chọn Revert cho \(patch.bundleID). Bạn có thể tự chuyển qua tab Apply để khôi phục về patch cũ."
                     showSavedPopup = true
                 } label: {
                     Label("Revert", systemImage: "arrow.uturn.backward")
