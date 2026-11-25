@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct zPatchCustomView: View {
     @StateObject private var patchStore = zPatchStore()
@@ -9,7 +10,7 @@ struct zPatchCustomView: View {
     @State private var newBundleID: String = ""
     @State private var newRelativeDest: String = ""
     @State private var newSourcePath: String = ""
-    @State private var showFileImporter = false
+    @State private var showDocumentPicker = false
 
     @State private var showSavedPopup = false
     @State private var popupMessage = "Đã lưu thay đổi. Vui lòng qua tab Apply để áp dụng."
@@ -49,7 +50,7 @@ struct zPatchCustomView: View {
             }
 
             Section(header: Text(L("section_info"))) {
-                Text("Nhập Bundle ID và đường dẫn file đích (tự dò container qua fsHandlers hoặc /var/mobile/Containers/Data/Application/), chọn file nguồn, bấm Save Patch để backup lần đầu, bấm Save Change rồi qua tab Apply.")
+                Text("Tiền tố mặc định: /var/mobile/Containers/Data/Application/. Nhập Bundle ID và đường dẫn file đích, chọn file nguồn, bấm Save Patch để backup lần đầu, bấm Save Change rồi qua tab Apply.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -76,20 +77,20 @@ struct zPatchCustomView: View {
     }
 
     private func patchRow(_ patch: zPatchItem) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
                 Toggle("", isOn: Binding(
                     get: { patch.isEnabled },
                     set: { _ in patchStore.togglePatch(patch) }
                 ))
                 .labelsHidden()
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(patch.bundleID.isEmpty ? "Unknown Bundle" : patch.bundleID)
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
 
-                    Text("File nguồn: \(patch.sourcePath.split(separator: "/").last.map(String.init) ?? "Chưa chọn")")
+                    Text("File nguồn: \(patch.sourcePath.isEmpty ? "Chưa chọn" : (patch.sourcePath.split(separator: "/").last.map(String.init) ?? "Đã chọn"))")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -100,8 +101,8 @@ struct zPatchCustomView: View {
                         .lineLimit(2)
 
                     if patch.pendingRevert {
-                        Text("Trạng thái: Chờ Revert ở tab Apply")
-                            .font(.system(size: 11, weight: .medium))
+                        Text("Trạng thái: Đã chọn Revert — qua tab Apply để khôi phục")
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.orange)
                     } else if patch.hasInitialBackup && patch.backupPath != nil {
                         Text("Backup lần đầu: Đã lưu")
@@ -113,41 +114,38 @@ struct zPatchCustomView: View {
                 Spacer()
             }
 
-            HStack(spacing: 12) {
-                Spacer()
+            HStack(spacing: 10) {
+                Button {
+                    editPatch(patch)
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.bordered)
+
                 Button {
                     patchStore.requestRevert(patch)
-                    popupMessage = "Đã đánh dấu Revert cho \(patch.bundleID). Hãy qua tab Apply để khôi phục patch cũ."
+                    popupMessage = "Đã chọn Revert cho \(patch.bundleID). Hãy qua tab Apply để khôi phục về patch cũ."
                     showSavedPopup = true
                 } label: {
                     Label("Revert", systemImage: "arrow.uturn.backward")
-                        .font(.caption.weight(.medium))
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+
+                Spacer()
+
+                Button(role: .destructive) {
+                    patchStore.removePatch(patch)
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.caption)
                 }
                 .buttonStyle(.bordered)
             }
         }
-        .padding(.vertical, 4)
-        .contextMenu {
-            Button {
-                editPatch(patch)
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-
-            Button {
-                patchStore.requestRevert(patch)
-                popupMessage = "Đã chọn Revert. Hãy qua tab Apply để áp dụng."
-                showSavedPopup = true
-            } label: {
-                Label("Revert", systemImage: "arrow.uturn.backward")
-            }
-
-            Button(role: .destructive) {
-                patchStore.removePatch(patch)
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
+        .padding(.vertical, 6)
     }
 
     private var addPatchSheet: some View {
@@ -177,7 +175,7 @@ struct zPatchCustomView: View {
 
                 Section(header: Text("File cần thay đổi")) {
                     Button {
-                        showFileImporter = true
+                        showDocumentPicker = true
                     } label: {
                         HStack {
                             Text(newSourcePath.isEmpty ? "Chọn file nguồn" : (newSourcePath.split(separator: "/").last.map(String.init) ?? "Đã chọn"))
@@ -205,44 +203,41 @@ struct zPatchCustomView: View {
                     }
                 }
             }
-            .fileImporter(
-                isPresented: $showFileImporter,
-                allowedContentTypes: [.item, .data, .content],
-                allowsMultipleSelection: false,
-                onCompletion: handleFileImport
-            )
+            .sheet(isPresented: $showDocumentPicker) {
+                zPatchDocumentPicker(
+                    onPick: { url in
+                        importSourceURL(url)
+                    },
+                    onError: { msg in
+                        errorMessage = msg
+                        showErrorAlert = true
+                    }
+                )
+            }
         }
     }
 
-    private func handleFileImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            let docsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let patchDir = docsURL.appendingPathComponent("zPatchCustomFiles", isDirectory: true)
-            let destURL = patchDir.appendingPathComponent(url.lastPathComponent)
+    private func importSourceURL(_ url: URL) {
+        let docsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let patchDir = docsURL.appendingPathComponent("zPatchCustomFiles", isDirectory: true)
+        let destURL = patchDir.appendingPathComponent(url.lastPathComponent)
 
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessed {
-                    url.stopAccessingSecurityScopedResource()
-                }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
             }
+        }
 
-            do {
-                try FileManager.default.createDirectory(at: patchDir, withIntermediateDirectories: true)
-                if FileManager.default.fileExists(atPath: destURL.path) {
-                    try FileManager.default.removeItem(at: destURL)
-                }
-                try FileManager.default.copyItem(at: url, to: destURL)
-                newSourcePath = destURL.path
-            } catch {
-                errorMessage = "Không thể import file: \(error.localizedDescription)"
-                showErrorAlert = true
+        do {
+            try FileManager.default.createDirectory(at: patchDir, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: destURL.path) {
+                try FileManager.default.removeItem(at: destURL)
             }
-
-        case .failure(let error):
-            errorMessage = "Lỗi chọn file: \(error.localizedDescription)"
+            try FileManager.default.copyItem(at: url, to: destURL)
+            newSourcePath = destURL.path
+        } catch {
+            errorMessage = "Không thể import file: \(error.localizedDescription)"
             showErrorAlert = true
         }
     }
@@ -280,5 +275,43 @@ struct zPatchCustomView: View {
         newRelativeDest = ""
         newSourcePath = ""
         editingPatch = nil
+    }
+}
+
+private struct zPatchDocumentPicker: UIViewControllerRepresentable {
+    var onPick: (URL) -> Void
+    var onError: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick, onError: onError)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item, .data, .content], asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        var onPick: (URL) -> Void
+        var onError: (String) -> Void
+
+        init(onPick: @escaping (URL) -> Void, onError: @escaping (String) -> Void) {
+            self.onPick = onPick
+            self.onError = onError
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else {
+                onError("Không có file nào được chọn.")
+                return
+            }
+            onPick(url)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {}
     }
 }
