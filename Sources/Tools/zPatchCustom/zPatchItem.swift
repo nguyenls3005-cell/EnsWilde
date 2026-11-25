@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Darwin
 
 struct zPatchItem: Identifiable, Codable {
     var id: UUID
@@ -203,23 +204,25 @@ final class zPatchStore: ObservableObject {
         return backupDir.appendingPathComponent(name.isEmpty ? "target.bin" : name)
     }
 
-    private func grantAccessForAnySupportPath(_ targetPath: String, requireWrite: Bool) -> (Bool, [String], String) {
+    private func grantAccessForOverwrite(_ targetPath: String) -> (Bool, [String], String) {
         var grantedPaths: [String] = []
         var lastErr = ""
 
-        let (okDirect, _, errDirect) = wq.grantAccess(path: targetPath, requireWrite: requireWrite)
+        // Ưu tiên xin quyền trực tiếp trên file đích để ghi đè
+        let (okDirect, _, errDirect) = wq.grantAccess(path: targetPath, requireWrite: false)
         if okDirect {
             grantedPaths.append(targetPath)
             return (true, grantedPaths, "succeeded")
         }
         lastErr = errDirect
 
+        // Nếu không xin trực tiếp được file, xin quyền thư mục cha gần nhất
         var cur = URL(fileURLWithPath: targetPath).resolvingSymlinksInPath().path
         while !cur.isEmpty && cur != "/" {
             let parent = (cur as NSString).deletingLastPathComponent
             if parent.isEmpty || parent == cur { break }
             if FileManager.default.fileExists(atPath: parent) {
-                let (okParent, _, errParent) = wq.grantAccess(path: parent, requireWrite: requireWrite)
+                let (okParent, _, errParent) = wq.grantAccess(path: parent, requireWrite: false)
                 if okParent {
                     grantedPaths.append(parent)
                     return (true, grantedPaths, "succeeded")
@@ -258,7 +261,7 @@ final class zPatchStore: ObservableObject {
             let bURL = self.backupFileURL(for: item, targetPath: targetPath)
 
             var backupSavedPath: String? = nil
-            let (granted, usedPaths, errMsg) = self.grantAccessForAnySupportPath(targetPath, requireWrite: false)
+            let (granted, usedPaths, errMsg) = self.grantAccessForOverwrite(targetPath)
             defer { self.releaseGrantedPaths(usedPaths) }
 
             if granted, FileManager.default.fileExists(atPath: targetPath),
@@ -362,25 +365,25 @@ final class zPatchStore: ObservableObject {
                     continue
                 }
 
-                let (granted, usedPaths, errMsg) = grantAccessForAnySupportPath(targetPath, requireWrite: false)
+                let (granted, usedPaths, errMsg) = grantAccessForOverwrite(targetPath)
                 defer { releaseGrantedPaths(usedPaths) }
                 if !granted {
                     onLog("[zPatch/wq] Cảnh báo grant (\(targetPath)): \(errMsg)")
                 }
 
                 let backupData = try Data(contentsOf: URL(fileURLWithPath: backupPath))
-                let (ok, writeErr) = writePayload(backupData, to: targetURL)
+                let (ok, writeErr) = overwriteFileDirectly(backupData, to: targetURL)
                 if ok {
                     patches[idx].pendingRevert = false
-                    onLog("[zPatch/wq] Đã revert về bản gốc: \(targetPath)")
+                    onLog("[zPatch/wq] Đã ghi đè revert về bản gốc: \(targetPath)")
                 } else {
-                    onLog("[zPatch/wq] Revert ghi file thất bại: \(writeErr)")
+                    onLog("[zPatch/wq] Revert ghi đè thất bại: \(writeErr)")
                 }
                 continue
             }
 
             if isTweakEnabled && patches[idx].isEnabled {
-                let (granted, usedPaths, errMsg) = grantAccessForAnySupportPath(targetPath, requireWrite: false)
+                let (granted, usedPaths, errMsg) = grantAccessForOverwrite(targetPath)
                 defer { releaseGrantedPaths(usedPaths) }
                 if !granted {
                     onLog("[zPatch/wq] Cảnh báo grant (\(targetPath)): \(errMsg)")
@@ -397,11 +400,11 @@ final class zPatchStore: ObservableObject {
                 }
 
                 let sourceData = try Data(contentsOf: URL(fileURLWithPath: patches[idx].sourcePath))
-                let (ok, writeErr) = writePayload(sourceData, to: targetURL)
+                let (ok, writeErr) = overwriteFileDirectly(sourceData, to: targetURL)
                 if ok {
-                    onLog("[zPatch/wq] Đã apply patch: \(targetPath)")
+                    onLog("[zPatch/wq] Đã ghi đè patch: \(targetPath)")
                 } else {
-                    onLog("[zPatch/wq] Apply ghi file thất bại: \(writeErr)")
+                    onLog("[zPatch/wq] Apply ghi đè thất bại: \(writeErr)")
                 }
             }
         }
@@ -410,12 +413,63 @@ final class zPatchStore: ObservableObject {
         pendingApply = false
     }
 
-    private func writePayload(_ data: Data, to url: URL) -> (Bool, String) {
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if FileManager.default.fileExists(atPath: url.path) {
-            return writeFileAtomically(data, to: url, allowEmpty: false)
-        } else {
-            return writeFileTemp(data, to: url)
+    /// Ghi đè trực tiếp vào file đích (không tạo file .tmp trung gian)
+    private func overwriteFileDirectly(_ data: Data, to url: URL) -> (Bool, String) {
+        let path = url.path
+        let fm = FileManager.default
+
+        if !fm.fileExists(atPath: path) {
+            try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let createdFd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+            if createdFd >= 0 {
+                defer { close(createdFd) }
+                let ok = writeAllBytes(data, toFd: createdFd)
+                if ok {
+                    fsync(createdFd)
+                    return (true, "OK")
+                }
+            }
+            if fm.createFile(atPath: path, contents: data) {
+                return (true, "OK")
+            }
+            return (false, "Không tạo được file mới tại \(path) (errno=\(errno): \(String(cString: strerror(errno))))")
+        }
+
+        // Mở file đang có và ghi đè trực tiếp bằng pwrite + ftruncate
+        let fd = open(path, O_WRONLY)
+        if fd >= 0 {
+            defer { close(fd) }
+            guard writeAllBytes(data, toFd: fd) else {
+                return (false, "pwrite lỗi tại \(path) (errno=\(errno): \(String(cString: strerror(errno))))")
+            }
+            if ftruncate(fd, off_t(data.count)) != 0 {
+                return (false, "ftruncate lỗi tại \(path) (errno=\(errno): \(String(cString: strerror(errno))))")
+            }
+            fsync(fd)
+            return (true, "OK")
+        }
+
+        let openErr = String(cString: strerror(errno))
+        do {
+            try data.write(to: url, options: .noFileProtection)
+            return (true, "OK")
+        } catch {
+            return (false, "open(\(path)) lỗi: \(openErr) | write lỗi: \(error.localizedDescription)")
+        }
+    }
+
+    private func writeAllBytes(_ data: Data, toFd fd: Int32) -> Bool {
+        return data.withUnsafeBytes { rawBuf -> Bool in
+            guard let base = rawBuf.baseAddress else { return data.isEmpty }
+            var offset = 0
+            while offset < rawBuf.count {
+                let written = pwrite(fd, base.advanced(by: offset), rawBuf.count - offset, off_t(offset))
+                if written <= 0 {
+                    return false
+                }
+                offset += written
+            }
+            return true
         }
     }
 
