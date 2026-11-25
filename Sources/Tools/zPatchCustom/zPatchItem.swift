@@ -16,6 +16,9 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
+    private static let cacheLock = NSLock()
+    private static var containerCache: [String: String] = [:]
+
     static func normalizedBundleID(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.caseInsensitiveCompare("con.lemon.lvoverseas") == .orderedSame {
@@ -25,18 +28,13 @@ struct zPatchItem: Identifiable, Codable {
     }
 
     var fastPreviewPath: String {
-        resolveDestinationPath()
-    }
-
-    func resolveDestinationPath() -> String {
+        if let cached = cachedDestinationPath, !cached.isEmpty {
+            return cached
+        }
         let cleanBundle = Self.normalizedBundleID(bundleID)
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
-
-        if let cached = cachedDestinationPath, !cached.isEmpty {
-            return cached
-        }
 
         if let mapped = zPatchStore.shared.cachedContainer(for: cleanBundle), !mapped.isEmpty {
             return cleanRel.isEmpty ? mapped : (mapped as NSString).appendingPathComponent(cleanRel)
@@ -48,6 +46,90 @@ struct zPatchItem: Identifiable, Codable {
 
         let baseRoot = Self.baseContainerPrefix + cleanBundle
         return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
+    }
+
+    static func resolveContainerRoot(for rawBundleID: String) -> String? {
+        let bid = normalizedBundleID(rawBundleID)
+        guard !bid.isEmpty else { return nil }
+
+        if let saved = zPatchStore.shared.cachedContainer(for: bid), !saved.isEmpty {
+            return saved
+        }
+
+        let key = bid.lowercased()
+        cacheLock.lock()
+        if let hit = containerCache[key], !hit.isEmpty {
+            cacheLock.unlock()
+            return hit
+        }
+        cacheLock.unlock()
+
+        if bid.hasPrefix("/") {
+            let std = (bid as NSString).standardizingPath
+            return std
+        }
+
+        if bid.hasPrefix("group."),
+           let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: bid) {
+            return groupURL.path
+        }
+
+        var found: String? = nil
+
+        autoreleasepool {
+            // 1. Thử JITEnableContext nếu có sẵn
+            if let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: Any] {
+                var dictMap: [String: [String: Any]] = [:]
+                for (k, v) in allApps {
+                    if let d = v as? [String: Any] {
+                        dictMap[k] = d
+                        if k.caseInsensitiveCompare(bid) == .orderedSame,
+                           let rawC = d["Container"] as? String, !rawC.isEmpty {
+                            found = (rawC.replacingOccurrences(of: "file://", with: "") as NSString).standardizingPath
+                        }
+                    }
+                }
+                if !dictMap.isEmpty {
+                    zPatchStore.shared.updateContainerCache(from: dictMap)
+                }
+            }
+
+            // 2. Thử CSStoreEngine
+            if found == nil {
+                let (_, hit) = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid)
+                if let hit, !hit.isEmpty {
+                    found = (hit as NSString).standardizingPath
+                }
+            }
+
+            // 3. Thử fsHandlers (có fallback pathleak nếu CSStore không có)
+            if found == nil {
+                let viaFS = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: bid)
+                if !viaFS.isEmpty {
+                    found = (viaFS as NSString).standardizingPath
+                }
+            }
+        }
+
+        if let found, !found.isEmpty {
+            cacheLock.lock()
+            containerCache[key] = found
+            cacheLock.unlock()
+            zPatchStore.shared.registerContainer(bundleID: bid, containerPath: found)
+        }
+
+        return found
+    }
+
+    func resolveDestinationPath() -> String {
+        let cleanBundle = Self.normalizedBundleID(bundleID)
+        let cleanRel = relativeDestPath.hasPrefix("/")
+            ? String(relativeDestPath.dropFirst())
+            : relativeDestPath
+
+        let root = Self.resolveContainerRoot(for: cleanBundle) ?? (Self.baseContainerPrefix + cleanBundle)
+        if cleanRel.isEmpty { return root }
+        return (root as NSString).appendingPathComponent(cleanRel)
     }
 
     init(
@@ -195,6 +277,36 @@ final class zPatchStore: ObservableObject {
         return backupDir.appendingPathComponent(name.isEmpty ? "target.bin" : name)
     }
 
+    /// Xin quyền wq cho cả thư mục cha lẫn file đích để mở được folder khi ghi/tạo file
+    private func acquireAccessForTarget(_ targetPath: String, onLog: @escaping (String) -> Void) -> [String] {
+        var acquired: [String] = []
+        let parentDir = (targetPath as NSString).deletingLastPathComponent
+
+        if !parentDir.isEmpty && parentDir != "/" {
+            let (okDir, _, errDir) = wq.grantAccess(path: parentDir, requireWrite: true)
+            if okDir {
+                acquired.append(parentDir)
+            } else {
+                onLog("[zPatch] wq thư mục cha (\(parentDir)): \(errDir)")
+            }
+        }
+
+        let (okFile, _, errFile) = wq.grantAccess(path: targetPath, requireWrite: true)
+        if okFile {
+            acquired.append(targetPath)
+        } else {
+            onLog("[zPatch] wq file đích (\(targetPath)): \(errFile)")
+        }
+
+        return acquired
+    }
+
+    private func releaseAcquired(_ paths: [String]) {
+        for p in paths.reversed() {
+            wq.releaseAccess(path: p)
+        }
+    }
+
     func saveNewPatch(bundleID: String, relativeDestPath: String, sourcePath: String, onLog: ((String) -> Void)? = nil) {
         let work = {
             var item = zPatchItem(
@@ -300,13 +412,20 @@ final class zPatchStore: ObservableObject {
                     continue
                 }
 
+                let leased = acquireAccessForTarget(targetPath, onLog: onLog)
+                defer { releaseAcquired(leased) }
+
                 do {
                     let backupData = try Data(contentsOf: URL(fileURLWithPath: backupPath))
-                    try overwriteDirectly(backupData, to: targetURL)
-                    snapshot[idx].pendingRevert = false
-                    onLog("[zPatch] Đã revert: \(targetPath)")
+                    let (ok, msg) = writePayload(backupData, to: targetURL)
+                    if ok {
+                        snapshot[idx].pendingRevert = false
+                        onLog("[zPatch] Đã revert: \(targetPath)")
+                    } else {
+                        onLog("[zPatch] Revert lỗi (\(targetPath)): \(msg)")
+                    }
                 } catch {
-                    onLog("[zPatch] Revert lỗi (\(targetPath)): \(error.localizedDescription)")
+                    onLog("[zPatch] Revert đọc backup lỗi: \(error.localizedDescription)")
                 }
                 continue
             }
@@ -317,8 +436,13 @@ final class zPatchStore: ObservableObject {
                     continue
                 }
 
+                let leased = acquireAccessForTarget(targetPath, onLog: onLog)
+                defer { releaseAcquired(leased) }
+
                 do {
+                    let sourceData = try Data(contentsOf: URL(fileURLWithPath: snapshot[idx].sourcePath))
                     let bURL = backupFileURL(for: snapshot[idx], targetPath: targetPath)
+
                     if (!snapshot[idx].hasInitialBackup || snapshot[idx].backupPath == nil),
                        fm.fileExists(atPath: targetPath),
                        let ogData = try? Data(contentsOf: targetURL) {
@@ -328,11 +452,14 @@ final class zPatchStore: ObservableObject {
                         snapshot[idx].hasInitialBackup = true
                     }
 
-                    let sourceData = try Data(contentsOf: URL(fileURLWithPath: snapshot[idx].sourcePath))
-                    try overwriteDirectly(sourceData, to: targetURL)
-                    onLog("[zPatch] Đã ghi đè: \(targetPath)")
+                    let (ok, msg) = writePayload(sourceData, to: targetURL)
+                    if ok {
+                        onLog("[zPatch] Đã ghi đè thành công: \(targetPath)")
+                    } else {
+                        onLog("[zPatch] Ghi đè thất bại (\(targetPath)): \(msg)")
+                    }
                 } catch {
-                    onLog("[zPatch] Ghi đè thất bại (\(targetPath)): \(error.localizedDescription)")
+                    onLog("[zPatch] Đọc file nguồn lỗi: \(error.localizedDescription)")
                 }
             }
         }
@@ -348,52 +475,16 @@ final class zPatchStore: ObservableObject {
         }
     }
 
-    private func overwriteDirectly(_ data: Data, to url: URL) throws {
-        let path = url.path
+    private func writePayload(_ data: Data, to url: URL) -> (Bool, String) {
         let fm = FileManager.default
-
-        if !fm.fileExists(atPath: path) {
-            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let createdFd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
-            if createdFd >= 0 {
-                defer { close(createdFd) }
-                try writeAll(data, fd: createdFd)
-                fsync(createdFd)
-                return
-            }
-            try data.write(to: url, options: .noFileProtection)
-            return
-        }
-
-        let fd = open(path, O_WRONLY)
-        if fd >= 0 {
-            defer { close(fd) }
-            try writeAll(data, fd: fd)
-            if ftruncate(fd, off_t(data.count)) != 0 {
-                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [
-                    NSLocalizedDescriptionKey: "ftruncate lỗi: \(String(cString: strerror(errno)))"
-                ])
-            }
-            fsync(fd)
-            return
-        }
-
-        try data.write(to: url, options: .noFileProtection)
-    }
-
-    private func writeAll(_ data: Data, fd: Int32) throws {
-        try data.withUnsafeBytes { rawBuf in
-            guard let base = rawBuf.baseAddress else { return }
-            var offset = 0
-            while offset < rawBuf.count {
-                let written = pwrite(fd, base.advanced(by: offset), rawBuf.count - offset, off_t(offset))
-                if written <= 0 {
-                    throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [
-                        NSLocalizedDescriptionKey: "pwrite lỗi: \(String(cString: strerror(errno)))"
-                    ])
-                }
-                offset += written
-            }
+        if fm.fileExists(atPath: url.path) {
+            let (ok, err) = writeFileAtomically(data, to: url, allowEmpty: false)
+            if ok { return (true, "OK") }
+            let (okTemp, errTemp) = writeFileTemp(data, to: url)
+            return (okTemp, okTemp ? "OK" : "\(err) | temp: \(errTemp)")
+        } else {
+            let (okTemp, errTemp) = writeFileTemp(data, to: url)
+            return (okTemp, okTemp ? "OK" : errTemp)
         }
     }
 
