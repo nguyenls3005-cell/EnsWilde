@@ -16,11 +16,7 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
-    private static var cacheLock = NSLock()
-    private static var uuidCache: [String: String] = [:]
-    private static var didWarmupCache = false
-
-    private static func normalizedBundleID(_ raw: String) -> String {
+    static func normalizedBundleID(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.caseInsensitiveCompare("con.lemon.lvoverseas") == .orderedSame {
             return "com.lemon.lvoverseas"
@@ -37,7 +33,11 @@ struct zPatchItem: Identifiable, Codable {
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
 
-        if cleanBundle.hasPrefix("/var/") || cleanBundle.hasPrefix("/private/var/") {
+        if let mappedContainer = zPatchStore.shared.cachedContainer(for: cleanBundle) {
+            return cleanRel.isEmpty ? mappedContainer : (mappedContainer as NSString).appendingPathComponent(cleanRel)
+        }
+
+        if cleanBundle.hasPrefix("/") {
             return cleanRel.isEmpty ? cleanBundle : (cleanBundle as NSString).appendingPathComponent(cleanRel)
         }
 
@@ -45,151 +45,42 @@ struct zPatchItem: Identifiable, Codable {
         return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
     }
 
-    /// Tự quét UUID container cho Bundle ID một cách an toàn (có cache + giới hạn quét)
-    static func autoScanContainerUUID(for rawBundleID: String) -> String? {
-        let bid = normalizedBundleID(rawBundleID)
-        guard !bid.isEmpty else { return nil }
-
-        if bid.hasPrefix("/var/") || bid.hasPrefix("/private/var/") {
-            let priv = bid.hasPrefix("/private/") ? bid : "/private" + bid
-            return FileManager.default.fileExists(atPath: priv) ? priv : bid
-        }
-
-        if bid.hasPrefix("group."),
-           let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: bid) {
-            return groupURL.path
-        }
-
-        let key = bid.lowercased()
-        cacheLock.lock()
-        if let hit = uuidCache[key], !hit.isEmpty {
-            cacheLock.unlock()
-            return hit
-        }
-        cacheLock.unlock()
-
-        var foundPath: String? = nil
-
-        autoreleasepool {
-            // 1. Nạp cache một lần từ JITEnableContext nếu có
-            cacheLock.lock()
-            let shouldWarmup = !didWarmupCache
-            didWarmupCache = true
-            cacheLock.unlock()
-
-            if shouldWarmup {
-                if let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: Any] {
-                    var tempMap: [String: String] = [:]
-                    for (appKey, val) in allApps {
-                        if let dict = val as? [String: Any],
-                           let rawContainer = dict["Container"] as? String,
-                           !rawContainer.isEmpty {
-                            let clean = rawContainer
-                                .replacingOccurrences(of: "file://", with: "")
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            let std = (clean as NSString).standardizingPath
-                            let priv = std.hasPrefix("/private/") ? std : "/private" + std
-                            tempMap[appKey.lowercased()] = FileManager.default.fileExists(atPath: priv) ? priv : std
-                        }
-                    }
-                    cacheLock.lock()
-                    for (k, v) in tempMap {
-                        uuidCache[k] = v
-                    }
-                    cacheLock.unlock()
-                }
-            }
-
-            cacheLock.lock()
-            foundPath = uuidCache[key]
-            cacheLock.unlock()
-            if foundPath != nil { return }
-
-            // 2. Thử tra nhanh qua CSStoreEngine / fsHandlers
-            let (_, fastHit) = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid)
-            if let fastHit, !fastHit.isEmpty, FileManager.default.fileExists(atPath: fastHit) {
-                foundPath = fastHit
-                return
-            }
-
-            fsHandlers.invalidateCache()
-            let viaHandler = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: bid)
-            if !viaHandler.isEmpty && FileManager.default.fileExists(atPath: viaHandler) {
-                foundPath = viaHandler
-                return
-            }
-
-            // 3. Quét có giới hạn thư mục trong Data/Application để tìm UUID khớp Bundle ID
-            let fm = FileManager.default
-            let roots = [
-                "/private/var/mobile/Containers/Data/Application",
-                "/var/mobile/Containers/Data/Application"
-            ]
-            for root in roots {
-                guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }
-                for entry in entries.prefix(150) {
-                    let fullDir = (root as NSString).appendingPathComponent(entry)
-                    var isDir: ObjCBool = false
-                    guard fm.fileExists(atPath: fullDir, isDirectory: &isDir), isDir.boolValue else { continue }
-
-                    if let xbid = getBIDFromXattr(URL(fileURLWithPath: fullDir)),
-                       xbid.caseInsensitiveCompare(bid) == .orderedSame {
-                        foundPath = fullDir
-                        return
-                    }
-
-                    let prefPath = (fullDir as NSString).appendingPathComponent("Library/Preferences/\(bid).plist")
-                    if fm.fileExists(atPath: prefPath) {
-                        foundPath = fullDir
-                        return
-                    }
-
-                    let metaPath = (fullDir as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
-                    if fm.fileExists(atPath: metaPath),
-                       let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
-                       let str = String(data: data, encoding: .utf8),
-                       str.contains(bid) {
-                        foundPath = fullDir
-                        return
-                    }
-                }
-            }
-        }
-
-        if let foundPath, !foundPath.isEmpty {
-            cacheLock.lock()
-            uuidCache[key] = foundPath
-            cacheLock.unlock()
-            return foundPath
-        }
-
-        return nil
-    }
-
-    func resolveDestinationPathOnBackground() -> String {
-        if let cached = cachedDestinationPath, !cached.isEmpty, !cached.contains("/\(Self.normalizedBundleID(bundleID))/") {
-            return cached
-        }
-
+    func resolveDestinationPath() -> String {
         let cleanBundle = Self.normalizedBundleID(bundleID)
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
 
-        let baseRoot: String
-        if let scannedUUIDDir = Self.autoScanContainerUUID(for: cleanBundle) {
-            baseRoot = scannedUUIDDir
-        } else if cleanBundle.hasPrefix("/var/") || cleanBundle.hasPrefix("/private/var/") {
-            let privateAlt = cleanBundle.hasPrefix("/private/") ? cleanBundle : "/private" + cleanBundle
-            baseRoot = FileManager.default.fileExists(atPath: privateAlt) ? privateAlt : cleanBundle
-        } else {
-            let varPath = Self.baseContainerPrefix + cleanBundle
-            let privateVarPath = "/private" + varPath
-            baseRoot = FileManager.default.fileExists(atPath: privateVarPath) ? privateVarPath : varPath
+        // 1. Nếu đã có đường dẫn UUID thật trong cache thì ưu tiên dùng ngay
+        if let cached = cachedDestinationPath,
+           !cached.isEmpty,
+           !cached.contains("/\(cleanBundle)/") {
+            return cached
         }
 
-        if cleanRel.isEmpty { return baseRoot }
-        return (baseRoot as NSString).appendingPathComponent(cleanRel)
+        // 2. Lấy từ bảng map container đã nạp an toàn trong zPatchStore
+        if let mappedContainer = zPatchStore.shared.cachedContainer(for: cleanBundle),
+           !mappedContainer.isEmpty {
+            return cleanRel.isEmpty ? mappedContainer : (mappedContainer as NSString).appendingPathComponent(cleanRel)
+        }
+
+        // 3. Nếu người dùng nhập sẵn đường dẫn tuyệt đối (chứa UUID)
+        if cleanBundle.hasPrefix("/") {
+            let priv = cleanBundle.hasPrefix("/private/") ? cleanBundle : "/private" + cleanBundle
+            let root = FileManager.default.fileExists(atPath: priv) ? priv : cleanBundle
+            return cleanRel.isEmpty ? root : (root as NSString).appendingPathComponent(cleanRel)
+        }
+
+        // 4. App Group chuẩn của hệ thống
+        if cleanBundle.hasPrefix("group."),
+           let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: cleanBundle) {
+            return cleanRel.isEmpty ? groupURL.path : (groupURL.path as NSString).appendingPathComponent(cleanRel)
+        }
+
+        let varPath = Self.baseContainerPrefix + cleanBundle
+        let privateVarPath = "/private" + varPath
+        let baseRoot = FileManager.default.fileExists(atPath: privateVarPath) ? privateVarPath : varPath
+        return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
     }
 
     init(
@@ -222,6 +113,7 @@ final class zPatchStore: ObservableObject {
     static let itemsKey = "zPatchCustomItems_v3"
     static let enabledKey = "zPatchCustomEnabled"
     static let pendingApplyKey = "zPatchPendingApply"
+    static let containerMapKey = "zPatchContainerMap_v1"
 
     @Published var patches: [zPatchItem] = []
     @Published var isTweakEnabled: Bool = false {
@@ -235,6 +127,8 @@ final class zPatchStore: ObservableObject {
         }
     }
 
+    private let mapLock = NSLock()
+    private var containerMap: [String: String] = [:]
     private var hasLoaded = false
 
     init() {
@@ -250,6 +144,13 @@ final class zPatchStore: ObservableObject {
         let ud = UserDefaults.standard
         isTweakEnabled = ud.bool(forKey: Self.enabledKey)
         pendingApply = ud.bool(forKey: Self.pendingApplyKey)
+
+        if let savedMap = ud.dictionary(forKey: Self.containerMapKey) as? [String: String] {
+            mapLock.lock()
+            containerMap = savedMap
+            mapLock.unlock()
+        }
+
         if let data = ud.data(forKey: Self.itemsKey),
            let decoded = try? JSONDecoder().decode([zPatchItem].self, from: data) {
             patches = decoded
@@ -257,6 +158,55 @@ final class zPatchStore: ObservableObject {
             patches = []
         }
         hasLoaded = true
+    }
+
+    /// Gọi từ AppListView khi danh sách app đã load xong để lưu cache bundleID -> Container UUID
+    func updateContainerCache(from appsInfo: [String: [String: Any]]) {
+        var updated: [String: String] = [:]
+        for (bid, info) in appsInfo {
+            if let raw = info["Container"] as? String, !raw.isEmpty {
+                let clean = raw
+                    .replacingOccurrences(of: "file://", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let std = (clean as NSString).standardizingPath
+                if !std.isEmpty {
+                    updated[bid.lowercased()] = std
+                }
+            }
+        }
+        guard !updated.isEmpty else { return }
+
+        mapLock.lock()
+        for (k, v) in updated {
+            containerMap[k] = v
+        }
+        let snapshot = containerMap
+        mapLock.unlock()
+
+        UserDefaults.standard.set(snapshot, forKey: Self.containerMapKey)
+    }
+
+    func registerContainer(bundleID: String, containerPath: String) {
+        let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
+        let clean = containerPath
+            .replacingOccurrences(of: "file://", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !clean.isEmpty else { return }
+
+        mapLock.lock()
+        containerMap[key] = (clean as NSString).standardizingPath
+        let snapshot = containerMap
+        mapLock.unlock()
+
+        UserDefaults.standard.set(snapshot, forKey: Self.containerMapKey)
+    }
+
+    func cachedContainer(for bundleID: String) -> String? {
+        let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
+        mapLock.lock()
+        let val = containerMap[key]
+        mapLock.unlock()
+        return val
     }
 
     func setTweakEnabledImmediate(_ enabled: Bool) {
@@ -279,8 +229,45 @@ final class zPatchStore: ObservableObject {
         return backupDir.appendingPathComponent(name.isEmpty ? "target.bin" : name)
     }
 
+    private func isResolvedContainerPath(_ path: String, bundleID: String) -> Bool {
+        let cleanBundle = zPatchItem.normalizedBundleID(bundleID)
+        if cleanBundle.hasPrefix("/") { return true }
+        return !path.contains("/\(cleanBundle)/")
+    }
+
+    private func grantAccessSafely(_ targetPath: String, bundleID: String) -> (Bool, [String], String) {
+        guard isResolvedContainerPath(targetPath, bundleID: bundleID) else {
+            return (false, [], "Chưa có UUID container cho \(bundleID). Hãy mở danh sách App trong app một lần để nạp UUID.")
+        }
+
+        var granted: [String] = []
+        let (okFile, _, errFile) = wq.grantAccess(path: targetPath, requireWrite: false)
+        if okFile {
+            granted.append(targetPath)
+            return (true, granted, "OK")
+        }
+
+        let parent = (targetPath as NSString).deletingLastPathComponent
+        if !parent.isEmpty && parent != "/" {
+            let (okParent, _, errParent) = wq.grantAccess(path: parent, requireWrite: false)
+            if okParent {
+                granted.append(parent)
+                return (true, granted, "OK")
+            }
+            return (false, granted, errParent)
+        }
+
+        return (false, granted, errFile)
+    }
+
+    private func releaseAccessSafely(_ paths: [String]) {
+        for p in paths {
+            wq.releaseAccess(path: p)
+        }
+    }
+
     func saveNewPatch(bundleID: String, relativeDestPath: String, sourcePath: String, onLog: ((String) -> Void)? = nil) {
-        let item = zPatchItem(
+        var item = zPatchItem(
             bundleID: bundleID,
             relativeDestPath: relativeDestPath,
             sourcePath: sourcePath,
@@ -288,41 +275,21 @@ final class zPatchStore: ObservableObject {
             isEnabled: true,
             pendingRevert: false
         )
+        let resolved = item.resolveDestinationPath()
+        item.cachedDestinationPath = resolved
 
         patches.append(item)
         savePatches()
-
-        let itemID = item.id
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self else { return }
-            let targetPath = item.resolveDestinationPathOnBackground()
-            DispatchQueue.main.async {
-                guard let idx = self.patches.firstIndex(where: { $0.id == itemID }) else { return }
-                self.patches[idx].cachedDestinationPath = targetPath
-                self.savePatches()
-                onLog?("[zPatch] Đã tự quét đích: \(targetPath)")
-            }
-        }
+        onLog?("[zPatch] Đã lưu patch: \(resolved)")
     }
 
     func updatePatch(_ patch: zPatchItem) {
         if let idx = patches.firstIndex(where: { $0.id == patch.id }) {
             var updated = patch
             updated.cachedDestinationPath = nil
+            updated.cachedDestinationPath = updated.resolveDestinationPath()
             patches[idx] = updated
             savePatches()
-
-            let itemID = updated.id
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                guard let self else { return }
-                let resolved = updated.resolveDestinationPathOnBackground()
-                DispatchQueue.main.async {
-                    if let currentIdx = self.patches.firstIndex(where: { $0.id == itemID }) {
-                        self.patches[currentIdx].cachedDestinationPath = resolved
-                        self.savePatches()
-                    }
-                }
-            }
         }
     }
 
@@ -376,47 +343,64 @@ final class zPatchStore: ObservableObject {
             return
         }
 
+        let fm = FileManager.default
         for idx in snapshot.indices {
-            let targetPath = snapshot[idx].resolveDestinationPathOnBackground()
+            let targetPath = snapshot[idx].resolveDestinationPath()
             snapshot[idx].cachedDestinationPath = targetPath
             let targetURL = URL(fileURLWithPath: targetPath)
 
             if snapshot[idx].pendingRevert {
-                guard let backupPath = snapshot[idx].backupPath,
-                      FileManager.default.fileExists(atPath: backupPath) else {
+                guard let backupPath = snapshot[idx].backupPath, fm.fileExists(atPath: backupPath) else {
                     onLog("[zPatch] Thiếu file backup để revert: \(targetPath)")
                     snapshot[idx].pendingRevert = false
                     continue
                 }
 
-                let backupData = try Data(contentsOf: URL(fileURLWithPath: backupPath))
-                let (ok, writeErr) = overwriteFileDirectly(backupData, to: targetURL)
-                if ok {
+                let (granted, usedPaths, grantMsg) = grantAccessSafely(targetPath, bundleID: snapshot[idx].bundleID)
+                defer { releaseAccessSafely(usedPaths) }
+                if !granted {
+                    onLog("[zPatch] Cảnh báo quyền (\(targetPath)): \(grantMsg)")
+                }
+
+                do {
+                    let backupData = try Data(contentsOf: URL(fileURLWithPath: backupPath))
+                    try overwriteDirectly(backupData, to: targetURL)
                     snapshot[idx].pendingRevert = false
-                    onLog("[zPatch] Đã ghi đè revert: \(targetPath)")
-                } else {
-                    onLog("[zPatch] Revert ghi đè lỗi: \(writeErr)")
+                    onLog("[zPatch] Đã revert: \(targetPath)")
+                } catch {
+                    onLog("[zPatch] Revert lỗi: \(error.localizedDescription)")
                 }
                 continue
             }
 
             if enabledSnapshot && snapshot[idx].isEnabled {
-                let bURL = backupFileURL(for: snapshot[idx], targetPath: targetPath)
-                if (!snapshot[idx].hasInitialBackup || snapshot[idx].backupPath == nil),
-                   FileManager.default.fileExists(atPath: targetPath),
-                   let ogData = try? Data(contentsOf: targetURL) {
-                    try? FileManager.default.createDirectory(at: bURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try? ogData.write(to: bURL, options: .atomic)
-                    snapshot[idx].backupPath = bURL.path
-                    snapshot[idx].hasInitialBackup = true
+                guard fm.fileExists(atPath: snapshot[idx].sourcePath) else {
+                    onLog("[zPatch] File nguồn không tồn tại: \(snapshot[idx].sourcePath)")
+                    continue
                 }
 
-                let sourceData = try Data(contentsOf: URL(fileURLWithPath: snapshot[idx].sourcePath))
-                let (ok, writeErr) = overwriteFileDirectly(sourceData, to: targetURL)
-                if ok {
-                    onLog("[zPatch] Đã ghi đè patch: \(targetPath)")
-                } else {
-                    onLog("[zPatch] Apply ghi đè lỗi: \(writeErr)")
+                let (granted, usedPaths, grantMsg) = grantAccessSafely(targetPath, bundleID: snapshot[idx].bundleID)
+                defer { releaseAccessSafely(usedPaths) }
+                if !granted {
+                    onLog("[zPatch] Cảnh báo quyền (\(targetPath)): \(grantMsg)")
+                }
+
+                do {
+                    let bURL = backupFileURL(for: snapshot[idx], targetPath: targetPath)
+                    if (!snapshot[idx].hasInitialBackup || snapshot[idx].backupPath == nil),
+                       fm.fileExists(atPath: targetPath),
+                       let ogData = try? Data(contentsOf: targetURL) {
+                        try? fm.createDirectory(at: bURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        try? ogData.write(to: bURL)
+                        snapshot[idx].backupPath = bURL.path
+                        snapshot[idx].hasInitialBackup = true
+                    }
+
+                    let sourceData = try Data(contentsOf: URL(fileURLWithPath: snapshot[idx].sourcePath))
+                    try overwriteDirectly(sourceData, to: targetURL)
+                    onLog("[zPatch] Đã ghi đè thành công: \(targetPath)")
+                } catch {
+                    onLog("[zPatch] Ghi đè thất bại (\(targetPath)): \(error.localizedDescription)")
                 }
             }
         }
@@ -432,61 +416,52 @@ final class zPatchStore: ObservableObject {
         }
     }
 
-    private func overwriteFileDirectly(_ data: Data, to url: URL) -> (Bool, String) {
+    private func overwriteDirectly(_ data: Data, to url: URL) throws {
         let path = url.path
         let fm = FileManager.default
 
         if !fm.fileExists(atPath: path) {
-            try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let createdFd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
             if createdFd >= 0 {
                 defer { close(createdFd) }
-                let ok = writeAllBytes(data, toFd: createdFd)
-                if ok {
-                    fsync(createdFd)
-                    return (true, "OK")
-                }
+                try writeAll(data, fd: createdFd)
+                fsync(createdFd)
+                return
             }
-            if fm.createFile(atPath: path, contents: data) {
-                return (true, "OK")
-            }
-            return (false, "Không tạo được file mới tại \(path) (errno=\(errno): \(String(cString: strerror(errno))))")
+            try data.write(to: url, options: .noFileProtection)
+            return
         }
 
         let fd = open(path, O_WRONLY)
         if fd >= 0 {
             defer { close(fd) }
-            guard writeAllBytes(data, toFd: fd) else {
-                return (false, "pwrite lỗi tại \(path) (errno=\(errno): \(String(cString: strerror(errno))))")
-            }
+            try writeAll(data, fd: fd)
             if ftruncate(fd, off_t(data.count)) != 0 {
-                return (false, "ftruncate lỗi tại \(path) (errno=\(errno): \(String(cString: strerror(errno))))")
+                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [
+                    NSLocalizedDescriptionKey: "ftruncate lỗi: \(String(cString: strerror(errno)))"
+                ])
             }
             fsync(fd)
-            return (true, "OK")
+            return
         }
 
-        let openErr = String(cString: strerror(errno))
-        do {
-            try data.write(to: url, options: .noFileProtection)
-            return (true, "OK")
-        } catch {
-            return (false, "open(\(path)) lỗi: \(openErr) | write lỗi: \(error.localizedDescription)")
-        }
+        try data.write(to: url, options: .noFileProtection)
     }
 
-    private func writeAllBytes(_ data: Data, toFd fd: Int32) -> Bool {
-        return data.withUnsafeBytes { rawBuf -> Bool in
-            guard let base = rawBuf.baseAddress else { return data.isEmpty }
+    private func writeAll(_ data: Data, fd: Int32) throws {
+        try data.withUnsafeBytes { rawBuf in
+            guard let base = rawBuf.baseAddress else { return }
             var offset = 0
             while offset < rawBuf.count {
                 let written = pwrite(fd, base.advanced(by: offset), rawBuf.count - offset, off_t(offset))
                 if written <= 0 {
-                    return false
+                    throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [
+                        NSLocalizedDescriptionKey: "pwrite lỗi: \(String(cString: strerror(errno)))"
+                    ])
                 }
                 offset += written
             }
-            return true
         }
     }
 
