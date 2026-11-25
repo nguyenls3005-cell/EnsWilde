@@ -16,9 +16,6 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
-    private static let cacheLock = NSLock()
-    private static var containerCache: [String: String] = [:]
-
     static func normalizedBundleID(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.caseInsensitiveCompare("con.lemon.lvoverseas") == .orderedSame {
@@ -28,13 +25,18 @@ struct zPatchItem: Identifiable, Codable {
     }
 
     var fastPreviewPath: String {
-        if let cached = cachedDestinationPath, !cached.isEmpty {
-            return cached
-        }
+        resolveDestinationPath()
+    }
+
+    func resolveDestinationPath() -> String {
         let cleanBundle = Self.normalizedBundleID(bundleID)
         let cleanRel = relativeDestPath.hasPrefix("/")
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
+
+        if let cached = cachedDestinationPath, !cached.isEmpty {
+            return cached
+        }
 
         if let mapped = zPatchStore.shared.cachedContainer(for: cleanBundle), !mapped.isEmpty {
             return cleanRel.isEmpty ? mapped : (mapped as NSString).appendingPathComponent(cleanRel)
@@ -46,112 +48,6 @@ struct zPatchItem: Identifiable, Codable {
 
         let baseRoot = Self.baseContainerPrefix + cleanBundle
         return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
-    }
-
-    static func resolveContainerRoot(for rawBundleID: String) -> String? {
-        let bid = normalizedBundleID(rawBundleID)
-        guard !bid.isEmpty else { return nil }
-
-        if let saved = zPatchStore.shared.cachedContainer(for: bid), !saved.isEmpty {
-            return saved
-        }
-
-        let key = bid.lowercased()
-        cacheLock.lock()
-        if let hit = containerCache[key], !hit.isEmpty {
-            cacheLock.unlock()
-            return hit
-        }
-        cacheLock.unlock()
-
-        if bid.hasPrefix("/") {
-            let priv = bid.hasPrefix("/private/") ? bid : "/private" + bid
-            let chosen = FileManager.default.fileExists(atPath: priv) ? priv : bid
-            return chosen
-        }
-
-        if bid.hasPrefix("group."),
-           let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: bid) {
-            return groupURL.path
-        }
-
-        var found: String? = nil
-
-        autoreleasepool {
-            if let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: Any] {
-                var batch: [String: String] = [:]
-                for (k, v) in allApps {
-                    if let dict = v as? [String: Any],
-                       let rawContainer = dict["Container"] as? String,
-                       !rawContainer.isEmpty {
-                        let clean = rawContainer
-                            .replacingOccurrences(of: "file://", with: "")
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        let std = (clean as NSString).standardizingPath
-                        batch[k.lowercased()] = std
-                    }
-                }
-                if !batch.isEmpty {
-                    zPatchStore.shared.updateContainerCache(from: allApps.compactMapValues { $0 as? [String: Any] })
-                    found = batch[key]
-                }
-            }
-
-            if found == nil {
-                let (_, fastHit) = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid)
-                if let fastHit, !fastHit.isEmpty, FileManager.default.fileExists(atPath: fastHit) {
-                    found = fastHit
-                }
-            }
-
-            if found == nil {
-                let fm = FileManager.default
-                let roots = [
-                    "/private/var/mobile/Containers/Data/Application",
-                    "/var/mobile/Containers/Data/Application"
-                ]
-                for root in roots where found == nil {
-                    guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }
-                    for entry in entries.prefix(120) {
-                        let dir = (root as NSString).appendingPathComponent(entry)
-                        let meta = (dir as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
-                        if fm.fileExists(atPath: meta),
-                           let data = try? Data(contentsOf: URL(fileURLWithPath: meta)),
-                           let text = String(data: data, encoding: .utf8),
-                           text.contains(bid) {
-                            found = dir
-                            break
-                        }
-                    }
-                }
-            }
-        }
-
-        if let found, !found.isEmpty {
-            cacheLock.lock()
-            containerCache[key] = found
-            cacheLock.unlock()
-            zPatchStore.shared.registerContainer(bundleID: bid, containerPath: found)
-        }
-
-        return found
-    }
-
-    func resolveDestinationPath() -> String {
-        let cleanBundle = Self.normalizedBundleID(bundleID)
-        let cleanRel = relativeDestPath.hasPrefix("/")
-            ? String(relativeDestPath.dropFirst())
-            : relativeDestPath
-
-        let root: String
-        if let found = Self.resolveContainerRoot(for: cleanBundle) {
-            root = found
-        } else {
-            root = Self.baseContainerPrefix + cleanBundle
-        }
-
-        if cleanRel.isEmpty { return root }
-        return (root as NSString).appendingPathComponent(cleanRel)
     }
 
     init(
@@ -300,29 +196,44 @@ final class zPatchStore: ObservableObject {
     }
 
     func saveNewPatch(bundleID: String, relativeDestPath: String, sourcePath: String, onLog: ((String) -> Void)? = nil) {
-        var item = zPatchItem(
-            bundleID: bundleID,
-            relativeDestPath: relativeDestPath,
-            sourcePath: sourcePath,
-            hasInitialBackup: false,
-            isEnabled: true,
-            pendingRevert: false
-        )
-        let resolved = item.resolveDestinationPath()
-        item.cachedDestinationPath = resolved
+        let work = {
+            var item = zPatchItem(
+                bundleID: bundleID,
+                relativeDestPath: relativeDestPath,
+                sourcePath: sourcePath,
+                hasInitialBackup: false,
+                isEnabled: true,
+                pendingRevert: false
+            )
+            let resolved = item.resolveDestinationPath()
+            item.cachedDestinationPath = resolved
 
-        patches.append(item)
-        savePatches()
-        onLog?("[zPatch] Đã thêm: \(resolved)")
+            self.patches.append(item)
+            self.savePatches()
+            onLog?("[zPatch] Đã thêm: \(resolved)")
+        }
+
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
     }
 
     func updatePatch(_ patch: zPatchItem) {
-        if let idx = patches.firstIndex(where: { $0.id == patch.id }) {
-            var updated = patch
-            updated.cachedDestinationPath = nil
-            updated.cachedDestinationPath = updated.resolveDestinationPath()
-            patches[idx] = updated
-            savePatches()
+        let work = {
+            if let idx = self.patches.firstIndex(where: { $0.id == patch.id }) {
+                var updated = patch
+                updated.cachedDestinationPath = nil
+                updated.cachedDestinationPath = updated.resolveDestinationPath()
+                self.patches[idx] = updated
+                self.savePatches()
+            }
+        }
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.async(execute: work)
         }
     }
 
