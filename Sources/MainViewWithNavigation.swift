@@ -18,8 +18,20 @@ struct MainViewWithNavigation: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            NavigationStack { ContentView(themeStore: themeStore, toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, featureFlagsStore: featureFlagsStore) }
-                .tabItem { Label(L("nav_home"), systemImage: "house.fill") }.tag(NavigationTab.home)
+            NavigationStack {
+                ContentView(
+                    themeStore: themeStore,
+                    toolStore: toolStore,
+                    toolRunner: toolRunner,
+                    walletStore: walletStore,
+                    featureFlagsStore: featureFlagsStore,
+                    onNavigateToApply: {
+                        showApplyTab = true
+                        selectedTab = .apply
+                    }
+                )
+            }
+            .tabItem { Label(L("nav_home"), systemImage: "house.fill") }.tag(NavigationTab.home)
 
             NavigationStack { ThemeStoreView(themeStore: themeStore) }
                 .tabItem { Label(L("nav_theme_store"), systemImage: "square.grid.2x2.fill") }.tag(NavigationTab.themeStore)
@@ -32,7 +44,7 @@ struct MainViewWithNavigation: View {
 
             if showApplyTab {
                 ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
-                .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }.tag(NavigationTab.apply)
+                    .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }.tag(NavigationTab.apply)
             }
         }
         .tint(Color(hex: userTintColorHex))
@@ -60,6 +72,7 @@ struct ApplyTabView: View {
     @ObservedObject var walletStore: AppleWalletStore
     @ObservedObject var themeStore: PasscodeThemeStore
     @ObservedObject var featureFlagsStore: FeatureFlagsStore
+    @ObservedObject private var patchStore = zPatchStore.shared
 
     @AppStorage("EnsWilde.userTintColor") private var userTintColorHex: String = "#ef9f76"
     @AppStorage("manualCacheEditorEnabled") private var manualCacheEditorEnabled: Bool = false
@@ -80,10 +93,11 @@ struct ApplyTabView: View {
         if themeStore.passcodeThemeEnabled { list.append((L("tool_passcode_theme"), "lock.rectangle")) }
         if walletStore.appleWalletEnabled { list.append((L("tool_apple_wallet"), "wallet.pass")) }
         if toolStore.replaceMobileGestaltEnabled { list.append((L("tool_mobile_gestalt"), "cpu")) }
-        
         if manualCacheEditorEnabled { list.append((L("manual_editor_title"), "pencil.and.list.clipboard")) }
-        
         if toolStore.configTweaksEnabled { list.append((L("tool_config_tweaks"), "textformat")) }
+        if patchStore.isTweakEnabled || patchStore.patches.contains(where: { $0.pendingRevert }) {
+            list.append((L("tool_zpatch_custom"), "wrench.and.screwdriver"))
+        }
         return list
     }
 
@@ -140,6 +154,9 @@ struct ApplyTabView: View {
                 }
             }
             .navigationTitle(L("nav_apply"))
+            .onAppear {
+                patchStore.reloadFromStorage()
+            }
         }
         .alert(L("alert_error"), isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
@@ -166,6 +183,7 @@ struct ApplyTabView: View {
             )
 
             await MainActor.run {
+                patchStore.reloadFromStorage()
                 if case .failed(let msg) = toolRunner.state {
                     lastError = msg
                     statusLogs.append("❌ \(L("alert_error")): \(msg)")
