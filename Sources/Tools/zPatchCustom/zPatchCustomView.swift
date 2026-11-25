@@ -6,7 +6,7 @@ struct zPatchCustomView: View {
     @ObservedObject private var patchStore = zPatchStore.shared
     var onNavigateToApply: (() -> Void)? = nil
 
-    @State private var draftEnabled: Bool = false
+    @State private var draftEnabled: Bool = UserDefaults.standard.bool(forKey: zPatchStore.enabledKey)
 
     @State private var showAddSheet = false
     @State private var newBundleID: String = ""
@@ -22,7 +22,7 @@ struct zPatchCustomView: View {
 
     var body: some View {
         Form {
-            Section(header: Text(L("tool_zpatch_custom"))) {
+            Section(header: Text("zPatch Custom")) {
                 Toggle(L("enable_tweak"), isOn: $draftEnabled)
 
                 Button {
@@ -55,20 +55,16 @@ struct zPatchCustomView: View {
             }
 
             Section(header: Text(L("section_info"))) {
-                Text("Bật/tắt Enable Tweak rồi bấm Save Change để lưu trạng thái và qua tab Apply. Nếu chưa bấm Save Change, thoát ra sẽ quay về trạng thái đã lưu trước đó.")
+                Text("Bật/tắt Enable Tweak rồi bấm Save Change để lưu trạng thái và qua tab Apply.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
         .headerProminence(.increased)
-        .navigationTitle(L("tool_zpatch_custom"))
+        .navigationTitle("zPatch Custom")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            patchStore.reloadFromStorage()
-            draftEnabled = patchStore.isTweakEnabled
-        }
-        .onDisappear {
-            // Nếu thoát ra mà chưa bấm Save Change thì reset draft về trạng thái đã lưu thật sự
+        .task {
+            patchStore.ensureLoaded()
             draftEnabled = patchStore.isTweakEnabled
         }
         .sheet(isPresented: $showAddSheet) {
@@ -107,7 +103,7 @@ struct zPatchCustomView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
-                    Text("→ \(patch.fullDestinationPath)")
+                    Text("→ \(patch.fastPreviewPath)")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -173,11 +169,9 @@ struct zPatchCustomView: View {
                         .autocorrectionDisabled()
 
                     if !newBundleID.isEmpty || !newRelativeDest.isEmpty {
-                        let preview = zPatchItem(
-                            bundleID: newBundleID,
-                            relativeDestPath: newRelativeDest,
-                            sourcePath: newSourcePath
-                        ).fullDestinationPath
+                        let cleanBundle = newBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let cleanRel = newRelativeDest.hasPrefix("/") ? String(newRelativeDest.dropFirst()) : newRelativeDest
+                        let preview = (zPatchItem.baseContainerPrefix + cleanBundle as NSString).appendingPathComponent(cleanRel)
                         Text(preview)
                             .font(.caption)
                             .foregroundStyle(.secondary)
