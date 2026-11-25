@@ -1,0 +1,48 @@
+workflows:
+  ios-unsigned-ipa:
+    name: iOS Build Unsigned IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      vars:
+        XCODE_PROJECT: "EnsWilde.xcodeproj"
+        XCODE_SCHEME: "EnsWilde"
+      xcode: latest
+    scripts:
+      - name: Build archive (unsigned)
+        script: |
+          set -e
+          rm -rf build
+          mkdir -p build/artifacts build/unpacked build/unsigned_ipa/Payload
+
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "build/artifacts/App.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+
+      - name: Unpack and pack unsigned IPA
+        script: |
+          set -e
+          APP_SRC=$(find "build/artifacts/App.xcarchive/Products/Applications" -maxdepth 1 -name "*.app" | head -n 1)
+          test -n "$APP_SRC"
+
+          # Giải nén/copy .app ra thư mục làm việc
+          ditto "$APP_SRC" "build/unpacked/$(basename "$APP_SRC")"
+          UNPACKED_APP="build/unpacked/$(basename "$APP_SRC")"
+
+          # Đóng gói thành file .ipa unsigned
+          cp -R "$UNPACKED_APP" "build/unsigned_ipa/Payload/"
+          (cd build/unsigned_ipa && zip -qry "../artifacts/EnsWilde-Unsigned.ipa" Payload)
+
+          ls -lh build/artifacts/EnsWilde-Unsigned.ipa
+
+    artifacts:
+      - build/artifacts/*.ipa
+      - build/artifacts/*.xcarchive
+      - /tmp/xcodebuild_logs/*.log
