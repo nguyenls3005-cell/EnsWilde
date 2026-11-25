@@ -334,7 +334,6 @@ final class zPatchStore: ObservableObject {
         pendingApply = true
     }
 
-    /// Lưu trạng thái toggle & danh sách patch nhưng KHÔNG tự chuyển tab
     func saveChange(enableTweak: Bool) {
         setTweakEnabledImmediate(enableTweak)
         savePatches()
