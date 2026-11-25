@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import UIKit
 
 struct zPatchCustomView: View {
-    @StateObject private var patchStore = zPatchStore()
+    @ObservedObject private var patchStore = zPatchStore.shared
     var onNavigateToApply: (() -> Void)? = nil
 
     @State private var draftEnabled: Bool = false
@@ -28,7 +28,9 @@ struct zPatchCustomView: View {
                 Button {
                     patchStore.saveChange(enableTweak: draftEnabled)
                     UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-                    popupMessage = "Đã lưu thay đổi. Hãy qua tab Apply để áp dụng."
+                    popupMessage = draftEnabled
+                        ? "Đã bật và lưu thay đổi. Hãy qua tab Apply để áp dụng."
+                        : "Đã tắt và lưu thay đổi. Hãy qua tab Apply để áp dụng."
                     showSavedPopup = true
                 } label: {
                     HStack {
@@ -53,7 +55,7 @@ struct zPatchCustomView: View {
             }
 
             Section(header: Text(L("section_info"))) {
-                Text("Tiền tố mặc định: /var/mobile/Containers/Data/Application/. Nhập Bundle ID và đường dẫn file đích, chọn file nguồn, bấm Save Patch để backup lần đầu, bấm Save Change rồi qua tab Apply.")
+                Text("Bật/tắt Enable Tweak rồi bấm Save Change để lưu trạng thái và qua tab Apply. Nếu chưa bấm Save Change, thoát ra sẽ quay về trạng thái đã lưu trước đó.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -62,6 +64,11 @@ struct zPatchCustomView: View {
         .navigationTitle(L("tool_zpatch_custom"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            patchStore.reloadFromStorage()
+            draftEnabled = patchStore.isTweakEnabled
+        }
+        .onDisappear {
+            // Nếu thoát ra mà chưa bấm Save Change thì reset draft về trạng thái đã lưu thật sự
             draftEnabled = patchStore.isTweakEnabled
         }
         .sheet(isPresented: $showAddSheet) {
@@ -69,9 +76,7 @@ struct zPatchCustomView: View {
         }
         .alert("Thông báo", isPresented: $showSavedPopup) {
             Button("OK") {
-                if !popupMessage.contains("Revert") {
-                    onNavigateToApply?()
-                }
+                onNavigateToApply?()
             }
         } message: {
             Text(popupMessage)
