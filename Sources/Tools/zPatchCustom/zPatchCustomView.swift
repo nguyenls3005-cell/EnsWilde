@@ -4,6 +4,8 @@ import UIKit
 
 struct zPatchCustomView: View {
     @StateObject private var patchStore = zPatchStore()
+    var onNavigateToApply: (() -> Void)? = nil
+
     @State private var draftEnabled: Bool = false
 
     @State private var showAddSheet = false
@@ -25,6 +27,7 @@ struct zPatchCustomView: View {
 
                 Button {
                     patchStore.saveChange(enableTweak: draftEnabled)
+                    UserDefaults.standard.set(true, forKey: "ShowApplyTab")
                     popupMessage = "Đã lưu thay đổi. Hãy qua tab Apply để áp dụng."
                     showSavedPopup = true
                 } label: {
@@ -65,7 +68,11 @@ struct zPatchCustomView: View {
             addPatchSheet
         }
         .alert("Thông báo", isPresented: $showSavedPopup) {
-            Button("OK") {}
+            Button("OK") {
+                if !popupMessage.contains("Revert") {
+                    onNavigateToApply?()
+                }
+            }
         } message: {
             Text(popupMessage)
         }
