@@ -96,7 +96,7 @@ struct ApplyTabView: View {
         if manualCacheEditorEnabled { list.append((L("manual_editor_title"), "pencil.and.list.clipboard")) }
         if toolStore.configTweaksEnabled { list.append((L("tool_config_tweaks"), "textformat")) }
         if patchStore.isTweakEnabled || patchStore.patches.contains(where: { $0.pendingRevert }) {
-            list.append((L("tool_zpatch_custom"), "wrench.and.screwdriver"))
+            list.append(("zPatch Custom", "wrench.and.screwdriver"))
         }
         return list
     }
