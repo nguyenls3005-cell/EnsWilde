@@ -16,6 +16,10 @@ struct zPatchItem: Identifiable, Codable {
 
     static let baseContainerPrefix = "/var/mobile/Containers/Data/Application/"
 
+    private static var containerCacheLock = NSLock()
+    private static var containerPathCache: [String: String] = [:]
+    private static var didLoadAllAppsCache = false
+
     var fastPreviewPath: String {
         if let cached = cachedDestinationPath, !cached.isEmpty {
             return cached
@@ -36,6 +40,28 @@ struct zPatchItem: Identifiable, Codable {
         return cleanRel.isEmpty ? baseRoot : (baseRoot as NSString).appendingPathComponent(cleanRel)
     }
 
+    private static func preloadAppsContainerCacheIfNeeded() {
+        containerCacheLock.lock()
+        defer { containerCacheLock.unlock() }
+        guard !didLoadAllAppsCache else { return }
+        didLoadAllAppsCache = true
+
+        guard let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: [String: Any]] else {
+            return
+        }
+        for (bid, info) in allApps {
+            if let rawContainer = info["Container"] as? String, !rawContainer.isEmpty {
+                let clean = rawContainer
+                    .replacingOccurrences(of: "file://", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let std = (clean as NSString).standardizingPath
+                let priv = std.hasPrefix("/private/") ? std : "/private" + std
+                let resolved = FileManager.default.fileExists(atPath: priv) ? priv : std
+                containerPathCache[bid.lowercased()] = resolved
+            }
+        }
+    }
+
     private func findRealContainerPath(for bundleID: String) -> String? {
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -45,83 +71,35 @@ struct zPatchItem: Identifiable, Codable {
             return groupURL.path
         }
 
-        // 1. Ưu tiên lấy trực tiếp Container UUID từ JITEnableContext.getAllAppsInfo()
-        if let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: [String: Any]] {
-            let matchedEntry = allApps[trimmed] ?? allApps.first {
-                $0.key.caseInsensitiveCompare(trimmed) == .orderedSame
-            }?.value
+        Self.preloadAppsContainerCacheIfNeeded()
 
-            if let appInfo = matchedEntry,
-               let rawContainer = appInfo["Container"] as? String,
-               !rawContainer.isEmpty {
-                let cleanContainer = rawContainer
-                    .replacingOccurrences(of: "file://", with: "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let stdPath = (cleanContainer as NSString).standardizingPath
-                if FileManager.default.fileExists(atPath: stdPath) {
-                    return stdPath
-                }
-                let privateAlt = stdPath.hasPrefix("/private/") ? stdPath : "/private" + stdPath
-                if FileManager.default.fileExists(atPath: privateAlt) {
-                    return privateAlt
-                }
-                return stdPath
-            }
+        Self.containerCacheLock.lock()
+        let cached = Self.containerPathCache[trimmed.lowercased()]
+        Self.containerCacheLock.unlock()
+
+        if let cached, !cached.isEmpty {
+            return cached
         }
 
-        // 2. Fallback qua CSStoreEngine
         let (_, fastHit) = CSStoreEngine.shared.lookupAppContainer(forBundleID: trimmed)
         if let fastHit, !fastHit.isEmpty, FileManager.default.fileExists(atPath: fastHit) {
             return fastHit
         }
 
-        // 3. Fallback qua fsHandlers
         fsHandlers.invalidateCache()
         let viaHandler = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: trimmed)
         if !viaHandler.isEmpty && FileManager.default.fileExists(atPath: viaHandler) {
             return viaHandler
         }
 
-        // 4. Quét trực tiếp thư mục container nếu có quyền đọc danh sách
-        let roots = [
-            "/private/var/mobile/Containers/Data/Application",
-            "/var/mobile/Containers/Data/Application",
-            "/private/var/mobile/Containers/Shared/AppGroup",
-            "/var/mobile/Containers/Shared/AppGroup"
-        ]
-        let fm = FileManager.default
-
-        for root in roots {
-            guard let entries = try? fm.contentsOfDirectory(atPath: root) else { continue }
-            for entry in entries {
-                let fullDir = (root as NSString).appendingPathComponent(entry)
-                var isDir: ObjCBool = false
-                guard fm.fileExists(atPath: fullDir, isDirectory: &isDir), isDir.boolValue else { continue }
-
-                if let xbid = getBIDFromXattr(URL(fileURLWithPath: fullDir)),
-                   xbid.caseInsensitiveCompare(trimmed) == .orderedSame {
-                    return fullDir
-                }
-
-                let metaPath = (fullDir as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
-                if fm.fileExists(atPath: metaPath),
-                   let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
-                   let text = String(data: data, encoding: .utf8),
-                   text.contains(trimmed) {
-                    return fullDir
-                }
-
-                let prefPath = (fullDir as NSString).appendingPathComponent("Library/Preferences/\(trimmed).plist")
-                if fm.fileExists(atPath: prefPath) {
-                    return fullDir
-                }
-            }
-        }
-
         return nil
     }
 
     func resolveDestinationPathOnBackground() -> String {
+        if let cached = cachedDestinationPath, !cached.isEmpty, FileManager.default.fileExists(atPath: cached) {
+            return cached
+        }
+
         var cleanBundle = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleanBundle == "con.lemon.lvoverseas" {
             cleanBundle = "com.lemon.lvoverseas"
@@ -242,7 +220,6 @@ final class zPatchStore: ObservableObject {
         var grantedPaths: [String] = []
         var lastErr = ""
 
-        // 1. Xin quyền trực tiếp trên file đích để ghi đè
         let (okDirect, _, errDirect) = wq.grantAccess(path: targetPath, requireWrite: false)
         if okDirect {
             grantedPaths.append(targetPath)
@@ -250,7 +227,6 @@ final class zPatchStore: ObservableObject {
         }
         lastErr = errDirect
 
-        // 2. Xin quyền thư mục cha gần nhất
         var cur = URL(fileURLWithPath: targetPath).resolvingSymlinksInPath().path
         while !cur.isEmpty && cur != "/" {
             let parent = (cur as NSString).deletingLastPathComponent
@@ -447,7 +423,6 @@ final class zPatchStore: ObservableObject {
         pendingApply = false
     }
 
-    /// Ghi đè trực tiếp lên file đích bằng open + pwrite + ftruncate + fsync
     private func overwriteFileDirectly(_ data: Data, to url: URL) -> (Bool, String) {
         let path = url.path
         let fm = FileManager.default
