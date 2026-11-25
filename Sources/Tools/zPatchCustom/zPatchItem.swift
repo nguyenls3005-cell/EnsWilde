@@ -53,10 +53,10 @@ struct zPatchItem: Identifiable, Codable {
         }
 
         let roots = [
-            "/var/mobile/Containers/Data/Application",
             "/private/var/mobile/Containers/Data/Application",
-            "/var/mobile/Containers/Shared/AppGroup",
-            "/private/var/mobile/Containers/Shared/AppGroup"
+            "/var/mobile/Containers/Data/Application",
+            "/private/var/mobile/Containers/Shared/AppGroup",
+            "/var/mobile/Containers/Shared/AppGroup"
         ]
         let fm = FileManager.default
 
@@ -72,22 +72,17 @@ struct zPatchItem: Identifiable, Codable {
                     return fullDir
                 }
 
-                let metaCandidates = [
-                    ".com.apple.mobile_container_manager.metadata.plist",
-                    "Library/Preferences/\(trimmed).plist"
-                ]
-                for metaRel in metaCandidates {
-                    let metaPath = (fullDir as NSString).appendingPathComponent(metaRel)
-                    if fm.fileExists(atPath: metaPath) {
-                        if metaRel.hasSuffix(".plist") && !metaRel.contains("metadata") {
-                            return fullDir
-                        }
-                        if let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
-                           let text = String(data: data, encoding: .utf8),
-                           text.contains(trimmed) {
-                            return fullDir
-                        }
-                    }
+                let metaPath = (fullDir as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
+                if fm.fileExists(atPath: metaPath),
+                   let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
+                   let text = String(data: data, encoding: .utf8),
+                   text.contains(trimmed) {
+                    return fullDir
+                }
+
+                let prefPath = (fullDir as NSString).appendingPathComponent("Library/Preferences/\(trimmed).plist")
+                if fm.fileExists(atPath: prefPath) {
+                    return fullDir
                 }
             }
         }
@@ -149,25 +144,35 @@ final class zPatchStore: ObservableObject {
     static let pendingApplyKey = "zPatchPendingApply"
 
     @Published var patches: [zPatchItem] = []
-    @Published var isTweakEnabled: Bool = false
-    @Published var pendingApply: Bool = false
+    @Published var isTweakEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(isTweakEnabled, forKey: Self.enabledKey)
+            UserDefaults.standard.synchronize()
+        }
+    }
+    @Published var pendingApply: Bool = false {
+        didSet {
+            UserDefaults.standard.set(pendingApply, forKey: Self.pendingApplyKey)
+            UserDefaults.standard.synchronize()
+        }
+    }
+
     private var hasLoaded = false
 
     init() {
-        isTweakEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
-        pendingApply = UserDefaults.standard.bool(forKey: Self.pendingApplyKey)
+        reloadFromStorage()
     }
 
     func ensureLoaded() {
         guard !hasLoaded else { return }
-        hasLoaded = true
         reloadFromStorage()
     }
 
     func reloadFromStorage() {
-        isTweakEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
-        pendingApply = UserDefaults.standard.bool(forKey: Self.pendingApplyKey)
-        if let data = UserDefaults.standard.data(forKey: Self.itemsKey),
+        let ud = UserDefaults.standard
+        _isTweakEnabled = Published(initialValue: ud.bool(forKey: Self.enabledKey))
+        _pendingApply = Published(initialValue: ud.bool(forKey: Self.pendingApplyKey))
+        if let data = ud.data(forKey: Self.itemsKey),
            let decoded = try? JSONDecoder().decode([zPatchItem].self, from: data) {
             patches = decoded
         } else {
@@ -176,9 +181,16 @@ final class zPatchStore: ObservableObject {
         hasLoaded = true
     }
 
+    func setTweakEnabledImmediate(_ enabled: Bool) {
+        isTweakEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
+        UserDefaults.standard.synchronize()
+    }
+
     func savePatches() {
         if let encoded = try? JSONEncoder().encode(patches) {
             UserDefaults.standard.set(encoded, forKey: Self.itemsKey)
+            UserDefaults.standard.synchronize()
         }
     }
 
@@ -260,7 +272,7 @@ final class zPatchStore: ObservableObject {
                     onLog?("[zPatch/wq] Ghi backup lỗi: \(error.localizedDescription)")
                 }
             } else {
-                onLog?("[zPatch/wq] Chưa có file gốc để backup tại: \(targetPath) (\(errMsg))")
+                onLog?("[zPatch/wq] Target resolved: \(targetPath) (\(errMsg))")
             }
 
             DispatchQueue.main.async {
@@ -319,14 +331,14 @@ final class zPatchStore: ObservableObject {
         patches[idx].isEnabled = false
         patches[idx].pendingRevert = true
         savePatches()
-        setPendingApply(true)
+        pendingApply = true
     }
 
+    /// Lưu trạng thái toggle & danh sách patch nhưng KHÔNG tự chuyển tab
     func saveChange(enableTweak: Bool) {
-        isTweakEnabled = enableTweak
-        UserDefaults.standard.set(enableTweak, forKey: Self.enabledKey)
+        setTweakEnabledImmediate(enableTweak)
         savePatches()
-        setPendingApply(true)
+        pendingApply = true
     }
 
     func applyAllUsingWorseQuery(onLog: @escaping (String) -> Void) throws {
@@ -334,7 +346,7 @@ final class zPatchStore: ObservableObject {
         let hasPendingRevert = patches.contains { $0.pendingRevert }
         guard isTweakEnabled || hasPendingRevert else {
             onLog("[zPatch] Tweak đang tắt và không có mục chờ Revert, bỏ qua.")
-            setPendingApply(false)
+            pendingApply = false
             return
         }
 
@@ -353,9 +365,8 @@ final class zPatchStore: ObservableObject {
 
                 let (granted, usedPaths, errMsg) = grantAccessForAnySupportPath(targetPath, requireWrite: false)
                 defer { releaseGrantedPaths(usedPaths) }
-                guard granted else {
-                    onLog("[zPatch/wq] Không xin được quyền revert (\(targetPath)): \(errMsg)")
-                    continue
+                if !granted {
+                    onLog("[zPatch/wq] Cảnh báo grant (\(targetPath)): \(errMsg)")
                 }
 
                 let backupData = try Data(contentsOf: URL(fileURLWithPath: backupPath))
@@ -372,9 +383,8 @@ final class zPatchStore: ObservableObject {
             if isTweakEnabled && patches[idx].isEnabled {
                 let (granted, usedPaths, errMsg) = grantAccessForAnySupportPath(targetPath, requireWrite: false)
                 defer { releaseGrantedPaths(usedPaths) }
-                guard granted else {
-                    onLog("[zPatch/wq] Không xin được quyền (\(targetPath)): \(errMsg)")
-                    continue
+                if !granted {
+                    onLog("[zPatch/wq] Cảnh báo grant (\(targetPath)): \(errMsg)")
                 }
 
                 let bURL = backupFileURL(for: patches[idx], targetPath: targetPath)
@@ -398,7 +408,7 @@ final class zPatchStore: ObservableObject {
         }
 
         savePatches()
-        setPendingApply(false)
+        pendingApply = false
     }
 
     private func writePayload(_ data: Data, to url: URL) -> (Bool, String) {
@@ -411,11 +421,6 @@ final class zPatchStore: ObservableObject {
     }
 
     func clearPendingApply() {
-        setPendingApply(false)
-    }
-
-    private func setPendingApply(_ value: Bool) {
-        pendingApply = value
-        UserDefaults.standard.set(value, forKey: Self.pendingApplyKey)
+        pendingApply = false
     }
 }
