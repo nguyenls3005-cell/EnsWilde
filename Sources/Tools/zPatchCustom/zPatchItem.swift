@@ -24,7 +24,6 @@ struct zPatchItem: Identifiable, Codable {
             ? String(relativeDestPath.dropFirst())
             : relativeDestPath
 
-        // Hỗ trợ nếu người dùng nhập trực tiếp đường dẫn đầy đủ bắt đầu bằng /var hoặc /private/var
         if cleanBundle.hasPrefix("/var/") || cleanBundle.hasPrefix("/private/var/") {
             return cleanRel.isEmpty ? cleanBundle : (cleanBundle as NSString).appendingPathComponent(cleanRel)
         }
@@ -37,7 +36,6 @@ struct zPatchItem: Identifiable, Codable {
         let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        // Hỗ trợ App Group nếu bundleID bắt đầu bằng "group."
         if trimmed.hasPrefix("group."),
            let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: trimmed) {
             return groupURL.path
@@ -197,7 +195,6 @@ final class zPatchStore: ObservableObject {
         var grantedPaths: [String] = []
         var lastErr = ""
 
-        // 1. Thử trực tiếp targetPath
         let (okDirect, _, errDirect) = wq.grantAccess(path: targetPath, requireWrite: requireWrite)
         if okDirect {
             grantedPaths.append(targetPath)
@@ -205,7 +202,6 @@ final class zPatchStore: ObservableObject {
         }
         lastErr = errDirect
 
-        // 2. Duyệt ngược lên các thư mục cha (từ gần nhất tới gốc container) và cấp quyền từng tầng nếu cần
         var cur = URL(fileURLWithPath: targetPath).resolvingSymlinksInPath().path
         while !cur.isEmpty && cur != "/" {
             let parent = (cur as NSString).deletingLastPathComponent
