@@ -57,17 +57,18 @@ struct AppListView: View {
         if searchString.isEmpty {
             filtered = Array(apps.keys)
         } else {
+            let q = searchString.lowercased()
             filtered = apps.compactMap { key, appDetails in
-                let appName = appDetails["CFBundleName"] as? String
-                let appPath = appDetails["Path"] as? String
-                return (appName!.contains(searchString) ||
-                        appPath!.contains(searchString)) ? key : nil
+                let appName = (appDetails["CFBundleName"] as? String ?? "").lowercased()
+                let appPath = (appDetails["Path"] as? String ?? "").lowercased()
+                let bid = (appDetails["CFBundleIdentifier"] as? String ?? key).lowercased()
+                return (appName.contains(q) || appPath.contains(q) || bid.contains(q)) ? key : nil
             }
         }
         return filtered.sorted { a, b in
-            let nameA = apps[a]!["CFBundleName"] as! String
-            let nameB = apps[b]!["CFBundleName"] as! String
-            return nameA < nameB
+            let nameA = (apps[a]?["CFBundleName"] as? String) ?? a
+            let nameB = (apps[b]?["CFBundleName"] as? String) ?? b
+            return nameA.localizedCaseInsensitiveCompare(nameB) == .orderedAscending
         }
     }
 
@@ -75,8 +76,8 @@ struct AppListView: View {
         List {
             ForEach(results, id: \.self) { bundleID in
                 let appDetails = apps[bundleID]
-                let appName = (appDetails?["CFBundleName"] as? String) ?? ""
-                let appBundleID = (appDetails?["CFBundleIdentifier"] as? String) ?? ""
+                let appName = (appDetails?["CFBundleName"] as? String) ?? bundleID
+                let appBundleID = (appDetails?["CFBundleIdentifier"] as? String) ?? bundleID
                 NavigationLink {
                     if let details = appDetails {
                         AppItemView(appDetails: details)
@@ -109,9 +110,20 @@ struct AppListView: View {
         .onAppear {
             Task {
                 do {
-                    apps = try JITEnableContext.shared.getAllAppsInfo() as! [String : [String : Any]]
+                    let loaded = try await Task.detached(priority: .userInitiated) {
+                        try JITEnableContext.shared.getAllAppsInfo() as? [String : [String : Any]] ?? [:]
+                    }.value
+                    
+                    // Nạp toàn bộ bundleID -> Container UUID vào cache bền vững của zPatch
+                    zPatchStore.shared.updateContainerCache(from: loaded)
+                    
+                    await MainActor.run {
+                        apps = loaded
+                    }
                 } catch {
-                    apps = ["\(L("error_prefix").replacingOccurrences(of: "{error}", with: "\(error)"))": [:]]
+                    await MainActor.run {
+                        apps = ["\(L("error_prefix").replacingOccurrences(of: "{error}", with: "\(error)"))": [:]]
+                    }
                 }
             }
         }
@@ -123,5 +135,4 @@ struct AppListView: View {
     init() {
         apps = ["Loading": [:]]
     }
-
 }
