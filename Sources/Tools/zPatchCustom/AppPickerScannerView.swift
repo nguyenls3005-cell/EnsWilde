@@ -109,12 +109,12 @@ enum WQFileReader {
         return UIImage(data: data)
     }
 
+    // Không gọi grantAccess từng file con để tránh bị chậm khi thư mục có hàng nghìn file
     static func calculateSize(at path: String) -> Int64 {
         let normalized = normalize(path)
-        guard !normalized.isEmpty,
-              ensureAccess(at: normalized, requireWrite: false, allowFsgetpathFallback: true) else {
-            return 0
-        }
+        guard !normalized.isEmpty else { return 0 }
+
+        ensureAccess(at: normalized, requireWrite: false, allowFsgetpathFallback: true)
 
         let rootURL = URL(fileURLWithPath: normalized)
         guard let enumerator = fileManager.enumerator(
@@ -127,7 +127,6 @@ enum WQFileReader {
 
         var total: Int64 = 0
         for case let fileURL as URL in enumerator {
-            ensureAccess(at: fileURL.path, requireWrite: false, allowFsgetpathFallback: false)
             if let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
                values.isRegularFile == true,
                let size = values.fileSize {
@@ -254,21 +253,34 @@ enum WQFileReader {
         return bestImage
     }
 
-    static func collectApps(forceRefresh: Bool = false) -> AppScanReport {
+    static func collectApps(
+        forceRefresh: Bool = false,
+        onProgress: ((String) -> Void)? = nil
+    ) -> AppScanReport {
         if forceRefresh {
+            onProgress?("Xoá cache...")
             fsHandlers.invalidateCache()
         }
 
+        onProgress?("Lấy danh sách Data Containers...")
         let dataContainers = listDirectory(at: FSURL.appContainers.path, forceRefresh: forceRefresh)
+
+        onProgress?("Lấy danh sách Bundle Containers...")
         let bundleContainers = listDirectory(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
+
+        onProgress?("Đọc Info.plist các app...")
         let bundleMap = scanAppBundles(forceRefresh: forceRefresh)
 
         var entries: [ScannedAppEntry] = []
         var matchedBIDCount = 0
 
-        for rawContainer in dataContainers {
+        for (index, rawContainer) in dataContainers.enumerated() {
             let containerPath = normalize(rawContainer)
             let uuid = URL(fileURLWithPath: containerPath).lastPathComponent
+
+            if index % 10 == 0 {
+                onProgress?("Đang xử lý \(index + 1)/\(dataContainers.count)...")
+            }
 
             let resolvedBIDFromSystem = resolveBundleID(forDataContainer: containerPath)
             let resolvedBID = resolvedBIDFromSystem ?? uuid
@@ -328,6 +340,8 @@ final class AppScannerViewModel: ObservableObject {
     @Published var statusMessage: String = "Chưa quét"
     @Published var debugDetail: String = ""
 
+    private var scanTask: Task<Void, Never>?
+
     var filteredApps: [ScannedAppEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return apps }
@@ -346,10 +360,16 @@ final class AppScannerViewModel: ObservableObject {
         guard !isScanning else { return }
         isScanning = true
         statusMessage = "Đang quét..."
-        debugDetail = ""
+        debugDetail = "Khởi tạo..."
 
-        Task.detached(priority: .userInitiated) {
-            let report = WQFileReader.collectApps(forceRefresh: forceRefresh)
+        scanTask?.cancel()
+        scanTask = Task.detached(priority: .userInitiated) {
+            let report = WQFileReader.collectApps(forceRefresh: forceRefresh) { step in
+                Task { @MainActor in
+                    self.debugDetail = step
+                }
+            }
+
             await MainActor.run {
                 self.apps = report.entries
                 self.isScanning = false
