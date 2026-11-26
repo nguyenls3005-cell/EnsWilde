@@ -63,7 +63,7 @@ final class AppScannerViewModel: ObservableObject {
     }
 
     @discardableResult
-    private static func ensureReadAccess(at path: String) -> Bool {
+    nonisolated private static func ensureReadAccess(at path: String) -> Bool {
         guard !path.isEmpty else { return false }
         let fm = FileManager.default
         if fm.isReadableFile(atPath: path) {
@@ -73,8 +73,8 @@ final class AppScannerViewModel: ObservableObject {
         return ok || fm.isReadableFile(atPath: path)
     }
 
-    private static func readPlistDict(atPath path: String) -> [String: Any]? {
-        guard ensureReadAccess(atPath: path),
+    nonisolated private static func readPlistDict(atPath path: String) -> [String: Any]? {
+        guard ensureReadAccess(at: path),
               let data = FileManager.default.contents(atPath: path) else {
             return nil
         }
@@ -85,9 +85,9 @@ final class AppScannerViewModel: ObservableObject {
         )) as? [String: Any]
     }
 
-    private static func directorySize(atPath path: String) -> Int64 {
+    nonisolated private static func directorySize(atPath path: String) -> Int64 {
         guard !path.isEmpty else { return 0 }
-        _ = ensureReadAccess(atPath: path)
+        _ = ensureReadAccess(at: path)
 
         let url = URL(fileURLWithPath: path)
         let fm = FileManager.default
@@ -114,9 +114,9 @@ final class AppScannerViewModel: ObservableObject {
         return total
     }
 
-    private static func loadAppIcon(appBundlePath: String?, infoPlist: [String: Any]?) -> UIImage? {
+    nonisolated private static func loadAppIcon(appBundlePath: String?, infoPlist: [String: Any]?) -> UIImage? {
         guard let bundlePath = appBundlePath, !bundlePath.isEmpty else { return nil }
-        _ = ensureReadAccess(atPath: bundlePath)
+        _ = ensureReadAccess(at: bundlePath)
 
         let bundleURL = URL(fileURLWithPath: bundlePath)
         let fm = FileManager.default
@@ -134,7 +134,7 @@ final class AppScannerViewModel: ObservableObject {
             ]
             for name in candidates {
                 let iconPath = bundleURL.appendingPathComponent(name).path
-                _ = ensureReadAccess(atPath: iconPath)
+                _ = ensureReadAccess(at: iconPath)
                 if let img = UIImage(contentsOfFile: iconPath) {
                     return img
                 }
@@ -144,7 +144,7 @@ final class AppScannerViewModel: ObservableObject {
         if let items = try? fm.contentsOfDirectory(atPath: bundlePath) {
             for item in items where item.lowercased().contains("appicon") && item.lowercased().hasSuffix(".png") {
                 let iconPath = bundleURL.appendingPathComponent(item).path
-                _ = ensureReadAccess(atPath: iconPath)
+                _ = ensureReadAccess(at: iconPath)
                 if let img = UIImage(contentsOfFile: iconPath) {
                     return img
                 }
@@ -153,12 +153,12 @@ final class AppScannerViewModel: ObservableObject {
         return nil
     }
 
-    private static func mapBundleToAppBundlePath() -> [String: String] {
+    nonisolated private static func mapBundleToAppBundlePath() -> [String: String] {
         var result: [String: String] = [:]
         let bundlePaths = fsHandlers.getDirPaths(FSURL.appBundles.path)
 
         for bPath in bundlePaths {
-            _ = ensureReadAccess(atPath: bPath)
+            _ = ensureReadAccess(at: bPath)
             guard let subItems = try? FileManager.default.contentsOfDirectory(atPath: bPath),
                   let appFolder = subItems.first(where: { $0.hasSuffix(".app") }) else {
                 continue
@@ -173,13 +173,13 @@ final class AppScannerViewModel: ObservableObject {
         return result
     }
 
-    private static func collectAppsViaWorseQuery(forceRefresh: Bool) -> [ScannedAppEntry] {
+    nonisolated private static func collectAppsViaWorseQuery(forceRefresh: Bool) -> [ScannedAppEntry] {
         if forceRefresh {
             fsHandlers.invalidateCache()
         }
 
-        _ = ensureReadAccess(atPath: FSURL.appContainers.path)
-        _ = ensureReadAccess(atPath: "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist")
+        _ = ensureReadAccess(at: FSURL.appContainers.path)
+        _ = ensureReadAccess(at: "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist")
 
         let dataContainerPaths = fsHandlers.getDirPaths(FSURL.appContainers.path, forceRefresh: forceRefresh)
         let bundleLookup = mapBundleToAppBundlePath()
