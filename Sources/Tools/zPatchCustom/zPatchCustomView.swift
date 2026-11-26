@@ -10,7 +10,7 @@ struct zPatchCustomView: View {
 
     @State private var showAddSheet = false
     @State private var showAppPicker = false
-    @State private var showEnsImporter = false
+    @State private var showEnsPicker = false
     @State private var shareURL: URL? = nil
 
     @State private var selectedAppName: String = ""
@@ -58,7 +58,7 @@ struct zPatchCustomView: View {
                     Spacer()
 
                     Button {
-                        showEnsImporter = true
+                        showEnsPicker = true
                     } label: {
                         Label("Import .ens", systemImage: "square.and.arrow.down")
                             .font(.subheadline.weight(.medium))
@@ -96,26 +96,16 @@ struct zPatchCustomView: View {
         .sheet(isPresented: $showAddSheet) {
             addPatchSheet
         }
-        .fileImporter(
-            isPresented: $showEnsImporter,
-            allowedContentTypes: [.data, .item],
-            allowsMultipleSelection: false
-        ) { result in
-            if case .success(let urls) = result, let url = urls.first {
-                switch patchStore.importEnsAndApplyNow(from: url) {
-                case .success(let bundle):
-                    let icon = bundle.iconPNGBase64
-                        .flatMap { Data(base64Encoded: $0) }
-                        .flatMap { UIImage(data: $0) }
-                    appMetaByBID[bundle.bundleID.lowercased()] = (name: bundle.appName, icon: icon)
-                    draftEnabled = patchStore.isTweakEnabled
-                    popupMessage = "Đã import & chạy ngay .ens cho \(bundle.appName) (\(bundle.bundleID))."
-                    showSavedPopup = true
-                case .failure(let err):
-                    errorMessage = "Import .ens lỗi: \(err.localizedDescription)"
+        .sheet(isPresented: $showEnsPicker) {
+            zPatchDocumentPicker(
+                onPick: { url in
+                    handleImportedEns(url)
+                },
+                onError: { msg in
+                    errorMessage = msg
                     showErrorAlert = true
                 }
-            }
+            )
         }
         .sheet(item: Binding(
             get: { shareURL.map { zPatchShareItem(url: $0) } },
@@ -134,6 +124,22 @@ struct zPatchCustomView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage)
+        }
+    }
+
+    private func handleImportedEns(_ url: URL) {
+        switch patchStore.importEnsAndApplyNow(from: url) {
+        case .success(let bundle):
+            let icon = bundle.iconPNGBase64
+                .flatMap { Data(base64Encoded: $0) }
+                .flatMap { UIImage(data: $0) }
+            appMetaByBID[bundle.bundleID.lowercased()] = (name: bundle.appName, icon: icon)
+            draftEnabled = patchStore.isTweakEnabled
+            popupMessage = "Đã import & chạy ngay .ens cho \(bundle.appName) (\(bundle.bundleID))."
+            showSavedPopup = true
+        case .failure(let err):
+            errorMessage = "Import .ens lỗi: \(err.localizedDescription)"
+            showErrorAlert = true
         }
     }
 
@@ -347,7 +353,8 @@ struct zPatchCustomView: View {
     private func importSourceURL(_ url: URL) {
         let docsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let patchDir = docsURL.appendingPathComponent("zPatchCustomFiles", isDirectory: true)
-        let destURL = patchDir.appendingPathComponent(url.lastPathComponent)
+        let safeName = url.lastPathComponent.isEmpty ? "imported_file.bin" : url.lastPathComponent
+        let destURL = patchDir.appendingPathComponent(safeName)
 
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
@@ -361,7 +368,8 @@ struct zPatchCustomView: View {
             if FileManager.default.fileExists(atPath: destURL.path) {
                 try FileManager.default.removeItem(at: destURL)
             }
-            try FileManager.default.copyItem(at: url, to: destURL)
+            let data = try Data(contentsOf: url)
+            try data.write(to: destURL, options: .atomic)
             newSourcePath = destURL.path
         } catch {
             errorMessage = "Không thể import file: \(error.localizedDescription)"
@@ -464,7 +472,7 @@ private struct zPatchDocumentPicker: UIViewControllerRepresentable {
     }
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item, .data, .content], asCopy: true)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item, .data], asCopy: true)
         picker.allowsMultipleSelection = false
         picker.delegate = context.coordinator
         return picker
