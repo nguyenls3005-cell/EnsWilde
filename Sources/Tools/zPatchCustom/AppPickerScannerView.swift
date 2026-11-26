@@ -11,7 +11,7 @@ struct ScannedAppEntry: Identifiable, Hashable {
     let containerUUID: String   // UUID container
     let containerPath: String   // Đường dẫn data container
     let bundlePath: String?     // Đường dẫn .app nếu có
-    let sizeBytes: Int64        // Dung lượng (bytes)
+    let sizeBytes: Int64        // Tổng dung lượng (bytes)
     let icon: UIImage?          // Icon app
 
     var formattedSize: String {
@@ -33,70 +33,71 @@ struct AppScanReport {
     let debugInfo: String
 }
 
-// MARK: - WQ File Reader Engine (EnsWilde)
+// MARK: - WQ Full Reader (EnsWilde)
 
-enum WQFileReader {
-    private static let fileManager = FileManager.default
+enum WQFullReader {
+    private static let fm = FileManager.default
 
+    @inline(__always)
     static func normalize(_ path: String) -> String {
         CSStoreEngine.normalizeVarPath((path as NSString).standardizingPath)
     }
 
     @discardableResult
+    @inline(__always)
     static func ensureAccess(
         at path: String,
         requireWrite: Bool = false,
         allowFsgetpathFallback: Bool = true
     ) -> Bool {
-        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-
-        let normalized = normalize(trimmed)
-        if !requireWrite && fileManager.isReadableFile(atPath: normalized) {
+        guard !path.isEmpty else { return false }
+        if !requireWrite && fm.isReadableFile(atPath: path) {
             return true
         }
-
-        let (granted, _, _) = wq.grantAccess(
-            path: normalized,
+        let (ok, _, _) = wq.grantAccess(
+            path: path,
             requireWrite: requireWrite,
             allowFsgetpathFallback: allowFsgetpathFallback
         )
-
-        if granted {
-            return true
-        }
-        return requireWrite
-            ? fileManager.isWritableFile(atPath: normalized)
-            : fileManager.isReadableFile(atPath: normalized)
+        return ok || (requireWrite ? fm.isWritableFile(atPath: path) : fm.isReadableFile(atPath: path))
     }
 
-    static func listDirectory(at path: String, forceRefresh: Bool = false) -> [String] {
-        let normalized = normalize(path)
-        guard !normalized.isEmpty else { return [] }
+    static func listDirs(at rawPath: String, forceRefresh: Bool) -> [String] {
+        let path = normalize(rawPath)
+        guard !path.isEmpty else { return [] }
 
-        ensureAccess(at: normalized, requireWrite: false, allowFsgetpathFallback: true)
-
-        let handlerItems = fsHandlers.getDirPaths(normalized, forceRefresh: forceRefresh)
-        if !handlerItems.isEmpty {
-            return handlerItems.map { normalize($0) }
+        let items = fsHandlers.getDirPaths(path, forceRefresh: forceRefresh)
+        if !items.isEmpty {
+            return items
         }
 
-        guard let contents = try? fileManager.contentsOfDirectory(atPath: normalized) else {
-            return []
+        ensureAccess(at: path, requireWrite: false, allowFsgetpathFallback: true)
+        let retry = fsHandlers.getDirPaths(path, forceRefresh: forceRefresh)
+        if !retry.isEmpty {
+            return retry
         }
-        return contents.map { (normalized as NSString).appendingPathComponent($0) }
+
+        guard let subs = try? fm.contentsOfDirectory(atPath: path) else { return [] }
+        return subs.map { (path as NSString).appendingPathComponent($0) }
     }
 
-    static func readData(at path: String) -> Data? {
-        let normalized = normalize(path)
-        guard ensureAccess(at: normalized, requireWrite: false, allowFsgetpathFallback: true) else {
+    static func readDataFast(at rawPath: String) -> Data? {
+        let path = normalize(rawPath)
+        let url = URL(fileURLWithPath: path)
+
+        if let data = try? Data(contentsOf: url), !data.isEmpty {
+            return data
+        }
+
+        guard ensureAccess(at: path, requireWrite: false, allowFsgetpathFallback: true),
+              let data = try? Data(contentsOf: url), !data.isEmpty else {
             return nil
         }
-        return try? Data(contentsOf: URL(fileURLWithPath: normalized), options: [.mappedIfSafe])
+        return data
     }
 
-    static func readPlist(at path: String) -> [String: Any]? {
-        guard let data = readData(at: path) else { return nil }
+    static func readPlistFast(at rawPath: String) -> [String: Any]? {
+        guard let data = readDataFast(at: rawPath) else { return nil }
         return (try? PropertyListSerialization.propertyList(
             from: data,
             options: [],
@@ -104,23 +105,24 @@ enum WQFileReader {
         )) as? [String: Any]
     }
 
-    static func readImage(at path: String) -> UIImage? {
-        guard let data = readData(at: path) else { return nil }
+    static func readImageFast(at rawPath: String) -> UIImage? {
+        let path = normalize(rawPath)
+        if fm.isReadableFile(atPath: path), let img = UIImage(contentsOfFile: path) {
+            return img
+        }
+        guard let data = readDataFast(at: path) else { return nil }
         return UIImage(data: data)
     }
 
-    // Không gọi grantAccess từng file con để tránh bị chậm khi thư mục có hàng nghìn file
-    static func calculateSize(at path: String) -> Int64 {
-        let normalized = normalize(path)
-        guard !normalized.isEmpty else { return 0 }
+    static func directorySizeFast(at rawPath: String) -> Int64 {
+        let path = normalize(rawPath)
+        guard !path.isEmpty else { return 0 }
 
-        ensureAccess(at: normalized, requireWrite: false, allowFsgetpathFallback: true)
-
-        let rootURL = URL(fileURLWithPath: normalized)
-        guard let enumerator = fileManager.enumerator(
+        let rootURL = URL(fileURLWithPath: path)
+        guard let enumerator = fm.enumerator(
             at: rootURL,
             includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else {
             return 0
         }
@@ -136,19 +138,16 @@ enum WQFileReader {
         return total
     }
 
-    static func resolveBundleID(forDataContainer path: String) -> String? {
-        let normalized = normalize(path)
-        let url = URL(fileURLWithPath: normalized)
-
-        ensureAccess(at: normalized, requireWrite: false, allowFsgetpathFallback: true)
-        if let xattrBID = getBIDFromXattr(url)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !xattrBID.isEmpty {
-            return xattrBID
+    static func resolveBundleID(forDataContainer containerPath: String) -> String? {
+        let url = URL(fileURLWithPath: containerPath)
+        if let bid = getBIDFromXattr(url)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !bid.isEmpty {
+            return bid
         }
 
-        let metaPath = (normalized as NSString)
+        let metaPath = (containerPath as NSString)
             .appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
-        if let meta = readPlist(at: metaPath) {
+        if let meta = readPlistFast(at: metaPath) {
             let candidate = (meta["MCMMetadataIdentifier"] as? String)
                 ?? (meta["Identifier"] as? String)
             if let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -156,104 +155,104 @@ enum WQFileReader {
                 return trimmed
             }
         }
-
         return nil
     }
 
-    static func scanAppBundles(forceRefresh: Bool = false) -> [String: (appPath: String, info: [String: Any])] {
-        let bundleContainers = listDirectory(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
-        var result: [String: (appPath: String, info: [String: Any])] = [:]
+    static func scanAppBundles(
+        forceRefresh: Bool,
+        onProgress: ((String) -> Void)?
+    ) -> [String: (appPath: String, info: [String: Any])] {
+        let bundleContainers = listDirs(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
+        var map: [String: (appPath: String, info: [String: Any])] = [:]
+        map.reserveCapacity(bundleContainers.count)
 
-        for container in bundleContainers {
-            let normalizedContainer = normalize(container)
-            ensureAccess(at: normalizedContainer, requireWrite: false, allowFsgetpathFallback: true)
+        for (idx, rawContainer) in bundleContainers.enumerated() {
+            let container = normalize(rawContainer)
+            if idx % 10 == 0 {
+                onProgress?("Bundle \(idx + 1)/\(bundleContainers.count)")
+            }
 
-            let children = listDirectory(at: normalizedContainer, forceRefresh: forceRefresh)
-            for child in children {
-                let normalizedChild = normalize(child)
-                guard normalizedChild.hasSuffix(".app") else { continue }
+            var children = fsHandlers.getDirPaths(container, forceRefresh: false)
+            if children.isEmpty {
+                if let subs = try? fm.contentsOfDirectory(atPath: container) {
+                    children = subs.map { (container as NSString).appendingPathComponent($0) }
+                } else if ensureAccess(at: container, requireWrite: false, allowFsgetpathFallback: true) {
+                    children = (try? fm.contentsOfDirectory(atPath: container))?
+                        .map { (container as NSString).appendingPathComponent($0) } ?? []
+                }
+            }
 
-                let infoPath = (normalizedChild as NSString).appendingPathComponent("Info.plist")
-                if let info = readPlist(at: infoPath),
+            for rawChild in children {
+                let child = normalize(rawChild)
+                guard child.hasSuffix(".app") else { continue }
+
+                let infoPath = (child as NSString).appendingPathComponent("Info.plist")
+                if let info = readPlistFast(at: infoPath),
                    let bid = (info["CFBundleIdentifier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !bid.isEmpty {
-                    result[bid.lowercased()] = (appPath: normalizedChild, info: info)
+                    map[bid.lowercased()] = (appPath: child, info: info)
                 }
             }
         }
 
-        return result
+        return map
     }
 
     static func loadAppIcon(appBundlePath: String?, infoPlist: [String: Any]?) -> UIImage? {
         guard let bundlePath = appBundlePath, !bundlePath.isEmpty else { return nil }
-        let normalizedBundle = normalize(bundlePath)
-        ensureAccess(at: normalizedBundle, requireWrite: false, allowFsgetpathFallback: true)
-
-        let bundleURL = URL(fileURLWithPath: normalizedBundle)
-        var candidatePaths: [String] = []
+        let bundleURL = URL(fileURLWithPath: bundlePath)
+        var candidates: [String] = []
+        candidates.reserveCapacity(12)
 
         if let plist = infoPlist {
             if let icons = plist["CFBundleIcons"] as? [String: Any],
                let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
                let files = primary["CFBundleIconFiles"] as? [String] {
-                for baseName in files.reversed() {
-                    candidatePaths.append(contentsOf: [
-                        "\(baseName)@3x.png",
-                        "\(baseName)@2x.png",
-                        "\(baseName).png",
-                        baseName
-                    ].map { bundleURL.appendingPathComponent($0).path })
+                for name in files.reversed() {
+                    candidates.append((bundleURL.appendingPathComponent("\(name)@3x.png")).path)
+                    candidates.append((bundleURL.appendingPathComponent("\(name)@2x.png")).path)
+                    candidates.append((bundleURL.appendingPathComponent("\(name).png")).path)
+                    candidates.append((bundleURL.appendingPathComponent(name)).path)
                 }
             }
-
             if let iconFiles = plist["CFBundleIconFiles"] as? [String] {
-                for baseName in iconFiles.reversed() {
-                    candidatePaths.append(contentsOf: [
-                        "\(baseName)@3x.png",
-                        "\(baseName)@2x.png",
-                        "\(baseName).png",
-                        baseName
-                    ].map { bundleURL.appendingPathComponent($0).path })
+                for name in iconFiles.reversed() {
+                    candidates.append((bundleURL.appendingPathComponent("\(name)@3x.png")).path)
+                    candidates.append((bundleURL.appendingPathComponent("\(name)@2x.png")).path)
+                    candidates.append((bundleURL.appendingPathComponent("\(name).png")).path)
                 }
             }
         }
 
-        for path in candidatePaths {
-            if let image = readImage(at: path) {
-                return image
+        for path in candidates {
+            if let img = readImageFast(at: path) {
+                return img
             }
         }
 
-        guard let enumerator = fileManager.enumerator(
-            at: bundleURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return nil
-        }
+        if let topItems = try? fm.contentsOfDirectory(atPath: bundlePath) {
+            var bestImage: UIImage?
+            var bestArea: CGFloat = 0
 
-        var bestImage: UIImage?
-        var bestArea: CGFloat = 0
-
-        for case let fileURL as URL in enumerator {
-            guard fileURL.pathExtension.lowercased() == "png" else { continue }
-            let lowerName = fileURL.lastPathComponent.lowercased()
-            guard lowerName.contains("icon") || lowerName.contains("logo") else { continue }
-
-            if let image = readImage(at: fileURL.path) {
-                let area = image.size.width * image.size.height * image.scale * image.scale
-                if area > bestArea {
-                    bestArea = area
-                    bestImage = image
+            for item in topItems where item.lowercased().hasSuffix(".png") {
+                let lower = item.lowercased()
+                guard lower.contains("icon") || lower.contains("logo") else { continue }
+                let fullPath = (bundlePath as NSString).appendingPathComponent(item)
+                if let img = readImageFast(at: fullPath) {
+                    let area = img.size.width * img.size.height * img.scale * img.scale
+                    if area > bestArea {
+                        bestArea = area
+                        bestImage = img
+                    }
                 }
             }
+            if let bestImage { return bestImage }
         }
 
-        return bestImage
+        return nil
     }
 
-    static func collectApps(
+    static func collectFullApps(
         forceRefresh: Bool = false,
         onProgress: ((String) -> Void)? = nil
     ) -> AppScanReport {
@@ -262,24 +261,25 @@ enum WQFileReader {
             fsHandlers.invalidateCache()
         }
 
-        onProgress?("Lấy danh sách Data Containers...")
-        let dataContainers = listDirectory(at: FSURL.appContainers.path, forceRefresh: forceRefresh)
+        onProgress?("Quét Data Containers...")
+        let rawDataContainers = listDirs(at: FSURL.appContainers.path, forceRefresh: forceRefresh)
 
-        onProgress?("Lấy danh sách Bundle Containers...")
-        let bundleContainers = listDirectory(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
+        onProgress?("Quét Bundle Containers...")
+        let rawBundleContainers = listDirs(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
 
-        onProgress?("Đọc Info.plist các app...")
-        let bundleMap = scanAppBundles(forceRefresh: forceRefresh)
+        onProgress?("Đọc Info.plist...")
+        let bundleMap = scanAppBundles(forceRefresh: forceRefresh, onProgress: onProgress)
 
         var entries: [ScannedAppEntry] = []
+        entries.reserveCapacity(rawDataContainers.count)
         var matchedBIDCount = 0
 
-        for (index, rawContainer) in dataContainers.enumerated() {
+        for (index, rawContainer) in rawDataContainers.enumerated() {
             let containerPath = normalize(rawContainer)
             let uuid = URL(fileURLWithPath: containerPath).lastPathComponent
 
-            if index % 10 == 0 {
-                onProgress?("Đang xử lý \(index + 1)/\(dataContainers.count)...")
+            if index % 15 == 0 {
+                onProgress?("Đang xử lý \(index + 1)/\(rawDataContainers.count)...")
             }
 
             let resolvedBIDFromSystem = resolveBundleID(forDataContainer: containerPath)
@@ -291,42 +291,42 @@ enum WQFileReader {
             let bundleMatch = bundleMap[resolvedBID.lowercased()]
             let infoPlist = bundleMatch?.info
 
-            let displayName = (infoPlist?["CFBundleDisplayName"] as? String)?.trimmedNonEmpty
+            let realName = (infoPlist?["CFBundleDisplayName"] as? String)?.trimmedNonEmpty
                 ?? (infoPlist?["CFBundleName"] as? String)?.trimmedNonEmpty
                 ?? bundleMatch.map { URL(fileURLWithPath: $0.appPath).deletingPathExtension().lastPathComponent }
                 ?? resolvedBID
 
-            let totalSize = calculateSize(at: containerPath)
-                + (bundleMatch.map { calculateSize(at: $0.appPath) } ?? 0)
+            let size = directorySizeFast(at: containerPath)
+                + (bundleMatch.map { directorySizeFast(at: $0.appPath) } ?? 0)
             let icon = loadAppIcon(appBundlePath: bundleMatch?.appPath, infoPlist: infoPlist)
 
             entries.append(
                 ScannedAppEntry(
                     id: "\(resolvedBID)#\(uuid)",
-                    name: displayName,
+                    name: realName,
                     bundleID: resolvedBID,
                     containerUUID: uuid,
                     containerPath: containerPath,
                     bundlePath: bundleMatch?.appPath,
-                    sizeBytes: totalSize,
+                    sizeBytes: size,
                     icon: icon
                 )
             )
         }
 
-        let sortedEntries = entries.sorted {
+        let sorted = entries.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
 
-        let debug = "Data:\(dataContainers.count) | BundleDirs:\(bundleContainers.count) | BID:\(matchedBIDCount) | Apps:\(bundleMap.count)"
-        return AppScanReport(entries: sortedEntries, debugInfo: debug)
+        let info = "Data:\(rawDataContainers.count) | BundleDirs:\(rawBundleContainers.count) | BID:\(matchedBIDCount) | Apps:\(bundleMap.count)"
+        return AppScanReport(entries: sorted, debugInfo: info)
     }
 }
 
 private extension String {
     var trimmedNonEmpty: String? {
-        let value = trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? nil : value
+        let v = trimmingCharacters(in: .whitespacesAndNewlines)
+        return v.isEmpty ? nil : v
     }
 }
 
@@ -340,15 +340,13 @@ final class AppScannerViewModel: ObservableObject {
     @Published var statusMessage: String = "Chưa quét"
     @Published var debugDetail: String = ""
 
-    private var scanTask: Task<Void, Never>?
-
     var filteredApps: [ScannedAppEntry] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return apps }
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return apps }
         return apps.filter {
-            $0.name.lowercased().contains(query) ||
-            $0.bundleID.lowercased().contains(query) ||
-            $0.containerUUID.lowercased().contains(query)
+            $0.name.lowercased().contains(q) ||
+            $0.bundleID.lowercased().contains(q) ||
+            $0.containerUUID.lowercased().contains(q)
         }
     }
 
@@ -359,21 +357,19 @@ final class AppScannerViewModel: ObservableObject {
     func scanApps(forceRefresh: Bool = false) {
         guard !isScanning else { return }
         isScanning = true
-        statusMessage = "Đang quét..."
+        statusMessage = "Đang quét full..."
         debugDetail = "Khởi tạo..."
 
-        scanTask?.cancel()
-        scanTask = Task.detached(priority: .userInitiated) {
-            let report = WQFileReader.collectApps(forceRefresh: forceRefresh) { step in
+        Task.detached(priority: .userInitiated) {
+            let report = WQFullReader.collectFullApps(forceRefresh: forceRefresh) { step in
                 Task { @MainActor in
                     self.debugDetail = step
                 }
             }
-
             await MainActor.run {
                 self.apps = report.entries
                 self.isScanning = false
-                self.statusMessage = "Đã quét xong: \(report.entries.count) mục"
+                self.statusMessage = "Đã quét xong: \(report.entries.count) app"
                 self.debugDetail = report.debugInfo
             }
         }
