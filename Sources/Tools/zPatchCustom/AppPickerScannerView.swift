@@ -66,19 +66,19 @@ final class AppScannerViewModel: ObservableObject {
     }
 
     @discardableResult
-    nonisolated private static func grantRead(at path: String) -> (Bool, String) {
-        guard !path.isEmpty else { return (false, "empty") }
+    nonisolated private static func grantFileAccess(at path: String) -> Bool {
+        guard !path.isEmpty else { return false }
         let fm = FileManager.default
         if fm.isReadableFile(atPath: path) {
-            return (true, "readable")
+            return true
         }
-        let (ok, _, msg) = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
-        return (ok || fm.isReadableFile(atPath: path), msg)
+        let (ok, _, _) = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
+        return ok || fm.isReadableFile(atPath: path)
     }
 
     nonisolated private static func readPlistDict(atPath path: String) -> [String: Any]? {
-        _ = grantRead(at: path)
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+        guard grantFileAccess(at: path),
+              let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             return nil
         }
         return (try? PropertyListSerialization.propertyList(
@@ -90,8 +90,6 @@ final class AppScannerViewModel: ObservableObject {
 
     nonisolated private static func directorySize(atPath path: String) -> Int64 {
         guard !path.isEmpty else { return 0 }
-        _ = grantRead(at: path)
-
         let fm = FileManager.default
         let rootURL = URL(fileURLWithPath: path)
         guard let enumerator = fm.enumerator(
@@ -115,18 +113,16 @@ final class AppScannerViewModel: ObservableObject {
 
     nonisolated private static func loadAppIcon(appBundlePath: String?, infoPlist: [String: Any]?) -> UIImage? {
         guard let bundlePath = appBundlePath, !bundlePath.isEmpty else { return nil }
-        _ = grantRead(at: bundlePath)
-
         let fm = FileManager.default
         let bundleURL = URL(fileURLWithPath: bundlePath)
-        var candidatePaths: [String] = []
+        var candidates: [String] = []
 
         if let plist = infoPlist {
             if let icons = plist["CFBundleIcons"] as? [String: Any],
                let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
                let files = primary["CFBundleIconFiles"] as? [String] {
                 for baseName in files.reversed() {
-                    candidatePaths.append(contentsOf: [
+                    candidates.append(contentsOf: [
                         "\(baseName)@3x.png",
                         "\(baseName)@2x.png",
                         "\(baseName).png",
@@ -136,16 +132,15 @@ final class AppScannerViewModel: ObservableObject {
             }
             if let iconFiles = plist["CFBundleIconFiles"] as? [String] {
                 for baseName in iconFiles.reversed() {
-                    candidatePaths.append(bundleURL.appendingPathComponent(baseName).path)
-                    candidatePaths.append(bundleURL.appendingPathComponent("\(baseName)@2x.png").path)
-                    candidatePaths.append(bundleURL.appendingPathComponent("\(baseName)@3x.png").path)
+                    candidates.append(bundleURL.appendingPathComponent(baseName).path)
+                    candidates.append(bundleURL.appendingPathComponent("\(baseName)@2x.png").path)
+                    candidates.append(bundleURL.appendingPathComponent("\(baseName)@3x.png").path)
                 }
             }
         }
 
-        for p in candidatePaths {
-            _ = grantRead(at: p)
-            if let img = UIImage(contentsOfFile: p) {
+        for p in candidates {
+            if grantFileAccess(at: p), let img = UIImage(contentsOfFile: p) {
                 return img
             }
         }
@@ -163,8 +158,7 @@ final class AppScannerViewModel: ObservableObject {
                 let lower = fileURL.lastPathComponent.lowercased()
                 guard lower.contains("icon") || lower.contains("logo") else { continue }
 
-                _ = grantRead(at: fileURL.path)
-                if let img = UIImage(contentsOfFile: fileURL.path) {
+                if grantFileAccess(at: fileURL.path), let img = UIImage(contentsOfFile: fileURL.path) {
                     let area = img.size.width * img.size.height * img.scale * img.scale
                     if area > bestArea {
                         bestArea = area
@@ -178,98 +172,38 @@ final class AppScannerViewModel: ObservableObject {
         return nil
     }
 
-    nonisolated private static func findAppBundleFolder(inside path: String) -> String? {
-        guard !path.isEmpty else { return nil }
-        _ = grantRead(at: path)
-        if path.hasSuffix(".app") { return path }
-
-        let fm = FileManager.default
-        if let items = try? fm.contentsOfDirectory(atPath: path) {
-            if let appDir = items.first(where: { $0.hasSuffix(".app") }) {
-                return (path as NSString).appendingPathComponent(appDir)
-            }
-            for sub in items {
-                let subPath = (path as NSString).appendingPathComponent(sub)
-                if let subItems = try? fm.contentsOfDirectory(atPath: subPath),
-                   let appDir = subItems.first(where: { $0.hasSuffix(".app") }) {
-                    return (subPath as NSString).appendingPathComponent(appDir)
-                }
-            }
-        }
-        return nil
-    }
-
-    nonisolated private static func loadLaunchServicesIndex() -> [String: (dataPath: String?, bundlePath: String?, name: String?)] {
-        let mapPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
-        guard let plist = readPlistDict(atPath: mapPath),
-              let userDict = plist["User"] as? [String: Any] else {
-            return [:]
-        }
-
-        var index: [String: (dataPath: String?, bundlePath: String?, name: String?)] = [:]
-        for (bid, rawInfo) in userDict {
-            guard let info = rawInfo as? [String: Any] else { continue }
-            let key = bid.lowercased()
-
-            var dataPath: String?
-            if let c = info["Container"] as? String, !c.isEmpty {
-                dataPath = CSStoreEngine.normalizeVarPath(c.replacingOccurrences(of: "file://", with: ""))
-            } else if let uuid = info["ContainerUUID"] as? String, !uuid.isEmpty {
-                dataPath = "/var/mobile/Containers/Data/Application/\(uuid)"
-            }
-
-            var bundlePath: String?
-            if let b = info["Path"] as? String, !b.isEmpty {
-                bundlePath = b.replacingOccurrences(of: "file://", with: "")
-            } else if let b = info["BundleContainer"] as? String, !b.isEmpty {
-                bundlePath = b.replacingOccurrences(of: "file://", with: "")
-            }
-
-            let appName = (info["DisplayName"] as? String) ?? (info["CFBundleName"] as? String)
-            index[key] = (dataPath: dataPath, bundlePath: bundlePath, name: appName)
-        }
-        return index
-    }
-
     nonisolated private static func collectApps(forceRefresh: Bool) -> (entries: [ScannedAppEntry], debugInfo: String) {
         if forceRefresh {
             fsHandlers.invalidateCache()
         }
 
-        let (_, msgData) = grantRead(at: FSURL.appContainers.path)
-        let (_, msgBundle) = grantRead(at: FSURL.appBundles.path)
-
-        let lsIndex = loadLaunchServicesIndex()
         let rawDataContainers = fsHandlers.getDirPaths(FSURL.appContainers.path, forceRefresh: forceRefresh)
         let rawBundleContainers = fsHandlers.getDirPaths(FSURL.appBundles.path, forceRefresh: forceRefresh)
 
-        var bundlePathByBID: [String: String] = [:]
-        for (bid, entry) in lsIndex {
-            if let bPath = entry.bundlePath, !bPath.isEmpty {
-                bundlePathByBID[bid] = findAppBundleFolder(inside: bPath) ?? bPath
-            }
-        }
+        // Quét Bundle/Application: xin quyền trực tiếp từng Info.plist bên trong *.app
+        var bundleByBID: [String: (appPath: String, info: [String: Any])] = [:]
+        let fm = FileManager.default
 
         for bContainer in rawBundleContainers {
-            guard let appFolder = findAppBundleFolder(inside: bContainer) else { continue }
-            let infoPath = (appFolder as NSString).appendingPathComponent("Info.plist")
-            if let info = readPlistDict(atPath: infoPath),
-               let bid = info["CFBundleIdentifier"] as? String, !bid.isEmpty {
-                bundlePathByBID[bid.lowercased()] = appFolder
+            let stdB = CSStoreEngine.normalizeVarPath((bContainer as NSString).standardizingPath)
+            guard let subItems = try? fm.contentsOfDirectory(atPath: stdB) else { continue }
+
+            for item in subItems where item.hasSuffix(".app") {
+                let appDir = (stdB as NSString).appendingPathComponent(item)
+                let infoPath = (appDir as NSString).appendingPathComponent("Info.plist")
+                if let info = readPlistDict(atPath: infoPath),
+                   let bid = info["CFBundleIdentifier"] as? String, !bid.isEmpty {
+                    bundleByBID[bid.lowercased()] = (appPath: appDir, info: info)
+                }
             }
         }
 
-        var dataContainerByBID: [String: String] = [:]
-        for (bid, entry) in lsIndex {
-            if let dPath = entry.dataPath, !dPath.isEmpty {
-                dataContainerByBID[bid] = CSStoreEngine.normalizeVarPath(dPath)
-            }
-        }
+        var entries: [ScannedAppEntry] = []
+        var matchedBIDCount = 0
 
-        var unmappedDataPaths: [String] = []
         for dContainer in rawDataContainers {
             let stdPath = CSStoreEngine.normalizeVarPath((dContainer as NSString).standardizingPath)
-            _ = grantRead(at: stdPath)
+            let uuid = URL(fileURLWithPath: stdPath).lastPathComponent
 
             var bid = getBIDFromXattr(URL(fileURLWithPath: stdPath))
             if bid == nil || bid?.isEmpty == true {
@@ -280,85 +214,32 @@ final class AppScannerViewModel: ObservableObject {
                 }
             }
 
-            if let bid, !bid.isEmpty {
-                let lower = bid.lowercased()
-                if dataContainerByBID[lower] == nil {
-                    dataContainerByBID[lower] = stdPath
-                }
-            } else {
-                unmappedDataPaths.append(stdPath)
+            let resolvedBID = (bid?.isEmpty == false) ? bid! : uuid
+            if bid?.isEmpty == false {
+                matchedBIDCount += 1
             }
-        }
 
-        let allBIDs = Set(bundlePathByBID.keys)
-            .union(dataContainerByBID.keys)
-            .union(lsIndex.keys)
-
-        var entries: [ScannedAppEntry] = []
-
-        for lowerBID in allBIDs {
-            let lsInfo = lsIndex[lowerBID]
-            let appBundlePath = bundlePathByBID[lowerBID]
-            let dataPath = dataContainerByBID[lowerBID] ?? lsInfo?.dataPath ?? ""
-
-            let infoPlist: [String: Any]? = {
-                guard let appBundlePath else { return nil }
-                let infoPath = (appBundlePath as NSString).appendingPathComponent("Info.plist")
-                return readPlistDict(atPath: infoPath)
-            }()
-
-            let realBundleID = (infoPlist?["CFBundleIdentifier"] as? String)
-                ?? (lowerBID.isEmpty ? "unknown" : lowerBID)
-
-            let uuid: String = {
-                if !dataPath.isEmpty {
-                    let last = URL(fileURLWithPath: dataPath).lastPathComponent
-                    if !last.isEmpty { return last }
-                }
-                if let appBundlePath {
-                    let parent = URL(fileURLWithPath: appBundlePath).deletingLastPathComponent().lastPathComponent
-                    if !parent.isEmpty { return parent }
-                }
-                return "N/A"
-            }()
+            let bundleMatch = bundleByBID[resolvedBID.lowercased()]
+            let infoPlist = bundleMatch?.info
 
             let realName = (infoPlist?["CFBundleDisplayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
                 ?? (infoPlist?["CFBundleName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                ?? lsInfo?.name?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                ?? (appBundlePath.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent })
-                ?? realBundleID
+                ?? bundleMatch.map { URL(fileURLWithPath: $0.appPath).deletingPathExtension().lastPathComponent }
+                ?? resolvedBID
 
-            let dataSize = dataPath.isEmpty ? 0 : directorySize(atPath: dataPath)
-            let bundleSize = appBundlePath.map { directorySize(atPath: $0) } ?? 0
-            let icon = loadAppIcon(appBundlePath: appBundlePath, infoPlist: infoPlist)
+            let size = directorySize(atPath: stdPath) + (bundleMatch.map { directorySize(atPath: $0.appPath) } ?? 0)
+            let icon = loadAppIcon(appBundlePath: bundleMatch?.appPath, infoPlist: infoPlist)
 
             entries.append(
                 ScannedAppEntry(
-                    id: "\(realBundleID)#\(uuid)",
+                    id: "\(resolvedBID)#\(uuid)",
                     name: realName,
-                    bundleID: realBundleID,
+                    bundleID: resolvedBID,
                     containerUUID: uuid,
-                    containerPath: dataPath,
-                    bundlePath: appBundlePath,
-                    sizeBytes: dataSize + bundleSize,
+                    containerPath: stdPath,
+                    bundlePath: bundleMatch?.appPath,
+                    sizeBytes: size,
                     icon: icon
-                )
-            )
-        }
-
-        for rawPath in unmappedDataPaths {
-            let uuid = URL(fileURLWithPath: rawPath).lastPathComponent
-            let sz = directorySize(atPath: rawPath)
-            entries.append(
-                ScannedAppEntry(
-                    id: "raw#\(uuid)",
-                    name: uuid,
-                    bundleID: uuid,
-                    containerUUID: uuid,
-                    containerPath: rawPath,
-                    bundlePath: nil,
-                    sizeBytes: sz,
-                    icon: nil
                 )
             )
         }
@@ -367,7 +248,7 @@ final class AppScannerViewModel: ObservableObject {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
 
-        let info = "LS:\(lsIndex.count) | Data:\(rawDataContainers.count)(\(msgData)) | Bundle:\(rawBundleContainers.count)(\(msgBundle))"
+        let info = "Data:\(rawDataContainers.count) | BundleDirs:\(rawBundleContainers.count) | BID:\(matchedBIDCount) | Apps:\(bundleByBID.count)"
         return (sorted, info)
     }
 }
