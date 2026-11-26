@@ -9,6 +9,7 @@ struct zPatchCustomView: View {
     @State private var draftEnabled: Bool = UserDefaults.standard.bool(forKey: zPatchStore.enabledKey)
 
     @State private var showAddSheet = false
+    @State private var showAppPicker = false
     @State private var newBundleID: String = ""
     @State private var newRelativeDest: String = ""
     @State private var newSourcePath: String = ""
@@ -166,18 +167,30 @@ struct zPatchCustomView: View {
         NavigationStack {
             Form {
                 Section(header: Text("Đích (Tự động ghép /var/mobile/Containers/Data/Application/)")) {
-                    TextField("Bundle ID (vd: com.lemon.lvoverseas)", text: $newBundleID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                    HStack(spacing: 8) {
+                        TextField("Bundle ID (vd: com.lemon.lvoverseas)", text: $newBundleID)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+
+                        Button {
+                            showAppPicker = true
+                        } label: {
+                            Label("Chọn từ danh sách", systemImage: "list.bullet.rectangle")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
 
                     TextField("File đích (vd: Library/Cookies/Cookies.binarycookies)", text: $newRelativeDest)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
                     if !newBundleID.isEmpty || !newRelativeDest.isEmpty {
-                        let cleanBundle = newBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let cleanRel = newRelativeDest.hasPrefix("/") ? String(newRelativeDest.dropFirst()) : newRelativeDest
-                        let preview = (zPatchItem.baseContainerPrefix + cleanBundle as NSString).appendingPathComponent(cleanRel)
+                        let preview = zPatchItem(
+                            bundleID: newBundleID,
+                            relativeDestPath: newRelativeDest,
+                            sourcePath: newSourcePath
+                        ).fastPreviewPath
                         Text(preview)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -214,6 +227,9 @@ struct zPatchCustomView: View {
                         resetForm()
                     }
                 }
+            }
+            .sheet(isPresented: $showAppPicker) {
+                AppPickerScannerView(selectedBundleID: $newBundleID)
             }
             .sheet(isPresented: $showDocumentPicker) {
                 zPatchDocumentPicker(
