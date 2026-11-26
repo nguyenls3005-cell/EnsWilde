@@ -68,71 +68,58 @@ private enum AppScannerEngine {
         return result
     }
 
-    private static func safeIcon(for bundleID: String) -> UIImage? {
-        guard !bundleID.isEmpty, !bundleID.contains("/") else { return nil }
-        return try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID)
-    }
-
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
         var rawContainers: [String] = []
 
-        autoreleasepool {
-            if forceRefresh {
-                fsHandlers.invalidateCache()
-            }
-            rawContainers = fsHandlers.getDirPaths(
-                FSURL.appContainers.path,
-                forceRefresh: forceRefresh
-            )
+        if forceRefresh {
+            fsHandlers.invalidateCache()
         }
+        rawContainers = fsHandlers.getDirPaths(
+            FSURL.appContainers.path,
+            forceRefresh: forceRefresh
+        )
 
         let lsMap = loadLaunchServicesMap()
         var list: [ScannedAppEntry] = []
         list.reserveCapacity(rawContainers.count)
 
         for rawPath in rawContainers {
-            autoreleasepool {
-                let normPath = CSStoreEngine.normalizeVarPath(rawPath)
-                guard !normPath.isEmpty else { return }
+            let normPath = CSStoreEngine.normalizeVarPath(rawPath)
+            guard !normPath.isEmpty else { continue }
 
-                let uuid = (normPath as NSString).lastPathComponent
-                guard !uuid.isEmpty else { return }
-                let lowerUUID = uuid.lowercased()
+            let uuid = (normPath as NSString).lastPathComponent
+            guard !uuid.isEmpty else { continue }
+            let lowerUUID = uuid.lowercased()
 
-                var resolvedBID = lsMap[lowerUUID]?.bundleID
-                let resolvedName = lsMap[lowerUUID]?.name
+            let resolvedBID = lsMap[lowerUUID]?.bundleID
+            let resolvedName = lsMap[lowerUUID]?.name
 
-                if resolvedBID == nil || resolvedBID?.isEmpty == true {
-                    if let xattrBID = getBIDFromXattr(URL(fileURLWithPath: normPath))?
-                        .trimmingCharacters(in: .whitespacesAndNewlines),
-                       !xattrBID.isEmpty {
-                        resolvedBID = xattrBID
-                    }
-                }
-
-                let finalBID = (resolvedBID?.isEmpty == false) ? resolvedBID! : uuid
-                let finalName: String
-                if let resolvedName, !resolvedName.isEmpty {
-                    finalName = resolvedName
-                } else if finalBID != uuid {
-                    finalName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
-                } else {
-                    finalName = uuid
-                }
-
-                let icon = safeIcon(for: finalBID)
-
-                list.append(
-                    ScannedAppEntry(
-                        id: "\(finalBID)#\(uuid)",
-                        name: finalName,
-                        bundleID: finalBID,
-                        containerUUID: uuid,
-                        containerPath: normPath,
-                        icon: icon
-                    )
-                )
+            let finalBID: String
+            if let resolvedBID, !resolvedBID.isEmpty {
+                finalBID = resolvedBID
+            } else {
+                finalBID = uuid
             }
+
+            let finalName: String
+            if let resolvedName, !resolvedName.isEmpty {
+                finalName = resolvedName
+            } else if finalBID != uuid {
+                finalName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
+            } else {
+                finalName = uuid
+            }
+
+            list.append(
+                ScannedAppEntry(
+                    id: "\(finalBID)#\(uuid)",
+                    name: finalName,
+                    bundleID: finalBID,
+                    containerUUID: uuid,
+                    containerPath: normPath,
+                    icon: nil
+                )
+            )
         }
 
         return list.sorted {
@@ -148,22 +135,13 @@ private final class AppScannerVM: ObservableObject {
     @Published var isScanning: Bool = false
     @Published var statusMessage: String = "Chưa quét"
 
-    var filteredApps: [ScannedAppEntry] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return apps }
-        return apps.filter {
-            $0.name.lowercased().contains(query) ||
-            $0.bundleID.lowercased().contains(query) ||
-            $0.containerUUID.lowercased().contains(query)
-        }
-    }
-
     func scan(forceRefresh: Bool = false) {
         guard !isScanning else { return }
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
             self.apps = result
             self.isScanning = false
@@ -225,7 +203,14 @@ struct AppPickerScannerView: View {
                         dismiss()
                     } label: {
                         HStack(spacing: 12) {
-                            AppPickerIconBadge(icon: app.icon)
+                            Image(systemName: "app.fill")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 28, height: 28)
+                                .padding(9)
+                                .foregroundStyle(.tint)
+                                .background(Color(.tertiarySystemFill))
+                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(app.name)
@@ -263,28 +248,5 @@ struct AppPickerScannerView: View {
                 }
             }
         }
-    }
-}
-
-private struct AppPickerIconBadge: View {
-    let icon: UIImage?
-
-    var body: some View {
-        Group {
-            if let icon {
-                Image(uiImage: icon)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Image(systemName: "app.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .padding(10)
-                    .foregroundStyle(.tint)
-            }
-        }
-        .frame(width: 46, height: 46)
-        .background(Color(.tertiarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
     }
 }
