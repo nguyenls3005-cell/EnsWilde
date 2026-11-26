@@ -11,7 +11,7 @@ struct ScannedAppEntry: Identifiable, Hashable {
     let containerUUID: String   // UUID container
     let containerPath: String   // Đường dẫn data container
     let bundlePath: String?     // Đường dẫn .app nếu có
-    let sizeBytes: Int64        // Tổng dung lượng (bytes)
+    let sizeBytes: Int64        // Dung lượng (bytes)
     let icon: UIImage?          // Icon app
 
     var formattedSize: String {
@@ -62,7 +62,7 @@ enum WQFullReader {
         return ok || (requireWrite ? fm.isWritableFile(atPath: path) : fm.isReadableFile(atPath: path))
     }
 
-    static func listDirs(at rawPath: String, forceRefresh: Bool) -> [String] {
+    static func listTopDirs(at rawPath: String, forceRefresh: Bool) -> [String] {
         let path = normalize(rawPath)
         guard !path.isEmpty else { return [] }
 
@@ -162,30 +162,22 @@ enum WQFullReader {
         forceRefresh: Bool,
         onProgress: ((String) -> Void)?
     ) -> [String: (appPath: String, info: [String: Any])] {
-        let bundleContainers = listDirs(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
+        let bundleContainers = listTopDirs(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
         var map: [String: (appPath: String, info: [String: Any])] = [:]
         map.reserveCapacity(bundleContainers.count)
 
         for (idx, rawContainer) in bundleContainers.enumerated() {
             let container = normalize(rawContainer)
-            if idx % 10 == 0 {
-                onProgress?("Bundle \(idx + 1)/\(bundleContainers.count)")
+            onProgress?("Bundle \(idx + 1)/\(bundleContainers.count)")
+
+            var subNames = (try? fm.contentsOfDirectory(atPath: container)) ?? []
+            if subNames.isEmpty {
+                ensureAccess(at: container, requireWrite: false, allowFsgetpathFallback: true)
+                subNames = (try? fm.contentsOfDirectory(atPath: container)) ?? []
             }
 
-            var children = fsHandlers.getDirPaths(container, forceRefresh: false)
-            if children.isEmpty {
-                if let subs = try? fm.contentsOfDirectory(atPath: container) {
-                    children = subs.map { (container as NSString).appendingPathComponent($0) }
-                } else if ensureAccess(at: container, requireWrite: false, allowFsgetpathFallback: true) {
-                    children = (try? fm.contentsOfDirectory(atPath: container))?
-                        .map { (container as NSString).appendingPathComponent($0) } ?? []
-                }
-            }
-
-            for rawChild in children {
-                let child = normalize(rawChild)
-                guard child.hasSuffix(".app") else { continue }
-
+            for name in subNames where name.hasSuffix(".app") {
+                let child = (container as NSString).appendingPathComponent(name)
                 let infoPath = (child as NSString).appendingPathComponent("Info.plist")
                 if let info = readPlistFast(at: infoPath),
                    let bid = (info["CFBundleIdentifier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -262,10 +254,10 @@ enum WQFullReader {
         }
 
         onProgress?("Quét Data Containers...")
-        let rawDataContainers = listDirs(at: FSURL.appContainers.path, forceRefresh: forceRefresh)
+        let rawDataContainers = listTopDirs(at: FSURL.appContainers.path, forceRefresh: forceRefresh)
 
         onProgress?("Quét Bundle Containers...")
-        let rawBundleContainers = listDirs(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
+        let rawBundleContainers = listTopDirs(at: FSURL.appBundles.path, forceRefresh: forceRefresh)
 
         onProgress?("Đọc Info.plist...")
         let bundleMap = scanAppBundles(forceRefresh: forceRefresh, onProgress: onProgress)
@@ -278,7 +270,7 @@ enum WQFullReader {
             let containerPath = normalize(rawContainer)
             let uuid = URL(fileURLWithPath: containerPath).lastPathComponent
 
-            if index % 15 == 0 {
+            if index % 10 == 0 {
                 onProgress?("Đang xử lý \(index + 1)/\(rawDataContainers.count)...")
             }
 
@@ -297,7 +289,6 @@ enum WQFullReader {
                 ?? resolvedBID
 
             let size = directorySizeFast(at: containerPath)
-                + (bundleMatch.map { directorySizeFast(at: $0.appPath) } ?? 0)
             let icon = loadAppIcon(appBundlePath: bundleMatch?.appPath, infoPlist: infoPlist)
 
             entries.append(
