@@ -10,6 +10,13 @@ struct zPatchCustomView: View {
 
     @State private var showAddSheet = false
     @State private var showAppPicker = false
+    @State private var showEnsImporter = false
+    @State private var shareURL: URL? = nil
+
+    @State private var selectedAppName: String = ""
+    @State private var selectedAppIcon: UIImage? = nil
+    @State private var appMetaByBID: [String: (name: String, icon: UIImage?)] = [:]
+
     @State private var newBundleID: String = ""
     @State private var newRelativeDest: String = ""
     @State private var newSourcePath: String = ""
@@ -32,19 +39,31 @@ struct zPatchCustomView: View {
                     }
                 ))
 
-                Button {
-                    patchStore.saveChange(enableTweak: draftEnabled)
-                    UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-                    popupMessage = draftEnabled
-                        ? "Đã bật và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
-                        : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
-                    showSavedPopup = true
-                } label: {
-                    HStack {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Save Change")
-                            .fontWeight(.semibold)
+                HStack(spacing: 12) {
+                    Button {
+                        patchStore.saveChange(enableTweak: draftEnabled)
+                        UserDefaults.standard.set(true, forKey: "ShowApplyTab")
+                        popupMessage = draftEnabled
+                            ? "Đã bật và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
+                            : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
+                        showSavedPopup = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Save Change")
+                                .fontWeight(.semibold)
+                        }
                     }
+
+                    Spacer()
+
+                    Button {
+                        showEnsImporter = true
+                    } label: {
+                        Label("Import .ens", systemImage: "square.and.arrow.down")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
                 }
             }
 
@@ -62,7 +81,7 @@ struct zPatchCustomView: View {
             }
 
             Section(header: Text(L("section_info"))) {
-                Text("Bật/tắt Enable Tweak rồi bấm Save Change để lưu. Sau khi hiện thông báo, bạn tự chuyển qua tab Apply để áp dụng.")
+                Text("Bật/tắt Enable Tweak rồi bấm Save Change để lưu. Import .ens sẽ áp dụng ngay; hoặc tự chuyển qua tab Apply để áp dụng danh sách.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -76,6 +95,33 @@ struct zPatchCustomView: View {
         }
         .sheet(isPresented: $showAddSheet) {
             addPatchSheet
+        }
+        .fileImporter(
+            isPresented: $showEnsImporter,
+            allowedContentTypes: [.data, .item],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                switch patchStore.importEnsAndApplyNow(from: url) {
+                case .success(let bundle):
+                    let icon = bundle.iconPNGBase64
+                        .flatMap { Data(base64Encoded: $0) }
+                        .flatMap { UIImage(data: $0) }
+                    appMetaByBID[bundle.bundleID.lowercased()] = (name: bundle.appName, icon: icon)
+                    draftEnabled = patchStore.isTweakEnabled
+                    popupMessage = "Đã import & chạy ngay .ens cho \(bundle.appName) (\(bundle.bundleID))."
+                    showSavedPopup = true
+                case .failure(let err):
+                    errorMessage = "Import .ens lỗi: \(err.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
+        }
+        .sheet(item: Binding(
+            get: { shareURL.map { zPatchShareItem(url: $0) } },
+            set: { shareURL = $0?.url }
+        )) { wrapper in
+            zPatchShareSheet(activityItems: [wrapper.url])
         }
         .alert("Thông báo", isPresented: $showSavedPopup) {
             Button("OK", role: .cancel) {
@@ -92,7 +138,9 @@ struct zPatchCustomView: View {
     }
 
     private func patchRow(_ patch: zPatchItem) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let meta = resolvedMeta(for: patch.bundleID)
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
                 Toggle("", isOn: Binding(
                     get: { patch.isEnabled },
@@ -100,10 +148,18 @@ struct zPatchCustomView: View {
                 ))
                 .labelsHidden()
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(patch.bundleID.isEmpty ? "Unknown Bundle" : patch.bundleID)
+                zPatchAppIconBadge(icon: meta.icon)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(meta.name)
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
+
+                    Text(patch.bundleID.isEmpty ? "Unknown Bundle" : patch.bundleID)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
 
                     Text("File nguồn: \(patch.sourcePath.isEmpty ? "Chưa chọn" : (patch.sourcePath.split(separator: "/").last.map(String.init) ?? "Đã chọn"))")
                         .font(.system(size: 12))
@@ -139,6 +195,20 @@ struct zPatchCustomView: View {
                 .buttonStyle(.bordered)
 
                 Button {
+                    switch patchStore.exportEnsFile(for: patch, appName: meta.name, icon: meta.icon) {
+                    case .success(let url):
+                        shareURL = url
+                    case .failure(let err):
+                        errorMessage = err.localizedDescription
+                        showErrorAlert = true
+                    }
+                } label: {
+                    Label("Export .ens", systemImage: "square.and.arrow.up")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.bordered)
+
+                Button {
                     patchStore.requestRevert(patch)
                     popupMessage = "Đã chọn Revert cho \(patch.bundleID). Bạn có thể tự chuyển qua tab Apply để khôi phục về patch cũ."
                     showSavedPopup = true
@@ -167,6 +237,19 @@ struct zPatchCustomView: View {
         NavigationStack {
             Form {
                 Section(header: Text("Đích (Tự động ghép /var/mobile/Containers/Data/Application/)")) {
+                    HStack(spacing: 10) {
+                        zPatchAppIconBadge(icon: selectedAppIcon)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(selectedAppName.isEmpty
+                                 ? (newBundleID.split(separator: ".").last.map(String.init) ?? "Chưa chọn app")
+                                 : selectedAppName)
+                                .font(.subheadline.weight(.semibold))
+                            Text(newBundleID.isEmpty ? "Nhập hoặc chọn Bundle ID" : newBundleID)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     HStack(spacing: 8) {
                         TextField("Bundle ID (vd: com.lemon.lvoverseas)", text: $newBundleID)
                             .textInputAutocapitalization(.never)
@@ -229,7 +312,11 @@ struct zPatchCustomView: View {
                 }
             }
             .sheet(isPresented: $showAppPicker) {
-                AppPickerScannerView(selectedBundleID: $newBundleID)
+                AppPickerScannerView(selectedBundleID: $newBundleID) { picked in
+                    selectedAppName = picked.name
+                    selectedAppIcon = picked.icon
+                    appMetaByBID[picked.bundleID.lowercased()] = (name: picked.name, icon: picked.icon)
+                }
             }
             .sheet(isPresented: $showDocumentPicker) {
                 zPatchDocumentPicker(
@@ -243,6 +330,18 @@ struct zPatchCustomView: View {
                 )
             }
         }
+    }
+
+    private func resolvedMeta(for bundleID: String) -> (name: String, icon: UIImage?) {
+        let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
+        if let cached = appMetaByBID[key] {
+            return cached
+        }
+        let fallbackName = bundleID.isEmpty
+            ? "Unknown Bundle"
+            : (bundleID.split(separator: ".").last.map(String.init) ?? bundleID)
+        let icon = try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID)
+        return (name: fallbackName, icon: icon)
     }
 
     private func importSourceURL(_ url: URL) {
@@ -271,8 +370,15 @@ struct zPatchCustomView: View {
     }
 
     private func savePatch() {
-        let cleanBundle = newBundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBundle = zPatchItem.normalizedBundleID(newBundleID)
         let cleanRel = newRelativeDest.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !cleanBundle.isEmpty {
+            let nameToSave = selectedAppName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? (cleanBundle.split(separator: ".").last.map(String.init) ?? cleanBundle)
+                : selectedAppName
+            appMetaByBID[cleanBundle.lowercased()] = (name: nameToSave, icon: selectedAppIcon)
+        }
 
         if var editing = editingPatch {
             editing.bundleID = cleanBundle
@@ -291,8 +397,11 @@ struct zPatchCustomView: View {
     }
 
     private func editPatch(_ patch: zPatchItem) {
+        let meta = resolvedMeta(for: patch.bundleID)
         editingPatch = patch
         newBundleID = patch.bundleID
+        selectedAppName = meta.name
+        selectedAppIcon = meta.icon
         newRelativeDest = patch.relativeDestPath
         newSourcePath = patch.sourcePath
         showAddSheet = true
@@ -300,10 +409,50 @@ struct zPatchCustomView: View {
 
     private func resetForm() {
         newBundleID = ""
+        selectedAppName = ""
+        selectedAppIcon = nil
         newRelativeDest = ""
         newSourcePath = ""
         editingPatch = nil
     }
+}
+
+private struct zPatchAppIconBadge: View {
+    let icon: UIImage?
+
+    var body: some View {
+        Group {
+            if let icon {
+                Image(uiImage: icon)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "app.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(9)
+                    .foregroundStyle(.tint)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .background(Color(.tertiarySystemFill))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private struct zPatchShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct zPatchShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct zPatchDocumentPicker: UIViewControllerRepresentable {
