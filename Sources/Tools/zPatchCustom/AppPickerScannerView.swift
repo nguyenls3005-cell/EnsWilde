@@ -30,7 +30,7 @@ struct EnsPatchPackage: Identifiable, Codable, Hashable {
     }
 }
 
-struct ScannedAppEntry: Identifiable, Hashable {
+struct EnsScannedAppEntry: Identifiable, Hashable {
     let id: String
     let name: String
     let bundleID: String
@@ -38,7 +38,7 @@ struct ScannedAppEntry: Identifiable, Hashable {
     let containerPath: String
     let icon: UIImage?
 
-    static func == (lhs: ScannedAppEntry, rhs: ScannedAppEntry) -> Bool {
+    static func == (lhs: EnsScannedAppEntry, rhs: EnsScannedAppEntry) -> Bool {
         lhs.id == rhs.id && lhs.containerUUID == rhs.containerUUID
     }
 
@@ -111,7 +111,7 @@ private enum EnsAppResolver {
         return "/var/mobile/Containers/Data/Application/\(bid)"
     }
 
-    static func scanApps(forceRefresh: Bool = false) -> [ScannedAppEntry] {
+    static func scanApps(forceRefresh: Bool = false) -> [EnsScannedAppEntry] {
         if forceRefresh {
             fsHandlers.invalidateCache()
         }
@@ -133,7 +133,7 @@ private enum EnsAppResolver {
         }
 
         let containerPaths = fsHandlers.getDirPaths(FSURL.appContainers.path, forceRefresh: forceRefresh)
-        var list: [ScannedAppEntry] = []
+        var list: [EnsScannedAppEntry] = []
         list.reserveCapacity(containerPaths.count)
 
         for raw in containerPaths {
@@ -142,7 +142,7 @@ private enum EnsAppResolver {
             let lowerUUID = uuid.lowercased()
 
             var bid = lsByUUID[lowerUUID]?.bundleID
-            var name = lsByUUID[lowerUUID]?.name
+            let name = lsByUUID[lowerUUID]?.name
 
             if bid == nil || bid?.isEmpty == true {
                 if let xattrBID = getBIDFromXattr(URL(fileURLWithPath: norm))?
@@ -165,7 +165,7 @@ private enum EnsAppResolver {
             let icon = resolveIcon(for: finalBID, containerPath: norm)
 
             list.append(
-                ScannedAppEntry(
+                EnsScannedAppEntry(
                     id: "\(finalBID)#\(uuid)",
                     name: finalName,
                     bundleID: finalBID,
@@ -289,7 +289,6 @@ final class EnsPatchStore: ObservableObject {
         }
     }
 
-    /// Import .ens và tự áp dụng/chạy ngay
     @discardableResult
     func importAndRunEns(from url: URL) -> EnsPatchPackage? {
         let accessing = url.startAccessingSecurityScopedResource()
@@ -404,11 +403,11 @@ struct EnsAppPickerSheet: View {
     @Binding var selectedIcon: UIImage?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var apps: [ScannedAppEntry] = []
+    @State private var apps: [EnsScannedAppEntry] = []
     @State private var searchText: String = ""
     @State private var isLoading: Bool = false
 
-    private var filtered: [ScannedAppEntry] {
+    private var filtered: [EnsScannedAppEntry] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return apps }
         return apps.filter {
@@ -431,7 +430,7 @@ struct EnsAppPickerSheet: View {
                     dismiss()
                 } label: {
                     HStack(spacing: 12) {
-                        AppIconThumbnail(icon: app.icon)
+                        EnsAppIconThumbnail(icon: app.icon)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(app.name)
                                 .font(.body.weight(.semibold))
@@ -479,7 +478,7 @@ struct EnsAppPickerSheet: View {
     }
 }
 
-private struct AppIconThumbnail: View {
+private struct EnsAppIconThumbnail: View {
     let icon: UIImage?
 
     var body: some View {
@@ -537,7 +536,7 @@ struct EnsPatchManagerView: View {
                     ForEach(store.items) { pkg in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 12) {
-                                AppIconThumbnail(icon: pkg.uiIcon)
+                                EnsAppIconThumbnail(icon: pkg.uiIcon)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(pkg.name)
@@ -617,7 +616,7 @@ struct EnsPatchManagerView: View {
                     Form {
                         Section("App & Bundle ID") {
                             HStack(spacing: 10) {
-                                AppIconThumbnail(icon: inputIcon)
+                                EnsAppIconThumbnail(icon: inputIcon)
                                 VStack(alignment: .leading, spacing: 6) {
                                     TextField("Tên hiển thị (tuỳ chọn)", text: $inputName)
                                     TextField("Nhập Bundle ID (vd: com.example.app)", text: $inputBundleID)
@@ -701,10 +700,10 @@ struct EnsPatchManagerView: View {
                 }
             }
             .sheet(item: Binding(
-                get: { shareURL.map { ShareURLItem(url: $0) } },
+                get: { shareURL.map { EnsShareURLItem(url: $0) } },
                 set: { shareURL = $0?.url }
             )) { wrapper in
-                ActivityShareController(items: [wrapper.url])
+                EnsActivityShareController(items: [wrapper.url])
             }
         }
     }
@@ -719,12 +718,12 @@ struct EnsPatchManagerView: View {
     }
 }
 
-private struct ShareURLItem: Identifiable {
+private struct EnsShareURLItem: Identifiable {
     let id = UUID()
     let url: URL
 }
 
-private struct ActivityShareController: UIViewControllerRepresentable {
+private struct EnsActivityShareController: UIViewControllerRepresentable {
     let items: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
