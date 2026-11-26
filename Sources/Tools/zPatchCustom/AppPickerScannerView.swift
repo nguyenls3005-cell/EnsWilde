@@ -84,42 +84,44 @@ private enum AppScannerEngine {
         list.reserveCapacity(rawContainers.count)
 
         for rawPath in rawContainers {
-            let normPath = CSStoreEngine.normalizeVarPath(rawPath)
-            guard !normPath.isEmpty else { continue }
+            autoreleasepool {
+                let normPath = CSStoreEngine.normalizeVarPath(rawPath)
+                guard !normPath.isEmpty else { return }
 
-            let uuid = (normPath as NSString).lastPathComponent
-            guard !uuid.isEmpty else { continue }
-            let lowerUUID = uuid.lowercased()
+                let uuid = (normPath as NSString).lastPathComponent
+                guard !uuid.isEmpty else { return }
+                let lowerUUID = uuid.lowercased()
 
-            let resolvedBID = lsMap[lowerUUID]?.bundleID
-            let resolvedName = lsMap[lowerUUID]?.name
+                let resolvedBID = lsMap[lowerUUID]?.bundleID
+                let resolvedName = lsMap[lowerUUID]?.name
 
-            let finalBID: String
-            if let resolvedBID, !resolvedBID.isEmpty {
-                finalBID = resolvedBID
-            } else {
-                finalBID = uuid
-            }
+                let finalBID: String
+                if let resolvedBID, !resolvedBID.isEmpty {
+                    finalBID = resolvedBID
+                } else {
+                    finalBID = uuid
+                }
 
-            let finalName: String
-            if let resolvedName, !resolvedName.isEmpty {
-                finalName = resolvedName
-            } else if finalBID != uuid {
-                finalName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
-            } else {
-                finalName = uuid
-            }
+                let finalName: String
+                if let resolvedName, !resolvedName.isEmpty {
+                    finalName = resolvedName
+                } else if finalBID != uuid {
+                    finalName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
+                } else {
+                    finalName = uuid
+                }
 
-            list.append(
-                ScannedAppEntry(
-                    id: "\(finalBID)#\(uuid)",
-                    name: finalName,
-                    bundleID: finalBID,
-                    containerUUID: uuid,
-                    containerPath: normPath,
-                    icon: nil
+                list.append(
+                    ScannedAppEntry(
+                        id: "\(finalBID)#\(uuid)",
+                        name: finalName,
+                        bundleID: finalBID,
+                        containerUUID: uuid,
+                        containerPath: normPath,
+                        icon: nil
+                    )
                 )
-            )
+            }
         }
 
         return list.sorted {
@@ -134,6 +136,16 @@ private final class AppScannerVM: ObservableObject {
     @Published var searchText: String = ""
     @Published var isScanning: Bool = false
     @Published var statusMessage: String = "Chưa quét"
+
+    var filteredApps: [ScannedAppEntry] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return apps }
+        return apps.filter {
+            $0.name.lowercased().contains(query) ||
+            $0.bundleID.lowercased().contains(query) ||
+            $0.containerUUID.lowercased().contains(query)
+        }
+    }
 
     func scan(forceRefresh: Bool = false) {
         guard !isScanning else { return }
