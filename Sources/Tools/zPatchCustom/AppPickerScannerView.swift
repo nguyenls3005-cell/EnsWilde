@@ -3,14 +3,14 @@ import Foundation
 import UIKit
 
 struct ScannedAppEntry: Identifiable, Hashable {
-    let id: String              // Bundle ID
-    let name: String            // Tên app thật
-    let bundleID: String        // Bundle ID thật
-    let containerUUID: String   // UUID data container
+    let id: String              // Unique key
+    let name: String            // Tên app
+    let bundleID: String        // Bundle ID hoặc UUID nếu chưa đọc được
+    let containerUUID: String   // UUID container
     let containerPath: String   // Đường dẫn data container
-    let bundlePath: String?     // Đường dẫn .app
+    let bundlePath: String?     // Đường dẫn .app nếu có
     let sizeBytes: Int64        // Dung lượng (bytes)
-    let icon: UIImage?          // Icon app thật
+    let icon: UIImage?          // Icon app
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
@@ -32,13 +32,12 @@ final class AppScannerViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var isScanning: Bool = false
     @Published var statusMessage: String = "Chưa quét"
-    @Published var showRawContainers: Bool = false
+    @Published var debugDetail: String = ""
 
-    var displayedApps: [ScannedAppEntry] {
-        let base = showRawContainers ? apps : apps.filter { UUID(uuidString: $0.bundleID) == nil }
+    var filteredApps: [ScannedAppEntry] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return base }
-        return base.filter {
+        guard !q.isEmpty else { return apps }
+        return apps.filter {
             $0.name.lowercased().contains(q) ||
             $0.bundleID.lowercased().contains(q) ||
             $0.containerUUID.lowercased().contains(q)
@@ -46,41 +45,40 @@ final class AppScannerViewModel: ObservableObject {
     }
 
     var totalSizeBytes: Int64 {
-        displayedApps.reduce(0) { $0 + $1.sizeBytes }
+        filteredApps.reduce(0) { $0 + $1.sizeBytes }
     }
 
     func scanApps(forceRefresh: Bool = false) {
         guard !isScanning else { return }
         isScanning = true
-        statusMessage = "Đang quét app & container..."
+        statusMessage = "Đang quét..."
+        debugDetail = ""
 
         Task.detached(priority: .userInitiated) {
-            let scanned = Self.collectApps(forceRefresh: forceRefresh)
+            let result = Self.collectApps(forceRefresh: forceRefresh)
             await MainActor.run {
-                self.apps = scanned
+                self.apps = result.entries
                 self.isScanning = false
-                let visibleCount = self.showRawContainers
-                    ? scanned.count
-                    : scanned.filter { UUID(uuidString: $0.bundleID) == nil }.count
-                self.statusMessage = "Đã quét xong: \(visibleCount) app"
+                self.statusMessage = "Đã quét xong: \(result.entries.count) mục"
+                self.debugDetail = result.debugInfo
             }
         }
     }
 
     @discardableResult
-    nonisolated private static func ensureReadAccess(at path: String) -> Bool {
-        guard !path.isEmpty else { return false }
+    nonisolated private static func grantRead(at path: String) -> (Bool, String) {
+        guard !path.isEmpty else { return (false, "empty") }
         let fm = FileManager.default
         if fm.isReadableFile(atPath: path) {
-            return true
+            return (true, "readable")
         }
-        let (ok, _, _) = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
-        return ok || fm.isReadableFile(atPath: path)
+        let (ok, _, msg) = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
+        return (ok || fm.isReadableFile(atPath: path), msg)
     }
 
     nonisolated private static func readPlistDict(atPath path: String) -> [String: Any]? {
-        guard ensureReadAccess(at: path),
-              let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+        _ = grantRead(at: path)
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
             return nil
         }
         return (try? PropertyListSerialization.propertyList(
@@ -90,16 +88,15 @@ final class AppScannerViewModel: ObservableObject {
         )) as? [String: Any]
     }
 
-    /// Tính dung lượng thực tế (bỏ qua Caches/tmp để sát dung lượng app/data hơn)
-    nonisolated private static func directorySize(atPath path: String, skipCachesAndTmp: Bool = false) -> Int64 {
+    nonisolated private static func directorySize(atPath path: String) -> Int64 {
         guard !path.isEmpty else { return 0 }
-        _ = ensureReadAccess(at: path)
+        _ = grantRead(at: path)
 
         let fm = FileManager.default
         let rootURL = URL(fileURLWithPath: path)
         guard let enumerator = fm.enumerator(
             at: rootURL,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isDirectoryKey],
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
             return 0
@@ -107,15 +104,6 @@ final class AppScannerViewModel: ObservableObject {
 
         var total: Int64 = 0
         for case let fileURL as URL in enumerator {
-            if skipCachesAndTmp {
-                let lowerPath = fileURL.path.lowercased()
-                if lowerPath.contains("/library/caches") || lowerPath.contains("/tmp/") || lowerPath.hasSuffix("/tmp") {
-                    if let isDir = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory, isDir == true {
-                        enumerator.skipDescendants()
-                    }
-                    continue
-                }
-            }
             if let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
                values.isRegularFile == true,
                let size = values.fileSize {
@@ -127,7 +115,7 @@ final class AppScannerViewModel: ObservableObject {
 
     nonisolated private static func loadAppIcon(appBundlePath: String?, infoPlist: [String: Any]?) -> UIImage? {
         guard let bundlePath = appBundlePath, !bundlePath.isEmpty else { return nil }
-        _ = ensureReadAccess(at: bundlePath)
+        _ = grantRead(at: bundlePath)
 
         let fm = FileManager.default
         let bundleURL = URL(fileURLWithPath: bundlePath)
@@ -156,13 +144,12 @@ final class AppScannerViewModel: ObservableObject {
         }
 
         for p in candidatePaths {
-            _ = ensureReadAccess(at: p)
+            _ = grantRead(at: p)
             if let img = UIImage(contentsOfFile: p) {
                 return img
             }
         }
 
-        // Quét toàn bộ .png trong .app (gồm cả asset/icon) và chọn ảnh vuông lớn nhất
         if let enumerator = fm.enumerator(
             at: bundleURL,
             includingPropertiesForKeys: [.isRegularFileKey],
@@ -174,10 +161,9 @@ final class AppScannerViewModel: ObservableObject {
             for case let fileURL as URL in enumerator {
                 guard fileURL.pathExtension.lowercased() == "png" else { continue }
                 let lower = fileURL.lastPathComponent.lowercased()
-                let looksLikeIcon = lower.contains("icon") || lower.contains("logo")
-                if !looksLikeIcon { continue }
+                guard lower.contains("icon") || lower.contains("logo") else { continue }
 
-                _ = ensureReadAccess(at: fileURL.path)
+                _ = grantRead(at: fileURL.path)
                 if let img = UIImage(contentsOfFile: fileURL.path) {
                     let area = img.size.width * img.size.height * img.scale * img.scale
                     if area > bestArea {
@@ -192,7 +178,27 @@ final class AppScannerViewModel: ObservableObject {
         return nil
     }
 
-    /// Đọc LastLaunchServicesMap.plist để lấy đủ BundleID -> (dataContainerPath, appBundlePath, name)
+    nonisolated private static func findAppBundleFolder(inside path: String) -> String? {
+        guard !path.isEmpty else { return nil }
+        _ = grantRead(at: path)
+        if path.hasSuffix(".app") { return path }
+
+        let fm = FileManager.default
+        if let items = try? fm.contentsOfDirectory(atPath: path) {
+            if let appDir = items.first(where: { $0.hasSuffix(".app") }) {
+                return (path as NSString).appendingPathComponent(appDir)
+            }
+            for sub in items {
+                let subPath = (path as NSString).appendingPathComponent(sub)
+                if let subItems = try? fm.contentsOfDirectory(atPath: subPath),
+                   let appDir = subItems.first(where: { $0.hasSuffix(".app") }) {
+                    return (subPath as NSString).appendingPathComponent(appDir)
+                }
+            }
+        }
+        return nil
+    }
+
     nonisolated private static func loadLaunchServicesIndex() -> [String: (dataPath: String?, bundlePath: String?, name: String?)] {
         let mapPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
         guard let plist = readPlistDict(atPath: mapPath),
@@ -225,47 +231,22 @@ final class AppScannerViewModel: ObservableObject {
         return index
     }
 
-    nonisolated private static func findAppBundleFolder(inside path: String) -> String? {
-        guard !path.isEmpty else { return nil }
-        _ = ensureReadAccess(at: path)
-        if path.hasSuffix(".app") {
-            return path
-        }
-        let fm = FileManager.default
-        if let items = try? fm.contentsOfDirectory(atPath: path) {
-            if let appDir = items.first(where: { $0.hasSuffix(".app") }) {
-                return (path as NSString).appendingPathComponent(appDir)
-            }
-            // Đôi khi nằm lồng 1 cấp nữa
-            for sub in items {
-                let subPath = (path as NSString).appendingPathComponent(sub)
-                if let subItems = try? fm.contentsOfDirectory(atPath: subPath),
-                   let appDir = subItems.first(where: { $0.hasSuffix(".app") }) {
-                    return (subPath as NSString).appendingPathComponent(appDir)
-                }
-            }
-        }
-        return nil
-    }
-
-    nonisolated private static func collectApps(forceRefresh: Bool) -> [ScannedAppEntry] {
+    nonisolated private static func collectApps(forceRefresh: Bool) -> (entries: [ScannedAppEntry], debugInfo: String) {
         if forceRefresh {
             fsHandlers.invalidateCache()
         }
+
+        let (_, msgData) = grantRead(at: FSURL.appContainers.path)
+        let (_, msgBundle) = grantRead(at: FSURL.appBundles.path)
 
         let lsIndex = loadLaunchServicesIndex()
         let rawDataContainers = fsHandlers.getDirPaths(FSURL.appContainers.path, forceRefresh: forceRefresh)
         let rawBundleContainers = fsHandlers.getDirPaths(FSURL.appBundles.path, forceRefresh: forceRefresh)
 
-        // Map BundleID (lowercase) -> .app path từ Bundle/Application
         var bundlePathByBID: [String: String] = [:]
         for (bid, entry) in lsIndex {
             if let bPath = entry.bundlePath, !bPath.isEmpty {
-                if let appFolder = findAppBundleFolder(inside: bPath) {
-                    bundlePathByBID[bid] = appFolder
-                } else {
-                    bundlePathByBID[bid] = bPath
-                }
+                bundlePathByBID[bid] = findAppBundleFolder(inside: bPath) ?? bPath
             }
         }
 
@@ -278,7 +259,6 @@ final class AppScannerViewModel: ObservableObject {
             }
         }
 
-        // Map BundleID (lowercase) -> DataContainerPath
         var dataContainerByBID: [String: String] = [:]
         for (bid, entry) in lsIndex {
             if let dPath = entry.dataPath, !dPath.isEmpty {
@@ -286,9 +266,10 @@ final class AppScannerViewModel: ObservableObject {
             }
         }
 
+        var unmappedDataPaths: [String] = []
         for dContainer in rawDataContainers {
             let stdPath = CSStoreEngine.normalizeVarPath((dContainer as NSString).standardizingPath)
-            _ = ensureReadAccess(at: stdPath)
+            _ = grantRead(at: stdPath)
 
             var bid = getBIDFromXattr(URL(fileURLWithPath: stdPath))
             if bid == nil || bid?.isEmpty == true {
@@ -298,12 +279,17 @@ final class AppScannerViewModel: ObservableObject {
                     bid = (meta["MCMMetadataIdentifier"] as? String) ?? (meta["Identifier"] as? String)
                 }
             }
-            if let bid, !bid.isEmpty, dataContainerByBID[bid.lowercased()] == nil {
-                dataContainerByBID[bid.lowercased()] = stdPath
+
+            if let bid, !bid.isEmpty {
+                let lower = bid.lowercased()
+                if dataContainerByBID[lower] == nil {
+                    dataContainerByBID[lower] = stdPath
+                }
+            } else {
+                unmappedDataPaths.append(stdPath)
             }
         }
 
-        // Hợp nhất toàn bộ BundleID từ LS + Bundle + Data
         let allBIDs = Set(bundlePathByBID.keys)
             .union(dataContainerByBID.keys)
             .union(lsIndex.keys)
@@ -324,12 +310,6 @@ final class AppScannerViewModel: ObservableObject {
             let realBundleID = (infoPlist?["CFBundleIdentifier"] as? String)
                 ?? (lowerBID.isEmpty ? "unknown" : lowerBID)
 
-            // Nếu không có .app và không có metadata hợp lệ, skip mục UUID rác
-            let isUUIDOnly = (UUID(uuidString: realBundleID) != nil)
-            if isUUIDOnly && appBundlePath == nil && lsInfo?.name == nil {
-                continue
-            }
-
             let uuid: String = {
                 if !dataPath.isEmpty {
                     let last = URL(fileURLWithPath: dataPath).lastPathComponent
@@ -348,9 +328,8 @@ final class AppScannerViewModel: ObservableObject {
                 ?? (appBundlePath.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent })
                 ?? realBundleID
 
-            let dataSize = dataPath.isEmpty ? 0 : directorySize(atPath: dataPath, skipCachesAndTmp: true)
-            let bundleSize = appBundlePath.map { directorySize(atPath: $0, skipCachesAndTmp: false) } ?? 0
-            let totalSize = dataSize + bundleSize
+            let dataSize = dataPath.isEmpty ? 0 : directorySize(atPath: dataPath)
+            let bundleSize = appBundlePath.map { directorySize(atPath: $0) } ?? 0
             let icon = loadAppIcon(appBundlePath: appBundlePath, infoPlist: infoPlist)
 
             entries.append(
@@ -361,15 +340,35 @@ final class AppScannerViewModel: ObservableObject {
                     containerUUID: uuid,
                     containerPath: dataPath,
                     bundlePath: appBundlePath,
-                    sizeBytes: totalSize,
+                    sizeBytes: dataSize + bundleSize,
                     icon: icon
                 )
             )
         }
 
-        return entries.sorted {
+        for rawPath in unmappedDataPaths {
+            let uuid = URL(fileURLWithPath: rawPath).lastPathComponent
+            let sz = directorySize(atPath: rawPath)
+            entries.append(
+                ScannedAppEntry(
+                    id: "raw#\(uuid)",
+                    name: uuid,
+                    bundleID: uuid,
+                    containerUUID: uuid,
+                    containerPath: rawPath,
+                    bundlePath: nil,
+                    sizeBytes: sz,
+                    icon: nil
+                )
+            )
+        }
+
+        let sorted = entries.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
+
+        let info = "LS:\(lsIndex.count) | Data:\(rawDataContainers.count)(\(msgData)) | Bundle:\(rawBundleContainers.count)(\(msgBundle))"
+        return (sorted, info)
     }
 }
 
@@ -389,10 +388,10 @@ struct AppPickerScannerView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                VStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Tổng số app: \(vm.displayedApps.count)")
+                            Text("Tổng số app: \(vm.filteredApps.count)")
                                 .font(.headline)
                             Text("\(vm.statusMessage) • \(ByteCountFormatter.string(fromByteCount: vm.totalSizeBytes, countStyle: .file))")
                                 .font(.caption)
@@ -418,13 +417,17 @@ struct AppPickerScannerView: View {
                         .disabled(vm.isScanning)
                     }
 
-                    Toggle("Hiện cả container chưa rõ Bundle ID", isOn: $vm.showRawContainers)
-                        .font(.caption)
+                    if !vm.debugDetail.isEmpty {
+                        Text(vm.debugDetail)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 }
                 .padding()
                 .background(Color(.secondarySystemBackground))
 
-                List(vm.displayedApps) { app in
+                List(vm.filteredApps) { app in
                     Button {
                         selectedBundleID = app.bundleID
                         if !app.containerPath.isEmpty {
