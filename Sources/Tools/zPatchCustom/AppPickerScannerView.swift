@@ -23,63 +23,236 @@ struct ScannedAppEntry: Identifiable, Hashable {
 
 private enum AppScannerEngine {
     private static let fm = FileManager.default
-    private static let launchServicesPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
+    private static let launchServicesCandidates = [
+        "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist",
+        "/var/containers/Shared/SystemGroup/systemgroup.com.apple.lsd.plist/Library/Caches/com.apple.LaunchServices-054.csstore"
+    ]
 
-    private static func loadLaunchServicesMap() -> [String: (bundleID: String, name: String)] {
-        guard fm.fileExists(atPath: launchServicesPath),
-              let data = fm.contents(atPath: launchServicesPath),
+    private static func readPlistWithWQ(at path: String) -> [String: Any]? {
+        let granted = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
+        defer {
+            if granted.0 {
+                wq.releaseAccess(path: path)
+            }
+        }
+
+        if let data = fm.contents(atPath: path),
+           let plist = try? PropertyListSerialization.propertyList(
+               from: data,
+               options: [],
+               format: nil
+           ) as? [String: Any] {
+            return plist
+        }
+
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           let plist = try? PropertyListSerialization.propertyList(
+               from: data,
+               options: [],
+               format: nil
+           ) as? [String: Any] {
+            return plist
+        }
+
+        return nil
+    }
+
+    private static func parseAppRecords(from plist: [String: Any]) -> (
+        byUUID: [String: (bundleID: String, name: String)],
+        byBID: [String: (uuid: String, name: String)]
+    ) {
+        var byUUID: [String: (bundleID: String, name: String)] = [:]
+        var byBID: [String: (uuid: String, name: String)] = [:]
+
+        let containersRoot = [
+            plist["User"] as? [String: Any],
+            plist["System"] as? [String: Any],
+            plist["Internal"] as? [String: Any]
+        ]
+
+        for group in containersRoot {
+            guard let dictGroup = group else { continue }
+            for (bid, rawInfo) in dictGroup {
+                guard let info = rawInfo as? [String: Any] else { continue }
+                let disp = (info["CFBundleDisplayName"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let bname = (info["CFBundleName"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let fallback = bid.split(separator: ".").last.map(String.init) ?? bid
+                let title = (disp?.isEmpty == false) ? disp! : ((bname?.isEmpty == false) ? bname! : fallback)
+
+                let rawContainer = (info["Container"] as? String) ?? ""
+                let uuid = rawContainer.isEmpty
+                    ? ""
+                    : ((rawContainer as NSString).lastPathComponent)
+
+                if !uuid.isEmpty {
+                    byUUID[uuid.lowercased()] = (bundleID: bid, name: title)
+                }
+                byBID[bid.lowercased()] = (uuid: uuid, name: title)
+            }
+        }
+
+        return (byUUID, byBID)
+    }
+
+    private static func loadLaunchServicesRecords() -> (
+        byUUID: [String: (bundleID: String, name: String)],
+        byBID: [String: (uuid: String, name: String)]
+    ) {
+        for path in launchServicesCandidates where path.hasSuffix(".plist") {
+            if let plist = readPlistWithWQ(at: path) {
+                let parsed = parseAppRecords(from: plist)
+                if !parsed.byUUID.isEmpty || !parsed.byBID.isEmpty {
+                    return parsed
+                }
+            }
+        }
+        return ([:], [:])
+    }
+
+    private static func inspectInfoPlist(inDirectory dirPath: String) -> (bundleID: String?, name: String?) {
+        let infoPath = (dirPath as NSString).appendingPathComponent("Info.plist")
+        let granted = wq.grantAccess(path: infoPath, requireWrite: false, allowFsgetpathFallback: true)
+        defer {
+            if granted.0 {
+                wq.releaseAccess(path: infoPath)
+            }
+        }
+
+        guard let data = fm.contents(atPath: infoPath),
               let plist = try? PropertyListSerialization.propertyList(
                   from: data,
                   options: [],
                   format: nil
-              ) as? [String: Any],
-              let userApps = plist["User"] as? [String: Any] else {
-            return [:]
+              ) as? [String: Any] else {
+            return (nil, nil)
         }
 
-        var result: [String: (bundleID: String, name: String)] = [:]
-        result.reserveCapacity(userApps.count)
+        let bid = (plist["CFBundleIdentifier"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let disp = (plist["CFBundleDisplayName"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let bname = (plist["CFBundleName"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        for (bundleID, rawValue) in userApps {
-            guard let info = rawValue as? [String: Any],
-                  let uuid = info["Container"] as? String,
-                  !uuid.isEmpty else {
-                continue
-            }
-
-            let displayName = (info["CFBundleDisplayName"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let bundleName = (info["CFBundleName"] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let fallback = bundleID.split(separator: ".").last.map(String.init) ?? bundleID
-
-            let resolvedName: String
-            if let displayName, !displayName.isEmpty {
-                resolvedName = displayName
-            } else if let bundleName, !bundleName.isEmpty {
-                resolvedName = bundleName
-            } else {
-                resolvedName = fallback
-            }
-
-            result[uuid.lowercased()] = (bundleID: bundleID, name: resolvedName)
+        let chosenName: String?
+        if let disp, !disp.isEmpty {
+            chosenName = disp
+        } else if let bname, !bname.isEmpty {
+            chosenName = bname
+        } else {
+            chosenName = nil
         }
 
-        return result
+        return (
+            (bid?.isEmpty == false) ? bid : nil,
+            chosenName
+        )
+    }
+
+    private static func findBundleIDAndName(
+        forContainerPath normPath: String,
+        uuid: String,
+        lsRecords: (
+            byUUID: [String: (bundleID: String, name: String)],
+            byBID: [String: (uuid: String, name: String)]
+        )
+    ) -> (bundleID: String, name: String) {
+        let lowerUUID = uuid.lowercased()
+
+        if let hit = lsRecords.byUUID[lowerUUID] {
+            return (hit.bundleID, hit.name)
+        }
+
+        var detectedBID: String? = nil
+        var detectedName: String? = nil
+
+        let wqDir = wq.grantAccess(path: normPath, requireWrite: false, allowFsgetpathFallback: true)
+        defer {
+            if wqDir.0 {
+                wq.releaseAccess(path: normPath)
+            }
+        }
+
+        if let xattrBID = getBIDFromXattr(URL(fileURLWithPath: normPath))?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !xattrBID.isEmpty {
+            detectedBID = xattrBID
+        }
+
+        if detectedBID == nil {
+            let candidates = [
+                (normPath as NSString).appendingPathComponent("iTunesMetadata.plist"),
+                (normPath as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
+            ]
+            for metaPath in candidates {
+                let g = wq.grantAccess(path: metaPath, requireWrite: false, allowFsgetpathFallback: true)
+                defer { if g.0 { wq.releaseAccess(path: metaPath) } }
+                if let d = fm.contents(atPath: metaPath),
+                   let p = try? PropertyListSerialization.propertyList(from: d, options: [], format: nil) as? [String: Any] {
+                    if let b = (p["softwareVersionBundleId"] as? String) ?? (p["MCMMetadataIdentifier"] as? String),
+                       !b.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        detectedBID = b.trimmingCharacters(in: .whitespacesAndNewlines)
+                        break
+                    }
+                }
+            }
+        }
+
+        let parentDir = (normPath as NSString).deletingLastPathComponent
+        if let appDirs = try? fm.contentsOfDirectory(atPath: parentDir) {
+            for entry in appDirs where entry.hasSuffix(".app") {
+                let appBundlePath = (parentDir as NSString).appendingPathComponent(entry)
+                let info = inspectInfoPlist(inDirectory: appBundlePath)
+                if detectedBID == nil, let b = info.bundleID {
+                    detectedBID = b
+                }
+                if detectedName == nil, let n = info.name {
+                    detectedName = n
+                }
+                if detectedBID != nil && detectedName != nil {
+                    break
+                }
+            }
+        }
+
+        let finalBID = detectedBID ?? uuid
+        if let bidMatch = lsRecords.byBID[finalBID.lowercased()] {
+            return (finalBID, detectedName ?? bidMatch.name)
+        }
+
+        if let name = detectedName, !name.isEmpty {
+            return (finalBID, name)
+        }
+
+        if finalBID != uuid {
+            let shortName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
+            return (finalBID, shortName)
+        }
+
+        return (uuid, uuid)
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
-        var rawContainers: [String] = []
-
         if forceRefresh {
             fsHandlers.invalidateCache()
         }
-        rawContainers = fsHandlers.getDirPaths(
+
+        let rootPath = CSStoreEngine.normalizeVarPath(FSURL.appContainers.path)
+        let wqRoot = wq.grantAccess(path: rootPath, requireWrite: false, allowFsgetpathFallback: true)
+        defer {
+            if wqRoot.0 {
+                wq.releaseAccess(path: rootPath)
+            }
+        }
+
+        let rawContainers = fsHandlers.getDirPaths(
             FSURL.appContainers.path,
             forceRefresh: forceRefresh
         )
+        let lsRecords = loadLaunchServicesRecords()
 
-        let lsMap = loadLaunchServicesMap()
         var list: [ScannedAppEntry] = []
         list.reserveCapacity(rawContainers.count)
 
@@ -90,32 +263,18 @@ private enum AppScannerEngine {
 
                 let uuid = (normPath as NSString).lastPathComponent
                 guard !uuid.isEmpty else { return }
-                let lowerUUID = uuid.lowercased()
 
-                let resolvedBID = lsMap[lowerUUID]?.bundleID
-                let resolvedName = lsMap[lowerUUID]?.name
-
-                let finalBID: String
-                if let resolvedBID, !resolvedBID.isEmpty {
-                    finalBID = resolvedBID
-                } else {
-                    finalBID = uuid
-                }
-
-                let finalName: String
-                if let resolvedName, !resolvedName.isEmpty {
-                    finalName = resolvedName
-                } else if finalBID != uuid {
-                    finalName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
-                } else {
-                    finalName = uuid
-                }
+                let resolved = findBundleIDAndName(
+                    forContainerPath: normPath,
+                    uuid: uuid,
+                    lsRecords: lsRecords
+                )
 
                 list.append(
                     ScannedAppEntry(
-                        id: "\(finalBID)#\(uuid)",
-                        name: finalName,
-                        bundleID: finalBID,
+                        id: "\(resolved.bundleID)#\(uuid)",
+                        name: resolved.name,
+                        bundleID: resolved.bundleID,
                         containerUUID: uuid,
                         containerPath: normPath,
                         icon: nil
