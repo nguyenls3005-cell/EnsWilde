@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import Darwin
+import UIKit
 
 struct zPatchItem: Identifiable, Codable {
     var id: UUID
@@ -77,7 +78,6 @@ struct zPatchItem: Identifiable, Codable {
         var found: String? = nil
 
         autoreleasepool {
-            // 1. Thử JITEnableContext nếu có sẵn
             if let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: Any] {
                 var dictMap: [String: [String: Any]] = [:]
                 for (k, v) in allApps {
@@ -94,7 +94,6 @@ struct zPatchItem: Identifiable, Codable {
                 }
             }
 
-            // 2. Thử CSStoreEngine
             if found == nil {
                 let (_, hit) = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid)
                 if let hit, !hit.isEmpty {
@@ -102,7 +101,6 @@ struct zPatchItem: Identifiable, Codable {
                 }
             }
 
-            // 3. Thử fsHandlers (có fallback pathleak nếu CSStore không có)
             if found == nil {
                 let viaFS = fsHandlers.getContainerPath(at: FSURL.appContainers, forMatch: bid)
                 if !viaFS.isEmpty {
@@ -277,7 +275,6 @@ final class zPatchStore: ObservableObject {
         return backupDir.appendingPathComponent(name.isEmpty ? "target.bin" : name)
     }
 
-    /// Xin quyền wq cho cả thư mục cha lẫn file đích để mở được folder khi ghi/tạo file
     private func acquireAccessForTarget(_ targetPath: String, onLog: @escaping (String) -> Void) -> [String] {
         var acquired: [String] = []
         let parentDir = (targetPath as NSString).deletingLastPathComponent
@@ -490,5 +487,174 @@ final class zPatchStore: ObservableObject {
 
     func clearPendingApply() {
         pendingApply = false
+    }
+}
+
+struct zPatchEnsBundle: Codable {
+    var version: Int = 1
+    var bundleID: String
+    var appName: String
+    var relativeDestPath: String
+    var containerPath: String
+    var sourceFileName: String
+    var payloadBase64: String?
+    var iconPNGBase64: String?
+    var isEnabled: Bool
+    var createdDate: Date
+}
+
+extension zPatchStore {
+    func buildEnsData(
+        for patch: zPatchItem,
+        appName: String? = nil,
+        icon: UIImage? = nil
+    ) -> Data? {
+        let cleanBID = zPatchItem.normalizedBundleID(patch.bundleID)
+        let resolvedName: String = {
+            if let n = appName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
+                return n
+            }
+            return cleanBID.split(separator: ".").last.map(String.init) ?? cleanBID
+        }()
+
+        let payloadData: Data? = {
+            guard !patch.sourcePath.isEmpty,
+                  FileManager.default.fileExists(atPath: patch.sourcePath) else {
+                return nil
+            }
+            return try? Data(contentsOf: URL(fileURLWithPath: patch.sourcePath))
+        }()
+
+        let resolvedIcon = icon ?? (try? JITEnableContext.shared.getAppIcon(withBundleId: cleanBID))
+        let bundleObj = zPatchEnsBundle(
+            bundleID: cleanBID,
+            appName: resolvedName,
+            relativeDestPath: patch.relativeDestPath,
+            containerPath: patch.cachedDestinationPath.map { ($0 as NSString).deletingLastPathComponent }
+                ?? (zPatchItem.resolveContainerRoot(for: cleanBID) ?? (zPatchItem.baseContainerPrefix + cleanBID)),
+            sourceFileName: URL(fileURLWithPath: patch.sourcePath).lastPathComponent,
+            payloadBase64: payloadData?.base64EncodedString(),
+            iconPNGBase64: resolvedIcon?.pngData()?.base64EncodedString(),
+            isEnabled: patch.isEnabled,
+            createdDate: patch.createdDate
+        )
+
+        return try? JSONEncoder().encode(bundleObj)
+    }
+
+    func exportEnsFile(
+        for patch: zPatchItem,
+        appName: String? = nil,
+        icon: UIImage? = nil
+    ) -> Result<URL, Error> {
+        guard let data = buildEnsData(for: patch, appName: appName, icon: icon) else {
+            return .failure(NSError(
+                domain: "zPatch.ens",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "Không thể mã hoá gói .ens"]
+            ))
+        }
+
+        let safeBID = zPatchItem.normalizedBundleID(patch.bundleID)
+            .replacingOccurrences(of: "/", with: "_")
+        let outURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(safeBID).ens")
+
+        let (ok, err) = writeFileTemp(data, to: outURL)
+        if ok {
+            return .success(outURL)
+        } else {
+            return .failure(NSError(
+                domain: "zPatch.ens",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: err]
+            ))
+        }
+    }
+
+    @discardableResult
+    func importEnsAndApplyNow(from fileURL: URL, onLog: ((String) -> Void)? = nil) -> Result<zPatchEnsBundle, Error> {
+        let accessing = fileURL.startAccessingSecurityScopedResource()
+        defer {
+            if accessing { fileURL.stopAccessingSecurityScopedResource() }
+        }
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            return .failure(error)
+        }
+
+        let decoded: zPatchEnsBundle
+        do {
+            decoded = try JSONDecoder().decode(zPatchEnsBundle.self, from: data)
+        } catch {
+            return .failure(error)
+        }
+
+        let cleanBID = zPatchItem.normalizedBundleID(decoded.bundleID)
+        guard !cleanBID.isEmpty else {
+            return .failure(NSError(
+                domain: "zPatch.ens",
+                code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "Bundle ID trong file .ens trống"]
+            ))
+        }
+
+        if !decoded.containerPath.isEmpty {
+            registerContainer(
+                bundleID: cleanBID,
+                containerPath: (decoded.containerPath as NSString).deletingLastPathComponent
+            )
+        }
+
+        let docsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let payloadDir = docsURL
+            .appendingPathComponent("zPatchCustomFiles", isDirectory: true)
+            .appendingPathComponent("ens_\(cleanBID)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: payloadDir, withIntermediateDirectories: true)
+
+        let fileName = decoded.sourceFileName.isEmpty
+            ? URL(fileURLWithPath: decoded.relativeDestPath).lastPathComponent
+            : decoded.sourceFileName
+        let safeFileName = fileName.isEmpty ? "payload.bin" : fileName
+        let savedSourceURL = payloadDir.appendingPathComponent(safeFileName)
+
+        if let b64 = decoded.payloadBase64,
+           let payloadData = Data(base64Encoded: b64) {
+            _ = writeFileTemp(payloadData, to: savedSourceURL)
+        }
+
+        let relDest = decoded.relativeDestPath.isEmpty ? safeFileName : decoded.relativeDestPath
+        var item = zPatchItem(
+            bundleID: cleanBID,
+            relativeDestPath: relDest,
+            sourcePath: savedSourceURL.path,
+            hasInitialBackup: false,
+            isEnabled: true,
+            pendingRevert: false
+        )
+        let resolvedDest = item.resolveDestinationPath()
+        item.cachedDestinationPath = resolvedDest
+
+        patches.removeAll {
+            zPatchItem.normalizedBundleID($0.bundleID).caseInsensitiveCompare(cleanBID) == .orderedSame
+                && $0.relativeDestPath.caseInsensitiveCompare(relDest) == .orderedSame
+        }
+        patches.insert(item, at: 0)
+        setTweakEnabledImmediate(true)
+        savePatches()
+        pendingApply = true
+
+        do {
+            try applyAllUsingWorseQuery { msg in
+                onLog?(msg)
+            }
+        } catch {
+            return .failure(error)
+        }
+
+        return .success(decoded)
     }
 }
