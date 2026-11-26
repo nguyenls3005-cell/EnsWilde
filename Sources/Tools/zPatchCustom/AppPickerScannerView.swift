@@ -26,8 +26,8 @@ private enum AppScannerEngine {
     private static let launchServicesPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
 
     private static func loadLaunchServicesMap() -> [String: (bundleID: String, name: String)] {
-        guard fm.isReadableFile(atPath: launchServicesPath),
-              let data = try? Data(contentsOf: URL(fileURLWithPath: launchServicesPath)),
+        guard fm.fileExists(atPath: launchServicesPath),
+              let data = fm.contents(atPath: launchServicesPath),
               let plist = try? PropertyListSerialization.propertyList(
                   from: data,
                   options: [],
@@ -68,45 +68,25 @@ private enum AppScannerEngine {
         return result
     }
 
-    private static func resolveIconSafely(bundleID: String, containerPath: String) -> UIImage? {
-        if !bundleID.isEmpty,
-           let jitIcon = try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID) {
-            return jitIcon
-        }
-
-        let normContainer = CSStoreEngine.normalizeVarPath(containerPath)
-        guard !normContainer.isEmpty else { return nil }
-
-        let parentDir = (normContainer as NSString).deletingLastPathComponent
-        guard parentDir != "/", fm.isReadableFile(atPath: parentDir),
-              let contents = try? fm.contentsOfDirectory(atPath: parentDir) else {
-            return nil
-        }
-
-        for item in contents.prefix(20) {
-            let lower = item.lowercased()
-            if lower.contains("appicon") && lower.hasSuffix(".png") {
-                let fullPath = (parentDir as NSString).appendingPathComponent(item)
-                if let img = UIImage(contentsOfFile: fullPath) {
-                    return img
-                }
-            }
-        }
-
-        return nil
+    private static func safeIcon(for bundleID: String) -> UIImage? {
+        guard !bundleID.isEmpty, !bundleID.contains("/") else { return nil }
+        return try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID)
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
-        if forceRefresh {
-            fsHandlers.invalidateCache()
+        var rawContainers: [String] = []
+
+        autoreleasepool {
+            if forceRefresh {
+                fsHandlers.invalidateCache()
+            }
+            rawContainers = fsHandlers.getDirPaths(
+                FSURL.appContainers.path,
+                forceRefresh: forceRefresh
+            )
         }
 
         let lsMap = loadLaunchServicesMap()
-        let rawContainers = fsHandlers.getDirPaths(
-            FSURL.appContainers.path,
-            forceRefresh: forceRefresh
-        )
-
         var list: [ScannedAppEntry] = []
         list.reserveCapacity(rawContainers.count)
 
@@ -115,7 +95,7 @@ private enum AppScannerEngine {
                 let normPath = CSStoreEngine.normalizeVarPath(rawPath)
                 guard !normPath.isEmpty else { return }
 
-                let uuid = URL(fileURLWithPath: normPath).lastPathComponent
+                let uuid = (normPath as NSString).lastPathComponent
                 guard !uuid.isEmpty else { return }
                 let lowerUUID = uuid.lowercased()
 
@@ -140,7 +120,7 @@ private enum AppScannerEngine {
                     finalName = uuid
                 }
 
-                let icon = resolveIconSafely(bundleID: finalBID, containerPath: normPath)
+                let icon = safeIcon(for: finalBID)
 
                 list.append(
                     ScannedAppEntry(
@@ -168,12 +148,6 @@ private final class AppScannerVM: ObservableObject {
     @Published var isScanning: Bool = false
     @Published var statusMessage: String = "Chưa quét"
 
-    private var scanTask: Task<Void, Never>?
-
-    deinit {
-        scanTask?.cancel()
-    }
-
     var filteredApps: [ScannedAppEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return apps }
@@ -189,15 +163,11 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        scanTask?.cancel()
-        scanTask = Task.detached(priority: .userInitiated) {
+        DispatchQueue.main.async {
             let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self.apps = result
-                self.isScanning = false
-                self.statusMessage = "Đã quét xong: \(result.count) app"
-            }
+            self.apps = result
+            self.isScanning = false
+            self.statusMessage = "Đã quét xong: \(result.count) app"
         }
     }
 }
