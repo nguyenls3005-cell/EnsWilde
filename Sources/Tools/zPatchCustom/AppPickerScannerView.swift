@@ -26,7 +26,8 @@ private enum AppScannerEngine {
     private static let launchServicesPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
 
     private static func loadLaunchServicesMap() -> [String: (bundleID: String, name: String)] {
-        guard let data = fm.contents(atPath: launchServicesPath),
+        guard fm.isReadableFile(atPath: launchServicesPath),
+              let data = try? Data(contentsOf: URL(fileURLWithPath: launchServicesPath)),
               let plist = try? PropertyListSerialization.propertyList(
                   from: data,
                   options: [],
@@ -67,8 +68,9 @@ private enum AppScannerEngine {
         return result
     }
 
-    private static func resolveIcon(bundleID: String, containerPath: String) -> UIImage? {
-        if let jitIcon = try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID) {
+    private static func resolveIconSafely(bundleID: String, containerPath: String) -> UIImage? {
+        if !bundleID.isEmpty,
+           let jitIcon = try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID) {
             return jitIcon
         }
 
@@ -76,16 +78,17 @@ private enum AppScannerEngine {
         guard !normContainer.isEmpty else { return nil }
 
         let parentDir = (normContainer as NSString).deletingLastPathComponent
-        if let enumerator = fm.enumerator(
-            at: URL(fileURLWithPath: parentDir),
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) {
-            for case let fileURL as URL in enumerator {
-                let lower = fileURL.lastPathComponent.lowercased()
-                if lower.contains("appicon") && lower.hasSuffix(".png"),
-                   let image = UIImage(contentsOfFile: fileURL.path) {
-                    return image
+        guard parentDir != "/", fm.isReadableFile(atPath: parentDir),
+              let contents = try? fm.contentsOfDirectory(atPath: parentDir) else {
+            return nil
+        }
+
+        for item in contents.prefix(20) {
+            let lower = item.lowercased()
+            if lower.contains("appicon") && lower.hasSuffix(".png") {
+                let fullPath = (parentDir as NSString).appendingPathComponent(item)
+                if let img = UIImage(contentsOfFile: fullPath) {
+                    return img
                 }
             }
         }
@@ -108,43 +111,48 @@ private enum AppScannerEngine {
         list.reserveCapacity(rawContainers.count)
 
         for rawPath in rawContainers {
-            let normPath = CSStoreEngine.normalizeVarPath(rawPath)
-            let uuid = URL(fileURLWithPath: normPath).lastPathComponent
-            let lowerUUID = uuid.lowercased()
+            autoreleasepool {
+                let normPath = CSStoreEngine.normalizeVarPath(rawPath)
+                guard !normPath.isEmpty else { return }
 
-            var resolvedBID = lsMap[lowerUUID]?.bundleID
-            let resolvedName = lsMap[lowerUUID]?.name
+                let uuid = URL(fileURLWithPath: normPath).lastPathComponent
+                guard !uuid.isEmpty else { return }
+                let lowerUUID = uuid.lowercased()
 
-            if resolvedBID == nil || resolvedBID?.isEmpty == true {
-                if let xattrBID = getBIDFromXattr(URL(fileURLWithPath: normPath))?
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
-                   !xattrBID.isEmpty {
-                    resolvedBID = xattrBID
+                var resolvedBID = lsMap[lowerUUID]?.bundleID
+                let resolvedName = lsMap[lowerUUID]?.name
+
+                if resolvedBID == nil || resolvedBID?.isEmpty == true {
+                    if let xattrBID = getBIDFromXattr(URL(fileURLWithPath: normPath))?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                       !xattrBID.isEmpty {
+                        resolvedBID = xattrBID
+                    }
                 }
-            }
 
-            let finalBID = (resolvedBID?.isEmpty == false) ? resolvedBID! : uuid
-            let finalName: String
-            if let resolvedName, !resolvedName.isEmpty {
-                finalName = resolvedName
-            } else if finalBID != uuid {
-                finalName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
-            } else {
-                finalName = uuid
-            }
+                let finalBID = (resolvedBID?.isEmpty == false) ? resolvedBID! : uuid
+                let finalName: String
+                if let resolvedName, !resolvedName.isEmpty {
+                    finalName = resolvedName
+                } else if finalBID != uuid {
+                    finalName = finalBID.split(separator: ".").last.map(String.init) ?? finalBID
+                } else {
+                    finalName = uuid
+                }
 
-            let icon = resolveIcon(bundleID: finalBID, containerPath: normPath)
+                let icon = resolveIconSafely(bundleID: finalBID, containerPath: normPath)
 
-            list.append(
-                ScannedAppEntry(
-                    id: "\(finalBID)#\(uuid)",
-                    name: finalName,
-                    bundleID: finalBID,
-                    containerUUID: uuid,
-                    containerPath: normPath,
-                    icon: icon
+                list.append(
+                    ScannedAppEntry(
+                        id: "\(finalBID)#\(uuid)",
+                        name: finalName,
+                        bundleID: finalBID,
+                        containerUUID: uuid,
+                        containerPath: normPath,
+                        icon: icon
+                    )
                 )
-            )
+            }
         }
 
         return list.sorted {
@@ -159,6 +167,12 @@ private final class AppScannerVM: ObservableObject {
     @Published var searchText: String = ""
     @Published var isScanning: Bool = false
     @Published var statusMessage: String = "Chưa quét"
+
+    private var scanTask: Task<Void, Never>?
+
+    deinit {
+        scanTask?.cancel()
+    }
 
     var filteredApps: [ScannedAppEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -175,8 +189,10 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        Task.detached(priority: .userInitiated) {
+        scanTask?.cancel()
+        scanTask = Task.detached(priority: .userInitiated) {
             let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.apps = result
                 self.isScanning = false
