@@ -571,12 +571,32 @@ struct zPatchEnsBundle: Codable {
 }
 
 extension zPatchStore {
+    private func resizedIconPNGData(_ image: UIImage?) -> Data? {
+        guard let image else { return nil }
+        let targetSize = CGSize(width: 96, height: 96)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let scaled = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return scaled.pngData()
+    }
+
     func buildEnsData(
         for patch: zPatchItem,
         appName: String? = nil,
         icon: UIImage? = nil
-    ) -> Data? {
+    ) -> Result<Data, Error> {
         let cleanBID = zPatchItem.normalizedBundleID(patch.bundleID)
+        guard !cleanBID.isEmpty else {
+            return .failure(NSError(
+                domain: "zPatch.ens",
+                code: -10,
+                userInfo: [NSLocalizedDescriptionKey: "Bundle ID trống, không thể export .ens."]
+            ))
+        }
+
         let resolvedName: String = {
             if let n = appName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
                 return n
@@ -587,13 +607,25 @@ extension zPatchStore {
             return cleanBID.split(separator: ".").last.map(String.init) ?? cleanBID
         }()
 
-        let payloadData: Data? = {
-            guard !patch.sourcePath.isEmpty,
-                  FileManager.default.fileExists(atPath: patch.sourcePath) else {
-                return nil
-            }
-            return try? Data(contentsOf: URL(fileURLWithPath: patch.sourcePath), options: .mappedIfSafe)
-        }()
+        let sourcePath = patch.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !sourcePath.isEmpty, FileManager.default.fileExists(atPath: sourcePath) else {
+            return .failure(NSError(
+                domain: "zPatch.ens",
+                code: -11,
+                userInfo: [NSLocalizedDescriptionKey: "File nguồn không tồn tại: \(sourcePath)"]
+            ))
+        }
+
+        let payloadData: Data
+        do {
+            payloadData = try Data(contentsOf: URL(fileURLWithPath: sourcePath))
+        } catch {
+            return .failure(NSError(
+                domain: "zPatch.ens",
+                code: -12,
+                userInfo: [NSLocalizedDescriptionKey: "Không đọc được file nguồn: \(error.localizedDescription)"]
+            ))
+        }
 
         let resolvedContainer: String = {
             if let cached = patch.cachedDestinationPath, !cached.isEmpty {
@@ -605,21 +637,27 @@ extension zPatchStore {
             return zPatchItem.baseContainerPrefix + cleanBID
         }()
 
-        let safeIconData = (icon ?? cachedAppIcon(for: cleanBID))?.pngData()
+        let safeIconData = resizedIconPNGData(icon ?? cachedAppIcon(for: cleanBID))
+        let srcName = URL(fileURLWithPath: sourcePath).lastPathComponent
 
         let bundleObj = zPatchEnsBundle(
             bundleID: cleanBID,
             appName: resolvedName,
             relativeDestPath: patch.relativeDestPath,
             containerPath: resolvedContainer,
-            sourceFileName: URL(fileURLWithPath: patch.sourcePath).lastPathComponent,
-            payloadBase64: payloadData?.base64EncodedString(),
+            sourceFileName: srcName.isEmpty ? "payload.bin" : srcName,
+            payloadBase64: payloadData.base64EncodedString(),
             iconPNGBase64: safeIconData?.base64EncodedString(),
             isEnabled: patch.isEnabled,
             createdDate: patch.createdDate
         )
 
-        return try? JSONEncoder().encode(bundleObj)
+        do {
+            let encoded = try JSONEncoder().encode(bundleObj)
+            return .success(encoded)
+        } catch {
+            return .failure(error)
+        }
     }
 
     func exportEnsFile(
@@ -627,25 +665,24 @@ extension zPatchStore {
         appName: String? = nil,
         icon: UIImage? = nil
     ) -> Result<URL, Error> {
-        guard let data = buildEnsData(for: patch, appName: appName, icon: icon) else {
-            return .failure(NSError(
-                domain: "zPatch.ens",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Không thể mã hoá gói .ens (kiểm tra file nguồn)."]
-            ))
+        let data: Data
+        switch buildEnsData(for: patch, appName: appName, icon: icon) {
+        case .success(let d):
+            data = d
+        case .failure(let err):
+            return .failure(err)
         }
 
         let fm = FileManager.default
-        let docsURL = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let exportDir = docsURL.appendingPathComponent("zPatchExports", isDirectory: true)
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("zPatchExports", isDirectory: true)
 
         do {
-            try fm.createDirectory(at: exportDir, withIntermediateDirectories: true)
+            try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
             let rawBID = zPatchItem.normalizedBundleID(patch.bundleID)
             let safeBID = (rawBID.isEmpty ? "patch" : rawBID)
                 .replacingOccurrences(of: "/", with: "_")
                 .replacingOccurrences(of: ":", with: "_")
-            let outURL = exportDir.appendingPathComponent("\(safeBID).ens")
+            let outURL = tempDir.appendingPathComponent("\(safeBID).ens")
 
             if fm.fileExists(atPath: outURL.path) {
                 try fm.removeItem(at: outURL)
