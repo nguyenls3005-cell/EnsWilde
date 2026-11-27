@@ -8,30 +8,26 @@
   <img alt="Swift" src="https://img.shields.io/badge/swift-%23F54A2A.svg?style=for-the-badge&logo=swift&logoColor=white">
 </p>
 
-**EnsWilde** is a tool utilizing `Worse_query` & `Airlift` exploits, designed for iPhone and iPad running the  **Worse_query iOS Version 27.0-27.3 (24C5370i) Airlift iOS Version : 26.0-27.2 Beta 2**.
-
-It operates as a standalone on-device application, functioning independently like modern apps. It leverages the `Bad_query` exploit to write data to files situated outside of the intended restore location.
+**EnsWilde** is an on-device customization tool for iPhone and iPad running iOS/iPadOS 26.0 – 27.3 Beta 1, powered by the `worse_query` and `AirLift` exploits. Once configured, it functions completely standalone without needing a computer (a PC is only required during initial setup on iOS 26).
 
 > [!WARNING]
 > **DISCLAIMER:**
-> I am **not responsible** if your device enters a bootloop. Use this software with caution.
-> **Please back up your data before using!**
+> I am **not responsible** or any bootloops, bricked devices, or data loss. Use this utility at your own risk.  
+> **Always back up your device before proceeding!**
 
 ---
-## Exploit
-* **Worse_query : Support from iOS 27.0-27.3 Beta 1.**
-* **Airlift : Support from iOS 26.0-27.2 Beta 2 (24B5089g).**
+## Exploits & Compatibility
+* **worse_query: Supports iOS 27.0-27.3 Beta 1.**
+* **AirLift: Supports iOS 26.0-27.2 Beta 2 (Build 24B5089g).**
 
 ---
 
 ## Features
-* **Change Apple Wallet background image:** Customize the background appearance of Wallet passes/cards.
-* **Edit MobileGestalt file (advanced):** Modify MobileGestalt configuration values (for advanced users).
-* **Change Passcode background:** Customize the numeric keypad appearance using the `.passthm` interface.
-* **On-device patching (no PC required):** Operates as a standalone app after the initial setup.
-* **More features coming soon:** Development is ongoing to introduce additional capabilities.
-* **Disable Call Recording Sound:** Disable the beep sound during call recording 
-* **For iOS 26, you need to retrieve the pairing file from your computer, then go to the app's settings and import the file you just obtained.**
+* **Apple Wallet Customization:** Change background images for Wallet passes and cards
+* **MobileGestalt Editor (for advanced users):** Tweak hidden system properties and configuration keys.
+* **Passcode Keypad Theming:** Customize your lock screen and dialer numpad with custom `.passthm` themes.
+* **Disable Call Recording Announcement:** Mute the "This call is being recorded" audio prompt.
+*More features in active development!*
 
 ---
 
@@ -47,27 +43,26 @@ It operates as a standalone on-device application, functioning independently lik
 
 ---
 
-## Usage Guides
-
 ## Setting Airlift
-1. Download **LocaldevVPN** from the iOS App Store.
-2. Enable the VPN inside the app.
-3. Launch **EnsWilde**.
-4. import Pairing File to setting page . iOS 26 using iloader , iOS 27 on device StikPair . Pairing directly in app on iOS 27 soon
-## Need to know before continue
-1. Worse_query now uses App Groups, it requires a certificate that supports this feature; `MobileGestalt` will only function if the App Group entitlement is present.
-2. If you need a cert , you can buy at [Cert YangJiii](https://cc.dangdi.dev).
+1. Download **LocalDevVPN** from the App Store.
+2. Open the app and toggle the VPN.
+3. Launch **EnsWilde** and navigate to **Settings**.
+4. Import your Pairing File:
+   - **iOS 26:** Generate and retrieve the pairing file via PC using `iloader`.
+   - **iOS 27:** Dump the pairing file directly on-device using `StikPair` *(direct in-app pairing for iOS 27 coming soon)*.
 
+## ⚠️ Important Prerequisites
+1. **App Groups Entitlement:** `worse_query` requires App Groups to function. You must sign the app with a certificate that supports the App Group entitlement; otherwise, `MobileGestalt` modifications will not work.
+2. **Need a signing certificate?** You can grab one at [Cert YangJiii](https://cc.dangdi.dev).
 ---
 
-## Credits
+## Credits & Acknowledgments
 
-Special thanks to the following for their contributions and support:
+Special thanks to everyone who made this project possible:
 
-* **YangJiii**: [For supporting me during development](https://x.com/duongduong0908)
-* **YangJiii**: [Original Developer of EnsWilde](https://github.com/yangjiiii/EnsWilde)
-* **@forcequitOS**: [Worse_query](https://github.com/forcequitOS/worse_query/)
-* **0xjohnnydev**: [Airlift](https://github.com/0xjohnnydev/airlift)
-* **mak5er**: [Airlift-on-device Method](https://github.com/Mak5er/AirCard-iOS)
-* **@StikDebug team**: [`StikPair`Get Pairing File](https://github.com/StikDebug)
-* **DeepSeek**: Ai for this project
+* **YangJiii**: [original developer of EnsWilde](https://github.com/yangjiiii/EnsWilde), and for guiding development.
+* **@forcequitOS**: [for `worse_query`](https://github.com/forcequitOS/worse_query/)
+* **0xjohnnydev**: [for `AirLift`](https://github.com/0xjohnnydev/airlift)
+* **mak5er**: [for the on-device AirLift implementation](https://github.com/Mak5er/AirCard-iOS)
+* **@StikDebug team**: [for `StikPair`](https://github.com/StikDebug)
+* **DeepSeek**: AI assistance during development
