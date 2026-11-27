@@ -6,12 +6,12 @@ struct zPatchCustomView: View {
     @ObservedObject private var patchStore = zPatchStore.shared
     var onNavigateToApply: (() -> Void)? = nil
 
-    @State private var draftEnabled: Bool = UserDefaults.standard.bool(forKey: zPatchStore.enabledKey)
+    @State private var draftEnabled: Bool = false
 
     @State private var showAddSheet = false
     @State private var showAppPicker = false
     @State private var showEnsPicker = false
-    @State private var shareURL: URL? = nil
+    @State private var shareItem: zPatchShareItem? = nil
 
     @State private var selectedAppName: String = ""
     @State private var selectedAppIcon: UIImage? = nil
@@ -89,7 +89,7 @@ struct zPatchCustomView: View {
         .headerProminence(.increased)
         .navigationTitle("zPatch Custom")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .onAppear {
             patchStore.ensureLoaded()
             draftEnabled = patchStore.isTweakEnabled
         }
@@ -107,11 +107,10 @@ struct zPatchCustomView: View {
                 }
             )
         }
-        .sheet(item: Binding(
-            get: { shareURL.map { zPatchShareItem(url: $0) } },
-            set: { shareURL = $0?.url }
-        )) { wrapper in
-            zPatchShareSheet(activityItems: [wrapper.url])
+        .sheet(item: $shareItem, onDismiss: {
+            shareItem = nil
+        }) { item in
+            zPatchShareSheet(activityItems: [item.url])
         }
         .alert("Thông báo", isPresented: $showSavedPopup) {
             Button("OK", role: .cancel) {
@@ -201,13 +200,7 @@ struct zPatchCustomView: View {
                 .buttonStyle(.bordered)
 
                 Button {
-                    switch patchStore.exportEnsFile(for: patch, appName: meta.name, icon: meta.icon) {
-                    case .success(let url):
-                        shareURL = url
-                    case .failure(let err):
-                        errorMessage = err.localizedDescription
-                        showErrorAlert = true
-                    }
+                    triggerExport(for: patch, appName: meta.name)
                 } label: {
                     Label("Export .ens", systemImage: "square.and.arrow.up")
                         .font(.caption.weight(.medium))
@@ -237,6 +230,21 @@ struct zPatchCustomView: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private func triggerExport(for patch: zPatchItem, appName: String) {
+        switch patchStore.exportEnsFile(for: patch, appName: appName, icon: nil) {
+        case .success(let url):
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                errorMessage = "Không tìm thấy file .ens vừa xuất."
+                showErrorAlert = true
+                return
+            }
+            shareItem = zPatchShareItem(url: url)
+        case .failure(let err):
+            errorMessage = err.localizedDescription
+            showErrorAlert = true
+        }
     }
 
     private var addPatchSheet: some View {
@@ -346,8 +354,7 @@ struct zPatchCustomView: View {
         let fallbackName = bundleID.isEmpty
             ? "Unknown Bundle"
             : (bundleID.split(separator: ".").last.map(String.init) ?? bundleID)
-        let icon = try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID)
-        return (name: fallbackName, icon: icon)
+        return (name: fallbackName, icon: nil)
     }
 
     private func importSourceURL(_ url: URL) {
