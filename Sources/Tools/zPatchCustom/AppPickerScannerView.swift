@@ -25,6 +25,7 @@ private enum AppScannerEngine {
     private static let fm = FileManager.default
 
     private static func readPlistDict(at path: String) -> [String: Any]? {
+        guard !path.isEmpty else { return nil }
         let granted = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
         defer { if granted.0 { wq.releaseAccess(path: path) } }
 
@@ -52,89 +53,50 @@ private enum AppScannerEngine {
         return bundleID.split(separator: ".").last.map(String.init) ?? bundleID
     }
 
-    private static func loadKnownApps() -> (
+    private static func parseAppsDict(_ rawDict: [String: Any]) -> (
         byBID: [String: (bid: String, name: String, containerPath: String)],
-        byUUID: [String: (bid: String, name: String, containerPath: String)]
+        byUUID: [String: (bid: String, name: String, containerPath: String)],
+        cacheDict: [String: [String: Any]]
     ) {
         var byBID: [String: (bid: String, name: String, containerPath: String)] = [:]
         var byUUID: [String: (bid: String, name: String, containerPath: String)] = [:]
+        var cacheDict: [String: [String: Any]] = [:]
 
-        // 1. Nguồn chính từ JITEnableContext
-        if let allApps = try? JITEnableContext.shared.getAllAppsInfo() as? [String: Any] {
-            var cacheDict: [String: [String: Any]] = [:]
-            for (rawBID, raw) in allApps {
-                let bid = rawBID.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !bid.isEmpty, let info = raw as? [String: Any] else { continue }
-                cacheDict[bid] = info
+        for (rawBID, raw) in rawDict {
+            let bid = rawBID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !bid.isEmpty, let info = raw as? [String: Any] else { continue }
+            cacheDict[bid] = info
 
-                let title = cleanDisplayName(from: info, bundleID: bid)
-                let rawC = (info["Container"] as? String ?? "")
-                    .replacingOccurrences(of: "file://", with: "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let normC = rawC.isEmpty ? "" : CSStoreEngine.normalizeVarPath(rawC)
-                let uuid = normC.isEmpty ? "" : (normC as NSString).lastPathComponent.lowercased()
+            let title = cleanDisplayName(from: info, bundleID: bid)
+            let rawC = (info["Container"] as? String ?? "")
+                .replacingOccurrences(of: "file://", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let normC = rawC.isEmpty ? "" : CSStoreEngine.normalizeVarPath(rawC)
+            let uuid = normC.isEmpty ? "" : (normC as NSString).lastPathComponent.lowercased()
 
-                byBID[bid.lowercased()] = (bid: bid, name: title, containerPath: normC)
-                if !uuid.isEmpty {
-                    byUUID[uuid] = (bid: bid, name: title, containerPath: normC)
-                }
-            }
-            if !cacheDict.isEmpty {
-                zPatchStore.shared.updateContainerCache(from: cacheDict)
+            byBID[bid.lowercased()] = (bid: bid, name: title, containerPath: normC)
+            if !uuid.isEmpty {
+                byUUID[uuid] = (bid: bid, name: title, containerPath: normC)
             }
         }
 
-        // 2. Bổ sung từ LastLaunchServicesMap.plist qua wq
-        let lsPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
-        if let plist = readPlistDict(at: lsPath) {
-            for sectionKey in ["User", "System", "Internal"] {
-                guard let section = plist[sectionKey] as? [String: Any] else { continue }
-                for (rawBID, raw) in section {
-                    let bid = rawBID.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !bid.isEmpty, let info = raw as? [String: Any] else { continue }
-
-                    let title = cleanDisplayName(from: info, bundleID: bid)
-                    let rawC = (info["Container"] as? String ?? "")
-                        .replacingOccurrences(of: "file://", with: "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let normC = rawC.isEmpty ? "" : CSStoreEngine.normalizeVarPath(rawC)
-                    let uuid = normC.isEmpty ? "" : (normC as NSString).lastPathComponent.lowercased()
-
-                    let key = bid.lowercased()
-                    if let existing = byBID[key] {
-                        let mergedPath = existing.containerPath.isEmpty ? normC : existing.containerPath
-                        let mergedName = existing.name.isEmpty ? title : existing.name
-                        byBID[key] = (bid: bid, name: mergedName, containerPath: mergedPath)
-                    } else {
-                        byBID[key] = (bid: bid, name: title, containerPath: normC)
-                    }
-
-                    if !uuid.isEmpty, byUUID[uuid] == nil {
-                        byUUID[uuid] = (bid: bid, name: title, containerPath: normC)
-                    }
-                }
-            }
-        }
-
-        return (byBID, byUUID)
+        return (byBID, byUUID, cacheDict)
     }
 
     private static func resolveContainerMetadata(
         containerPath: String,
         uuid: String,
-        known: (
-            byBID: [String: (bid: String, name: String, containerPath: String)],
-            byUUID: [String: (bid: String, name: String, containerPath: String)]
-        )
+        knownByBID: [String: (bid: String, name: String, containerPath: String)],
+        knownByUUID: [String: (bid: String, name: String, containerPath: String)]
     ) -> (bid: String, name: String)? {
         let lowerUUID = uuid.lowercased()
-        if let hit = known.byUUID[lowerUUID] {
+        if let hit = knownByUUID[lowerUUID] {
             return (bid: hit.bid, name: hit.name)
         }
 
         if let storedBID = zPatchStore.shared.bundleIDForContainerUUID(uuid), !storedBID.isEmpty {
             let storedName = zPatchStore.shared.cachedAppName(for: storedBID)
-                ?? known.byBID[storedBID.lowercased()]?.name
+                ?? knownByBID[storedBID.lowercased()]?.name
                 ?? (storedBID.split(separator: ".").last.map(String.init) ?? storedBID)
             return (bid: storedBID, name: storedName)
         }
@@ -173,22 +135,63 @@ private enum AppScannerEngine {
         }
 
         let name = foundName
-            ?? known.byBID[bid.lowercased()]?.name
+            ?? knownByBID[bid.lowercased()]?.name
             ?? (bid.split(separator: ".").last.map(String.init) ?? bid)
 
         return (bid: bid, name: name)
     }
 
-    static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
-        if forceRefresh {
-            fsHandlers.invalidateCache()
+    static func scan(
+        preloadedAllApps: [String: Any]?,
+        forceRefresh: Bool = false
+    ) -> [ScannedAppEntry] {
+        var byBID: [String: (bid: String, name: String, containerPath: String)] = [:]
+        var byUUID: [String: (bid: String, name: String, containerPath: String)] = [:]
+
+        if let preloadedAllApps {
+            let parsed = parseAppsDict(preloadedAllApps)
+            byBID = parsed.byBID
+            byUUID = parsed.byUUID
+            if !parsed.cacheDict.isEmpty {
+                zPatchStore.shared.updateContainerCache(from: parsed.cacheDict)
+            }
         }
 
-        let known = loadKnownApps()
+        // Bổ sung từ LastLaunchServicesMap.plist qua wq
+        let lsPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
+        if let plist = readPlistDict(at: lsPath) {
+            for sectionKey in ["User", "System", "Internal"] {
+                guard let section = plist[sectionKey] as? [String: Any] else { continue }
+                for (rawBID, raw) in section {
+                    let bid = rawBID.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !bid.isEmpty, let info = raw as? [String: Any] else { continue }
+
+                    let title = cleanDisplayName(from: info, bundleID: bid)
+                    let rawC = (info["Container"] as? String ?? "")
+                        .replacingOccurrences(of: "file://", with: "")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    let normC = rawC.isEmpty ? "" : CSStoreEngine.normalizeVarPath(rawC)
+                    let uuid = normC.isEmpty ? "" : (normC as NSString).lastPathComponent.lowercased()
+
+                    let key = bid.lowercased()
+                    if let existing = byBID[key] {
+                        let mergedPath = existing.containerPath.isEmpty ? normC : existing.containerPath
+                        let mergedName = existing.name.isEmpty ? title : existing.name
+                        byBID[key] = (bid: bid, name: mergedName, containerPath: mergedPath)
+                    } else {
+                        byBID[key] = (bid: bid, name: title, containerPath: normC)
+                    }
+
+                    if !uuid.isEmpty, byUUID[uuid] == nil {
+                        byUUID[uuid] = (bid: bid, name: title, containerPath: normC)
+                    }
+                }
+            }
+        }
+
         var mergedByBID: [String: ScannedAppEntry] = [:]
 
-        // Bước 1: Đưa toàn bộ app đã biết Bundle ID + Tên vào trước
-        for (lowerBID, item) in known.byBID {
+        for (lowerBID, item) in byBID {
             let uuid = item.containerPath.isEmpty ? "" : (item.containerPath as NSString).lastPathComponent
             if !item.containerPath.isEmpty {
                 zPatchStore.shared.registerContainer(bundleID: item.bid, containerPath: item.containerPath)
@@ -205,56 +208,63 @@ private enum AppScannerEngine {
             )
         }
 
-        // Bước 2: Quét thêm thư mục container để bổ sung containerPath hoặc app chưa có trong danh sách trên
+        // Quét thêm thư mục container nếu cần
+        if forceRefresh {
+            fsHandlers.invalidateCache()
+        }
+
         let rootPath = CSStoreEngine.normalizeVarPath(FSURL.appContainers.path)
-        let gRoot = wq.grantAccess(path: rootPath, requireWrite: false, allowFsgetpathFallback: true)
-        defer { if gRoot.0 { wq.releaseAccess(path: rootPath) } }
+        if !rootPath.isEmpty {
+            let gRoot = wq.grantAccess(path: rootPath, requireWrite: false, allowFsgetpathFallback: true)
+            defer { if gRoot.0 { wq.releaseAccess(path: rootPath) } }
 
-        let rawContainers = fsHandlers.getDirPaths(
-            FSURL.appContainers.path,
-            forceRefresh: forceRefresh
-        )
+            let rawContainers = fsHandlers.getDirPaths(
+                FSURL.appContainers.path,
+                forceRefresh: forceRefresh
+            )
 
-        for rawPath in rawContainers {
-            autoreleasepool {
-                let normPath = CSStoreEngine.normalizeVarPath(rawPath)
-                guard !normPath.isEmpty else { return }
+            for rawPath in rawContainers {
+                autoreleasepool {
+                    let normPath = CSStoreEngine.normalizeVarPath(rawPath)
+                    guard !normPath.isEmpty else { return }
 
-                let uuid = (normPath as NSString).lastPathComponent
-                guard !uuid.isEmpty else { return }
+                    let uuid = (normPath as NSString).lastPathComponent
+                    guard !uuid.isEmpty else { return }
 
-                guard let resolved = resolveContainerMetadata(
-                    containerPath: normPath,
-                    uuid: uuid,
-                    known: known
-                ) else {
-                    return
-                }
+                    guard let resolved = resolveContainerMetadata(
+                        containerPath: normPath,
+                        uuid: uuid,
+                        knownByBID: byBID,
+                        knownByUUID: byUUID
+                    ) else {
+                        return
+                    }
 
-                let lowerBID = resolved.bid.lowercased()
-                zPatchStore.shared.registerContainer(bundleID: resolved.bid, containerPath: normPath)
-                zPatchStore.shared.registerAppMeta(bundleID: resolved.bid, appName: resolved.name, icon: nil)
+                    let lowerBID = resolved.bid.lowercased()
+                    zPatchStore.shared.registerContainer(bundleID: resolved.bid, containerPath: normPath)
+                    zPatchStore.shared.registerAppMeta(bundleID: resolved.bid, appName: resolved.name, icon: nil)
 
-                if let existing = mergedByBID[lowerBID] {
-                    if existing.containerPath.isEmpty {
+                    if let existing = mergedByBID[lowerBID] {
+                        if existing.containerPath.isEmpty {
+                            mergedByBID[lowerBID] = ScannedAppEntry(
+                                id: existing.bundleID,
+                                name: existing.name,
+                                bundleID: existing.bundleID,
+                                containerUUID: uuid,
+                                containerPath: normPath,
+                                icon: nil
+                            )
+                        }
+                    } else {
                         mergedByBID[lowerBID] = ScannedAppEntry(
-                            id: existing.bundleID,
-                            name: existing.name,
-                            bundleID: existing.bundleID,
+                            id: resolved.bid,
+                            name: resolved.name,
+                            bundleID: resolved.bid,
                             containerUUID: uuid,
                             containerPath: normPath,
                             icon: nil
                         )
                     }
-                } else {
-                    mergedByBID[lowerBID] = ScannedAppEntry(
-                        id: resolved.bid,
-                        name: resolved.name,
-                        bundleID: resolved.bid,
-                        containerUUID: uuid,
-                        containerPath: normPath,
-                        icon: nil
-                    )
                 }
             }
         }
@@ -290,9 +300,15 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        Task.detached(priority: .userInitiated) {
-            let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
-            await MainActor.run {
+        // Lấy getAllAppsInfo trên MainActor để tránh crash ObjC/LSApplicationWorkspace ở background thread
+        let preloaded = (try? JITEnableContext.shared.getAllAppsInfo()) as? [String: Any]
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = AppScannerEngine.scan(
+                preloadedAllApps: preloaded,
+                forceRefresh: forceRefresh
+            )
+            DispatchQueue.main.async {
                 self.apps = result
                 self.isScanning = false
                 self.statusMessage = "Đã quét xong: \(result.count) app"
@@ -380,8 +396,36 @@ struct AppPickerScannerView: View {
             }
             .onAppear {
                 if vm.apps.isEmpty {
-                    vm.scan(forceRefresh: false)
+                    // Trì hoãn 1 nhịp để sheet hoàn tất animation mở trước khi quét
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        vm.scan(forceRefresh: false)
+                    }
                 }
+            }
+        }
+    }
+}
+
+private final class AppIconLazyLoader {
+    static let shared = AppIconLazyLoader()
+    private let queue = DispatchQueue(label: "zpatch.icon.loader", qos: .utility)
+
+    func loadIcon(for bundleID: String, appName: String, completion: @escaping (UIImage?) -> Void) {
+        if let cached = zPatchStore.shared.cachedAppIcon(for: bundleID) {
+            completion(cached)
+            return
+        }
+
+        queue.async {
+            var fetched: UIImage? = nil
+            autoreleasepool {
+                fetched = try? JITEnableContext.shared.getAppIcon(withBundleId: bundleID)
+            }
+            if let fetched {
+                zPatchStore.shared.registerAppMeta(bundleID: bundleID, appName: appName, icon: fetched)
+            }
+            DispatchQueue.main.async {
+                completion(fetched)
             }
         }
     }
@@ -434,14 +478,10 @@ private struct AppScannerRowButton: View {
                   !app.bundleID.isEmpty,
                   !app.bundleID.contains("/") else { return }
 
-            if let cached = zPatchStore.shared.cachedAppIcon(for: app.bundleID) {
-                lazyIcon = cached
-                return
-            }
-
-            if let icon = try? JITEnableContext.shared.getAppIcon(withBundleId: app.bundleID) {
-                lazyIcon = icon
-                zPatchStore.shared.registerAppMeta(bundleID: app.bundleID, appName: app.name, icon: icon)
+            AppIconLazyLoader.shared.loadIcon(for: app.bundleID, appName: app.name) { img in
+                if let img {
+                    lazyIcon = img
+                }
             }
         }
     }
