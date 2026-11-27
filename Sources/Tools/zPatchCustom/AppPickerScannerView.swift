@@ -22,77 +22,46 @@ struct ScannedAppEntry: Identifiable, Hashable {
 }
 
 private enum AppScannerEngine {
-    private static func displayName(from info: [String: Any], bundleID: String) -> String {
-        if let disp = (info["CFBundleDisplayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !disp.isEmpty {
-            return disp
-        }
-        if let bname = (info["CFBundleName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !bname.isEmpty {
-            return bname
-        }
-        if let item = (info["itemName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !item.isEmpty {
-            return item
-        }
-        return bundleID.split(separator: ".").last.map(String.init) ?? bundleID
-    }
-
-    private static func readPlistWithWQ(at path: String) -> [String: Any]? {
-        let granted = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
-        defer {
-            if granted.0 {
-                wq.releaseAccess(path: path)
-            }
+    private static func readFromWorkspace() -> [(bid: String, name: String)] {
+        guard let wsClass = NSClassFromString("LSApplicationWorkspace") as? NSObject.Type,
+              wsClass.responds(to: NSSelectorFromString("defaultWorkspace")),
+              let workspace = wsClass.perform(NSSelectorFromString("defaultWorkspace"))?.takeUnretainedValue() as? NSObject,
+              workspace.responds(to: NSSelectorFromString("allApplications")),
+              let rawApps = workspace.perform(NSSelectorFromString("allApplications"))?.takeUnretainedValue() as? [NSObject] else {
+            return []
         }
 
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe),
-              !data.isEmpty,
-              let dict = (try? PropertyListSerialization.propertyList(
-                  from: data,
-                  options: [],
-                  format: nil
-              )) as? [String: Any] else {
-            return nil
-        }
-        return dict
-    }
+        var items: [(bid: String, name: String)] = []
+        items.reserveCapacity(rawApps.count)
 
-    private static func readAppsFromSystemPlists() -> [(bid: String, name: String)] {
-        let candidatePaths = [
-            "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist",
-            "/private/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist",
-            "/var/mobile/Library/Caches/com.apple.mobile.installation.plist",
-            "/private/var/mobile/Library/Caches/com.apple.mobile.installation.plist"
-        ]
+        for proxy in rawApps {
+            let rawBID = proxy.value(forKey: "applicationIdentifier") as? String ?? ""
+            let bid = zPatchItem.normalizedBundleID(rawBID)
+            guard !bid.isEmpty else { continue }
 
-        for path in candidatePaths {
-            guard let plist = readPlistWithWQ(at: path) else { continue }
+            let localized = (proxy.value(forKey: "localizedName") as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let itemName = (proxy.value(forKey: "itemName") as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let fallback = bid.split(separator: ".").last.map(String.init) ?? bid
 
-            var list: [(bid: String, name: String)] = []
-            for sectionKey in ["User", "System", "Internal"] {
-                guard let section = plist[sectionKey] as? [String: Any] else { continue }
-                for (rawBID, rawInfo) in section {
-                    let bid = zPatchItem.normalizedBundleID(rawBID)
-                    guard !bid.isEmpty, let info = rawInfo as? [String: Any] else { continue }
-                    let name = displayName(from: info, bundleID: bid)
-                    list.append((bid: bid, name: name))
-                }
+            let displayName: String
+            if let localized, !localized.isEmpty {
+                displayName = localized
+            } else if let itemName, !itemName.isEmpty {
+                displayName = itemName
+            } else {
+                displayName = fallback
             }
 
-            if !list.isEmpty {
-                return list
-            }
+            items.append((bid: bid, name: displayName))
         }
 
-        return []
+        return items
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
-        if forceRefresh {
-            fsHandlers.invalidateCache()
-        }
-
+        let _ = forceRefresh
         let ud = UserDefaults.standard
         let savedNames = ud.dictionary(forKey: zPatchStore.appNameMapKey) as? [String: String] ?? [:]
 
@@ -108,7 +77,7 @@ private enum AppScannerEngine {
             merged[bid.lowercased()] = (bid: bid, name: finalName)
         }
 
-        for item in readAppsFromSystemPlists() {
+        for item in readFromWorkspace() {
             let key = item.bid.lowercased()
             if let existing = merged[key] {
                 merged[key] = (
@@ -175,14 +144,10 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
-            DispatchQueue.main.async {
-                self.apps = result
-                self.isScanning = false
-                self.statusMessage = "Đã quét xong: \(result.count) app"
-            }
-        }
+        let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
+        self.apps = result
+        self.isScanning = false
+        self.statusMessage = "Đã quét xong: \(result.count) app"
     }
 }
 
@@ -259,9 +224,7 @@ struct AppPickerScannerView: View {
             }
             .onAppear {
                 if vm.apps.isEmpty {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        vm.scan(forceRefresh: false)
-                    }
+                    vm.scan(forceRefresh: false)
                 }
             }
         }
