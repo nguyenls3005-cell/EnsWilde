@@ -161,6 +161,7 @@ final class zPatchStore: ObservableObject {
     static let enabledKey = "zPatchCustomEnabled"
     static let pendingApplyKey = "zPatchPendingApply"
     static let containerMapKey = "zPatchContainerMap_v1"
+    static let appNameMapKey = "zPatchAppNameMap_v1"
 
     @Published var patches: [zPatchItem] = []
     @Published var isTweakEnabled: Bool = false {
@@ -176,6 +177,8 @@ final class zPatchStore: ObservableObject {
 
     private let mapLock = NSLock()
     private var containerMap: [String: String] = [:]
+    private var appNameMap: [String: String] = [:]
+    private var iconMemoryCache: [String: UIImage] = [:]
     private var hasLoaded = false
 
     init() {
@@ -198,6 +201,12 @@ final class zPatchStore: ObservableObject {
             mapLock.unlock()
         }
 
+        if let savedNames = ud.dictionary(forKey: Self.appNameMapKey) as? [String: String] {
+            mapLock.lock()
+            appNameMap = savedNames
+            mapLock.unlock()
+        }
+
         if let data = ud.data(forKey: Self.itemsKey),
            let decoded = try? JSONDecoder().decode([zPatchItem].self, from: data) {
             patches = decoded
@@ -208,28 +217,40 @@ final class zPatchStore: ObservableObject {
     }
 
     func updateContainerCache(from appsInfo: [String: [String: Any]]) {
-        var updated: [String: String] = [:]
+        var updatedContainers: [String: String] = [:]
+        var updatedNames: [String: String] = [:]
+
         for (bid, info) in appsInfo {
+            let key = bid.lowercased()
             if let raw = info["Container"] as? String, !raw.isEmpty {
                 let clean = raw
                     .replacingOccurrences(of: "file://", with: "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let std = (clean as NSString).standardizingPath
                 if !std.isEmpty {
-                    updated[bid.lowercased()] = std
+                    updatedContainers[key] = std
                 }
             }
+            let disp = (info["CFBundleDisplayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let bname = (info["CFBundleName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let disp, !disp.isEmpty {
+                updatedNames[key] = disp
+            } else if let bname, !bname.isEmpty {
+                updatedNames[key] = bname
+            }
         }
-        guard !updated.isEmpty else { return }
+
+        guard !updatedContainers.isEmpty || !updatedNames.isEmpty else { return }
 
         mapLock.lock()
-        for (k, v) in updated {
-            containerMap[k] = v
-        }
-        let snapshot = containerMap
+        for (k, v) in updatedContainers { containerMap[k] = v }
+        for (k, v) in updatedNames { appNameMap[k] = v }
+        let containerSnapshot = containerMap
+        let nameSnapshot = appNameMap
         mapLock.unlock()
 
-        UserDefaults.standard.set(snapshot, forKey: Self.containerMapKey)
+        UserDefaults.standard.set(containerSnapshot, forKey: Self.containerMapKey)
+        UserDefaults.standard.set(nameSnapshot, forKey: Self.appNameMapKey)
     }
 
     func registerContainer(bundleID: String, containerPath: String) {
@@ -247,12 +268,58 @@ final class zPatchStore: ObservableObject {
         UserDefaults.standard.set(snapshot, forKey: Self.containerMapKey)
     }
 
+    func registerAppMeta(bundleID: String, appName: String?, icon: UIImage?) {
+        let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
+        guard !key.isEmpty else { return }
+
+        mapLock.lock()
+        if let name = appName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            appNameMap[key] = name
+        }
+        if let icon {
+            iconMemoryCache[key] = icon
+        }
+        let nameSnapshot = appNameMap
+        mapLock.unlock()
+
+        UserDefaults.standard.set(nameSnapshot, forKey: Self.appNameMapKey)
+    }
+
+    func cachedAppName(for bundleID: String) -> String? {
+        let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
+        mapLock.lock()
+        let val = appNameMap[key]
+        mapLock.unlock()
+        return val
+    }
+
+    func cachedAppIcon(for bundleID: String) -> UIImage? {
+        let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
+        mapLock.lock()
+        let val = iconMemoryCache[key]
+        mapLock.unlock()
+        return val
+    }
+
     func cachedContainer(for bundleID: String) -> String? {
         let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
         mapLock.lock()
         let val = containerMap[key]
         mapLock.unlock()
         return val
+    }
+
+    func bundleIDForContainerUUID(_ uuid: String) -> String? {
+        let target = uuid.lowercased()
+        guard !target.isEmpty else { return nil }
+        mapLock.lock()
+        defer { mapLock.unlock() }
+        for (bid, path) in containerMap {
+            if (path as NSString).lastPathComponent.lowercased() == target {
+                return bid
+            }
+        }
+        return nil
     }
 
     func setTweakEnabledImmediate(_ enabled: Bool) {
@@ -514,6 +581,9 @@ extension zPatchStore {
             if let n = appName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
                 return n
             }
+            if let cached = cachedAppName(for: cleanBID), !cached.isEmpty {
+                return cached
+            }
             return cleanBID.split(separator: ".").last.map(String.init) ?? cleanBID
         }()
 
@@ -522,19 +592,29 @@ extension zPatchStore {
                   FileManager.default.fileExists(atPath: patch.sourcePath) else {
                 return nil
             }
-            return try? Data(contentsOf: URL(fileURLWithPath: patch.sourcePath))
+            return try? Data(contentsOf: URL(fileURLWithPath: patch.sourcePath), options: .mappedIfSafe)
         }()
 
-        let resolvedIcon = icon ?? (try? JITEnableContext.shared.getAppIcon(withBundleId: cleanBID))
+        let resolvedContainer: String = {
+            if let cached = patch.cachedDestinationPath, !cached.isEmpty {
+                return (cached as NSString).deletingLastPathComponent
+            }
+            if let mapped = cachedContainer(for: cleanBID), !mapped.isEmpty {
+                return mapped
+            }
+            return zPatchItem.baseContainerPrefix + cleanBID
+        }()
+
+        let safeIconData = (icon ?? cachedAppIcon(for: cleanBID))?.pngData()
+
         let bundleObj = zPatchEnsBundle(
             bundleID: cleanBID,
             appName: resolvedName,
             relativeDestPath: patch.relativeDestPath,
-            containerPath: patch.cachedDestinationPath.map { ($0 as NSString).deletingLastPathComponent }
-                ?? (zPatchItem.resolveContainerRoot(for: cleanBID) ?? (zPatchItem.baseContainerPrefix + cleanBID)),
+            containerPath: resolvedContainer,
             sourceFileName: URL(fileURLWithPath: patch.sourcePath).lastPathComponent,
             payloadBase64: payloadData?.base64EncodedString(),
-            iconPNGBase64: resolvedIcon?.pngData()?.base64EncodedString(),
+            iconPNGBase64: safeIconData?.base64EncodedString(),
             isEnabled: patch.isEnabled,
             createdDate: patch.createdDate
         )
@@ -551,24 +631,37 @@ extension zPatchStore {
             return .failure(NSError(
                 domain: "zPatch.ens",
                 code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Không thể mã hoá gói .ens"]
+                userInfo: [NSLocalizedDescriptionKey: "Không thể mã hoá gói .ens (kiểm tra file nguồn)."]
             ))
         }
 
-        let safeBID = zPatchItem.normalizedBundleID(patch.bundleID)
-            .replacingOccurrences(of: "/", with: "_")
-        let outURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(safeBID).ens")
+        let fm = FileManager.default
+        let docsURL = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let exportDir = docsURL.appendingPathComponent("zPatchExports", isDirectory: true)
 
-        let (ok, err) = writeFileTemp(data, to: outURL)
-        if ok {
+        do {
+            try fm.createDirectory(at: exportDir, withIntermediateDirectories: true)
+            let rawBID = zPatchItem.normalizedBundleID(patch.bundleID)
+            let safeBID = (rawBID.isEmpty ? "patch" : rawBID)
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: ":", with: "_")
+            let outURL = exportDir.appendingPathComponent("\(safeBID).ens")
+
+            if fm.fileExists(atPath: outURL.path) {
+                try fm.removeItem(at: outURL)
+            }
+            try data.write(to: outURL, options: .atomic)
+
+            guard fm.fileExists(atPath: outURL.path) else {
+                return .failure(NSError(
+                    domain: "zPatch.ens",
+                    code: -2,
+                    userInfo: [NSLocalizedDescriptionKey: "Ghi file .ens thất bại."]
+                ))
+            }
             return .success(outURL)
-        } else {
-            return .failure(NSError(
-                domain: "zPatch.ens",
-                code: -2,
-                userInfo: [NSLocalizedDescriptionKey: err]
-            ))
+        } catch {
+            return .failure(error)
         }
     }
 
@@ -602,11 +695,13 @@ extension zPatchStore {
             ))
         }
 
+        let decodedIcon = decoded.iconPNGBase64
+            .flatMap { Data(base64Encoded: $0) }
+            .flatMap { UIImage(data: $0) }
+        registerAppMeta(bundleID: cleanBID, appName: decoded.appName, icon: decodedIcon)
+
         if !decoded.containerPath.isEmpty {
-            registerContainer(
-                bundleID: cleanBID,
-                containerPath: (decoded.containerPath as NSString).deletingLastPathComponent
-            )
+            registerContainer(bundleID: cleanBID, containerPath: decoded.containerPath)
         }
 
         let docsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -623,7 +718,7 @@ extension zPatchStore {
 
         if let b64 = decoded.payloadBase64,
            let payloadData = Data(base64Encoded: b64) {
-            _ = writeFileTemp(payloadData, to: savedSourceURL)
+            try? payloadData.write(to: savedSourceURL, options: .atomic)
         }
 
         let relDest = decoded.relativeDestPath.isEmpty ? safeFileName : decoded.relativeDestPath
