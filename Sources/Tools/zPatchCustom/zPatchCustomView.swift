@@ -11,7 +11,6 @@ struct zPatchCustomView: View {
     @State private var showAddSheet = false
     @State private var showAppPicker = false
     @State private var showEnsPicker = false
-    @State private var shareItem: zPatchShareItem? = nil
 
     @State private var selectedAppName: String = ""
     @State private var selectedAppIcon: UIImage? = nil
@@ -39,7 +38,7 @@ struct zPatchCustomView: View {
                     }
                 ))
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button {
                         patchStore.saveChange(enableTweak: draftEnabled)
                         UserDefaults.standard.set(true, forKey: "ShowApplyTab")
@@ -48,11 +47,12 @@ struct zPatchCustomView: View {
                             : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
                         showSavedPopup = true
                     } label: {
-                        HStack {
+                        HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle.fill")
                             Text("Save Change")
-                                .fontWeight(.semibold)
+                                .font(.subheadline.weight(.semibold))
                         }
+                        .fixedSize(horizontal: true, vertical: false)
                     }
 
                     Spacer()
@@ -60,8 +60,12 @@ struct zPatchCustomView: View {
                     Button {
                         showEnsPicker = true
                     } label: {
-                        Label("Import .ens", systemImage: "square.and.arrow.down")
-                            .font(.subheadline.weight(.medium))
+                        HStack(spacing: 5) {
+                            Image(systemName: "square.and.arrow.down")
+                            Text("Import .ens")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     .buttonStyle(.bordered)
                 }
@@ -107,11 +111,6 @@ struct zPatchCustomView: View {
                 }
             )
         }
-        .sheet(item: $shareItem, onDismiss: {
-            shareItem = nil
-        }) { item in
-            zPatchShareSheet(activityItems: [item.url])
-        }
         .alert("Thông báo", isPresented: $showSavedPopup) {
             Button("OK", role: .cancel) {
                 showSavedPopup = false
@@ -146,64 +145,70 @@ struct zPatchCustomView: View {
         let meta = resolvedMeta(for: patch.bundleID)
 
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
                 Toggle("", isOn: Binding(
                     get: { patch.isEnabled },
                     set: { _ in patchStore.togglePatch(patch) }
                 ))
                 .labelsHidden()
+                .fixedSize()
 
                 zPatchAppIconBadge(icon: meta.icon)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(meta.name)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
 
                     Text(patch.bundleID.isEmpty ? "Unknown Bundle" : patch.bundleID)
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .textSelection(.enabled)
 
                     Text("File nguồn: \(patch.sourcePath.isEmpty ? "Chưa chọn" : (patch.sourcePath.split(separator: "/").last.map(String.init) ?? "Đã chọn"))")
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
                     Text("→ \(patch.fastPreviewPath)")
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
 
                     if patch.pendingRevert {
                         Text("Trạng thái: Đã chọn Revert — qua tab Apply để khôi phục")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.orange)
                     } else if patch.hasInitialBackup && patch.backupPath != nil {
                         Text("Backup lần đầu: Đã lưu")
-                            .font(.system(size: 11))
+                            .font(.caption2)
                             .foregroundStyle(.green)
                     }
                 }
-
-                Spacer()
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Button {
                     editPatch(patch)
                 } label: {
-                    Label("Edit", systemImage: "pencil")
-                        .font(.caption.weight(.medium))
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                        Text("Edit")
+                    }
+                    .font(.caption.weight(.medium))
+                    .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.bordered)
 
                 Button {
                     triggerExport(for: patch, appName: meta.name)
                 } label: {
-                    Label("Export .ens", systemImage: "square.and.arrow.up")
-                        .font(.caption.weight(.medium))
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Export .ens")
+                    }
+                    .font(.caption.weight(.medium))
+                    .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.bordered)
 
@@ -212,13 +217,17 @@ struct zPatchCustomView: View {
                     popupMessage = "Đã chọn Revert cho \(patch.bundleID). Bạn có thể tự chuyển qua tab Apply để khôi phục về patch cũ."
                     showSavedPopup = true
                 } label: {
-                    Label("Revert", systemImage: "arrow.uturn.backward")
-                        .font(.caption.weight(.semibold))
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.uturn.backward")
+                        Text("Revert")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 Button(role: .destructive) {
                     patchStore.removePatch(patch)
@@ -227,6 +236,7 @@ struct zPatchCustomView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.bordered)
+                .fixedSize()
             }
         }
         .padding(.vertical, 6)
@@ -240,11 +250,36 @@ struct zPatchCustomView: View {
                 showErrorAlert = true
                 return
             }
-            shareItem = zPatchShareItem(url: url)
+            presentActivityVC(for: url)
         case .failure(let err):
             errorMessage = err.localizedDescription
             showErrorAlert = true
         }
+    }
+
+    private func presentActivityVC(for fileURL: URL) {
+        guard let topVC = topMostViewController() else {
+            errorMessage = "Không mở được bảng chia sẻ."
+            showErrorAlert = true
+            return
+        }
+        let ac = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        if let pop = ac.popoverPresentationController {
+            pop.sourceView = topVC.view
+            pop.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 1, height: 1)
+        }
+        topVC.present(ac, animated: true)
+    }
+
+    private func topMostViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let root = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController
+            ?? scenes.flatMap(\.windows).first?.rootViewController
+        var cur = root
+        while let presented = cur?.presentedViewController {
+            cur = presented
+        }
+        return cur
     }
 
     private var addPatchSheet: some View {
@@ -272,8 +307,9 @@ struct zPatchCustomView: View {
                         Button {
                             showAppPicker = true
                         } label: {
-                            Label("Chọn từ danh sách", systemImage: "list.bullet.rectangle")
+                            Text("Chọn từ danh sách")
                                 .font(.caption.weight(.semibold))
+                                .fixedSize(horizontal: true, vertical: false)
                         }
                         .buttonStyle(.bordered)
                     }
@@ -445,29 +481,14 @@ private struct zPatchAppIconBadge: View {
                 Image(systemName: "app.fill")
                     .resizable()
                     .scaledToFit()
-                    .padding(9)
+                    .frame(width: 20, height: 20)
                     .foregroundStyle(.tint)
             }
         }
-        .frame(width: 42, height: 42)
+        .frame(width: 38, height: 38)
         .background(Color(.tertiarySystemFill))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
-}
-
-private struct zPatchShareItem: Identifiable {
-    let id = UUID()
-    let url: URL
-}
-
-private struct zPatchShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct zPatchDocumentPicker: UIViewControllerRepresentable {
