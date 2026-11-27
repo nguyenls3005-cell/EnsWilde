@@ -73,7 +73,6 @@ private enum AppScannerEngine {
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
-        let _ = forceRefresh
         let ud = UserDefaults.standard
         let savedNames = ud.dictionary(forKey: zPatchStore.appNameMapKey) as? [String: String] ?? [:]
         let savedContainers = ud.dictionary(forKey: zPatchStore.containerMapKey) as? [String: String] ?? [:]
@@ -119,6 +118,36 @@ private enum AppScannerEngine {
                 appBundlePath: rec.appBundlePath,
                 icon: zPatchStore.shared.cachedAppIcon(for: bid)
             )
+        }
+
+        if forceRefresh || merged.isEmpty {
+            let gRoot = wq.grantAccess(path: FSURL.appContainers.path, requireWrite: false, allowFsgetpathFallback: false)
+            defer { if gRoot.0 { wq.releaseAccess(path: FSURL.appContainers.path) } }
+
+            if let uuids = try? FileManager.default.contentsOfDirectory(atPath: FSURL.appContainers.path) {
+                for uuid in uuids {
+                    let fullPath = (FSURL.appContainers.path as NSString).appendingPathComponent(uuid)
+                    guard let rawBID = getBIDFromXattr(URL(fileURLWithPath: fullPath))?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                          !rawBID.isEmpty else {
+                        continue
+                    }
+                    let bid = zPatchItem.normalizedBundleID(rawBID)
+                    let lower = bid.lowercased()
+                    if merged[lower] == nil {
+                        let name = fallbackName(for: bid)
+                        merged[lower] = ScannedAppEntry(
+                            id: bid,
+                            name: name,
+                            bundleID: bid,
+                            containerUUID: uuid,
+                            containerPath: fullPath,
+                            appBundlePath: "",
+                            icon: zPatchStore.shared.cachedAppIcon(for: bid)
+                        )
+                    }
+                }
+            }
         }
 
         if !merged.isEmpty {
