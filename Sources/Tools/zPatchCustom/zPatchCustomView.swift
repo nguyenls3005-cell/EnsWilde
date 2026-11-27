@@ -428,28 +428,40 @@ struct zPatchCustomView: View {
     private func savePatch() {
         let cleanBundle = zPatchItem.normalizedBundleID(newBundleID)
         let cleanRel = newRelativeDest.trimmingCharacters(in: .whitespacesAndNewlines)
+        let srcPath = newSourcePath
 
-        if !cleanBundle.isEmpty {
-            let nameToSave = selectedAppName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? (cleanBundle.split(separator: ".").last.map(String.init) ?? cleanBundle)
-                : selectedAppName
-            patchStore.registerAppMeta(bundleID: cleanBundle, appName: nameToSave, icon: selectedAppIcon)
-        }
+        guard !cleanBundle.isEmpty, !cleanRel.isEmpty, !srcPath.isEmpty else { return }
 
-        if var editing = editingPatch {
-            editing.bundleID = cleanBundle
-            editing.relativeDestPath = cleanRel
-            editing.sourcePath = newSourcePath
-            patchStore.updatePatch(editing)
-        } else {
-            patchStore.saveNewPatch(
-                bundleID: cleanBundle,
-                relativeDestPath: cleanRel,
-                sourcePath: newSourcePath
-            )
-        }
+        let nameToSave = selectedAppName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? (cleanBundle.split(separator: ".").last.map(String.init) ?? cleanBundle)
+            : selectedAppName
+        patchStore.registerAppMeta(bundleID: cleanBundle, appName: nameToSave, icon: selectedAppIcon)
+
+        let editingSnapshot = editingPatch
         showAddSheet = false
         resetForm()
+
+        DispatchQueue.main.async {
+            if var editing = editingSnapshot {
+                editing.bundleID = cleanBundle
+                editing.relativeDestPath = cleanRel
+                editing.sourcePath = srcPath
+                editing.cachedDestinationPath = editing.fastPreviewPath
+                patchStore.updatePatch(editing)
+            } else {
+                var item = zPatchItem(
+                    bundleID: cleanBundle,
+                    relativeDestPath: cleanRel,
+                    sourcePath: srcPath,
+                    hasInitialBackup: false,
+                    isEnabled: true,
+                    pendingRevert: false
+                )
+                item.cachedDestinationPath = item.fastPreviewPath
+                patchStore.patches.append(item)
+                patchStore.savePatches()
+            }
+        }
     }
 
     private func editPatch(_ patch: zPatchItem) {
