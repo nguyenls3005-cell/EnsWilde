@@ -238,22 +238,27 @@ struct zPatchCustomView: View {
     }
 
     private func triggerExport(for patch: zPatchItem, appName: String, icon: UIImage?) {
-        switch patchStore.exportEnsFile(for: patch, appName: appName, icon: icon) {
-        case .success(let url):
-            guard FileManager.default.fileExists(atPath: url.path) else {
-                errorMessage = "Không tìm thấy file .ens vừa xuất."
-                showErrorAlert = true
-                return
+        Task.detached(priority: .userInitiated) {
+            let result = zPatchStore.shared.exportEnsFile(for: patch, appName: appName, icon: icon)
+            await MainActor.run {
+                switch result {
+                case .success(let url):
+                    guard FileManager.default.fileExists(atPath: url.path) else {
+                        errorMessage = "Không tìm thấy file .ens vừa xuất."
+                        showErrorAlert = true
+                        return
+                    }
+                    presentActivityVC(for: url)
+                case .failure(let err):
+                    errorMessage = err.localizedDescription
+                    showErrorAlert = true
+                }
             }
-            presentActivityVC(for: url)
-        case .failure(let err):
-            errorMessage = err.localizedDescription
-            showErrorAlert = true
         }
     }
 
     private func presentActivityVC(for fileURL: URL) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             guard let topVC = topMostViewController() else {
                 errorMessage = "Không mở được bảng chia sẻ."
                 showErrorAlert = true
@@ -262,7 +267,12 @@ struct zPatchCustomView: View {
             let ac = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
             if let pop = ac.popoverPresentationController {
                 pop.sourceView = topVC.view
-                pop.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 1, height: 1)
+                pop.sourceRect = CGRect(
+                    x: topVC.view.bounds.midX,
+                    y: topVC.view.bounds.midY,
+                    width: 0,
+                    height: 0
+                )
                 pop.permittedArrowDirections = []
             }
             topVC.present(ac, animated: true)
