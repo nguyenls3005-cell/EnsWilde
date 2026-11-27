@@ -24,12 +24,22 @@ struct ScannedAppEntry: Identifiable, Hashable {
 private enum AppScannerEngine {
     private static let fm = FileManager.default
 
+    private static func safeNormalizePath(_ raw: String) -> String {
+        let trimmed = raw
+            .replacingOccurrences(of: "file://", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let norm = CSStoreEngine.normalizeVarPath(trimmed)
+        return norm.isEmpty ? (trimmed as NSString).standardizingPath : norm
+    }
+
     private static func readPlistDict(at path: String) -> [String: Any]? {
         guard !path.isEmpty else { return nil }
         let granted = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
         defer { if granted.0 { wq.releaseAccess(path: path) } }
 
-        guard let data = fm.contents(atPath: path),
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe),
+              !data.isEmpty,
               let plist = try? PropertyListSerialization.propertyList(
                   from: data,
                   options: [],
@@ -68,10 +78,8 @@ private enum AppScannerEngine {
             cacheDict[bid] = info
 
             let title = cleanDisplayName(from: info, bundleID: bid)
-            let rawC = (info["Container"] as? String ?? "")
-                .replacingOccurrences(of: "file://", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let normC = rawC.isEmpty ? "" : CSStoreEngine.normalizeVarPath(rawC)
+            let rawC = (info["Container"] as? String) ?? ""
+            let normC = safeNormalizePath(rawC)
             let uuid = normC.isEmpty ? "" : (normC as NSString).lastPathComponent.lowercased()
 
             byBID[bid.lowercased()] = (bid: bid, name: title, containerPath: normC)
@@ -81,6 +89,40 @@ private enum AppScannerEngine {
         }
 
         return (byBID, byUUID, cacheDict)
+    }
+
+    private static func loadLaunchServicesApps(
+        into byBID: inout [String: (bid: String, name: String, containerPath: String)],
+        into byUUID: inout [String: (bid: String, name: String, containerPath: String)]
+    ) {
+        let lsPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
+        guard let plist = readPlistDict(at: lsPath) else { return }
+
+        for sectionKey in ["User", "System", "Internal"] {
+            guard let section = plist[sectionKey] as? [String: Any] else { continue }
+            for (rawBID, raw) in section {
+                let bid = rawBID.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !bid.isEmpty, let info = raw as? [String: Any] else { continue }
+
+                let title = cleanDisplayName(from: info, bundleID: bid)
+                let rawC = (info["Container"] as? String) ?? ""
+                let normC = safeNormalizePath(rawC)
+                let uuid = normC.isEmpty ? "" : (normC as NSString).lastPathComponent.lowercased()
+
+                let key = bid.lowercased()
+                if let existing = byBID[key] {
+                    let mergedPath = existing.containerPath.isEmpty ? normC : existing.containerPath
+                    let mergedName = existing.name.isEmpty ? title : existing.name
+                    byBID[key] = (bid: bid, name: mergedName, containerPath: mergedPath)
+                } else {
+                    byBID[key] = (bid: bid, name: title, containerPath: normC)
+                }
+
+                if !uuid.isEmpty, byUUID[uuid] == nil {
+                    byUUID[uuid] = (bid: bid, name: title, containerPath: normC)
+                }
+            }
+        }
     }
 
     private static func resolveContainerMetadata(
@@ -157,40 +199,9 @@ private enum AppScannerEngine {
             }
         }
 
-        // Bổ sung từ LastLaunchServicesMap.plist qua wq
-        let lsPath = "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
-        if let plist = readPlistDict(at: lsPath) {
-            for sectionKey in ["User", "System", "Internal"] {
-                guard let section = plist[sectionKey] as? [String: Any] else { continue }
-                for (rawBID, raw) in section {
-                    let bid = rawBID.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !bid.isEmpty, let info = raw as? [String: Any] else { continue }
-
-                    let title = cleanDisplayName(from: info, bundleID: bid)
-                    let rawC = (info["Container"] as? String ?? "")
-                        .replacingOccurrences(of: "file://", with: "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    let normC = rawC.isEmpty ? "" : CSStoreEngine.normalizeVarPath(rawC)
-                    let uuid = normC.isEmpty ? "" : (normC as NSString).lastPathComponent.lowercased()
-
-                    let key = bid.lowercased()
-                    if let existing = byBID[key] {
-                        let mergedPath = existing.containerPath.isEmpty ? normC : existing.containerPath
-                        let mergedName = existing.name.isEmpty ? title : existing.name
-                        byBID[key] = (bid: bid, name: mergedName, containerPath: mergedPath)
-                    } else {
-                        byBID[key] = (bid: bid, name: title, containerPath: normC)
-                    }
-
-                    if !uuid.isEmpty, byUUID[uuid] == nil {
-                        byUUID[uuid] = (bid: bid, name: title, containerPath: normC)
-                    }
-                }
-            }
-        }
+        loadLaunchServicesApps(into: &byBID, into: &byUUID)
 
         var mergedByBID: [String: ScannedAppEntry] = [:]
-
         for (lowerBID, item) in byBID {
             let uuid = item.containerPath.isEmpty ? "" : (item.containerPath as NSString).lastPathComponent
             if !item.containerPath.isEmpty {
@@ -208,62 +219,61 @@ private enum AppScannerEngine {
             )
         }
 
-        // Quét thêm thư mục container nếu cần
-        if forceRefresh {
-            fsHandlers.invalidateCache()
-        }
+        // Chỉ quét thêm thư mục container khi bấm Quét lại hoặc khi danh sách đang trống
+        if forceRefresh || mergedByBID.isEmpty {
+            if forceRefresh {
+                fsHandlers.invalidateCache()
+            }
 
-        let rootPath = CSStoreEngine.normalizeVarPath(FSURL.appContainers.path)
-        if !rootPath.isEmpty {
-            let gRoot = wq.grantAccess(path: rootPath, requireWrite: false, allowFsgetpathFallback: true)
-            defer { if gRoot.0 { wq.releaseAccess(path: rootPath) } }
+            let containersURL = FSURL.appContainers
+            let rootPath = safeNormalizePath(containersURL.path)
+            if !rootPath.isEmpty {
+                let gRoot = wq.grantAccess(path: rootPath, requireWrite: false, allowFsgetpathFallback: true)
+                defer { if gRoot.0 { wq.releaseAccess(path: rootPath) } }
 
-            let rawContainers = fsHandlers.getDirPaths(
-                FSURL.appContainers.path,
-                forceRefresh: forceRefresh
-            )
+                let rawContainers = fsHandlers.getDirPaths(containersURL.path, forceRefresh: forceRefresh)
+                for rawPath in rawContainers {
+                    autoreleasepool {
+                        let normPath = safeNormalizePath(rawPath)
+                        guard !normPath.isEmpty else { return }
 
-            for rawPath in rawContainers {
-                autoreleasepool {
-                    let normPath = CSStoreEngine.normalizeVarPath(rawPath)
-                    guard !normPath.isEmpty else { return }
+                        let uuid = (normPath as NSString).lastPathComponent
+                        guard !uuid.isEmpty else { return }
 
-                    let uuid = (normPath as NSString).lastPathComponent
-                    guard !uuid.isEmpty else { return }
+                        guard let resolved = resolveContainerMetadata(
+                            containerPath: normPath,
+                            uuid: uuid,
+                            knownByBID: byBID,
+                            knownByUUID: byUUID
+                        ) else {
+                            return
+                        }
 
-                    guard let resolved = resolveContainerMetadata(
-                        containerPath: normPath,
-                        uuid: uuid,
-                        knownByBID: byBID,
-                        knownByUUID: byUUID
-                    ) else {
-                        return
-                    }
+                        let lowerBID = resolved.bid.lowercased()
+                        zPatchStore.shared.registerContainer(bundleID: resolved.bid, containerPath: normPath)
+                        zPatchStore.shared.registerAppMeta(bundleID: resolved.bid, appName: resolved.name, icon: nil)
 
-                    let lowerBID = resolved.bid.lowercased()
-                    zPatchStore.shared.registerContainer(bundleID: resolved.bid, containerPath: normPath)
-                    zPatchStore.shared.registerAppMeta(bundleID: resolved.bid, appName: resolved.name, icon: nil)
-
-                    if let existing = mergedByBID[lowerBID] {
-                        if existing.containerPath.isEmpty {
+                        if let existing = mergedByBID[lowerBID] {
+                            if existing.containerPath.isEmpty {
+                                mergedByBID[lowerBID] = ScannedAppEntry(
+                                    id: existing.bundleID,
+                                    name: existing.name,
+                                    bundleID: existing.bundleID,
+                                    containerUUID: uuid,
+                                    containerPath: normPath,
+                                    icon: nil
+                                )
+                            }
+                        } else {
                             mergedByBID[lowerBID] = ScannedAppEntry(
-                                id: existing.bundleID,
-                                name: existing.name,
-                                bundleID: existing.bundleID,
+                                id: resolved.bid,
+                                name: resolved.name,
+                                bundleID: resolved.bid,
                                 containerUUID: uuid,
                                 containerPath: normPath,
                                 icon: nil
                             )
                         }
-                    } else {
-                        mergedByBID[lowerBID] = ScannedAppEntry(
-                            id: resolved.bid,
-                            name: resolved.name,
-                            bundleID: resolved.bid,
-                            containerUUID: uuid,
-                            containerPath: normPath,
-                            icon: nil
-                        )
                     }
                 }
             }
@@ -300,7 +310,6 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        // Lấy getAllAppsInfo trên MainActor để tránh crash ObjC/LSApplicationWorkspace ở background thread
         let preloaded = (try? JITEnableContext.shared.getAllAppsInfo()) as? [String: Any]
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -396,8 +405,7 @@ struct AppPickerScannerView: View {
             }
             .onAppear {
                 if vm.apps.isEmpty {
-                    // Trì hoãn 1 nhịp để sheet hoàn tất animation mở trước khi quét
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         vm.scan(forceRefresh: false)
                     }
                 }
