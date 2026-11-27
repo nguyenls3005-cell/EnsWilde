@@ -38,21 +38,36 @@ private enum AppScannerEngine {
         return bundleID.split(separator: ".").last.map(String.init) ?? bundleID
     }
 
-    private static func readAppsFromLaunchServices() -> [(bid: String, name: String)] {
-        let paths = [
+    private static func readPlistWithWQ(at path: String) -> [String: Any]? {
+        let granted = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: true)
+        defer {
+            if granted.0 {
+                wq.releaseAccess(path: path)
+            }
+        }
+
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe),
+              !data.isEmpty,
+              let dict = (try? PropertyListSerialization.propertyList(
+                  from: data,
+                  options: [],
+                  format: nil
+              )) as? [String: Any] else {
+            return nil
+        }
+        return dict
+    }
+
+    private static func readAppsFromSystemPlists() -> [(bid: String, name: String)] {
+        let candidatePaths = [
             "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist",
-            "/private/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
+            "/private/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist",
+            "/var/mobile/Library/Caches/com.apple.mobile.installation.plist",
+            "/private/var/mobile/Library/Caches/com.apple.mobile.installation.plist"
         ]
 
-        for path in paths {
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe),
-                  let plist = try? PropertyListSerialization.propertyList(
-                      from: data,
-                      options: [],
-                      format: nil
-                  ) as? [String: Any] else {
-                continue
-            }
+        for path in candidatePaths {
+            guard let plist = readPlistWithWQ(at: path) else { continue }
 
             var list: [(bid: String, name: String)] = []
             for sectionKey in ["User", "System", "Internal"] {
@@ -74,7 +89,10 @@ private enum AppScannerEngine {
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
-        let _ = forceRefresh
+        if forceRefresh {
+            fsHandlers.invalidateCache()
+        }
+
         let ud = UserDefaults.standard
         let savedNames = ud.dictionary(forKey: zPatchStore.appNameMapKey) as? [String: String] ?? [:]
 
@@ -90,7 +108,7 @@ private enum AppScannerEngine {
             merged[bid.lowercased()] = (bid: bid, name: finalName)
         }
 
-        for item in readAppsFromLaunchServices() {
+        for item in readAppsFromSystemPlists() {
             let key = item.bid.lowercased()
             if let existing = merged[key] {
                 merged[key] = (
@@ -157,10 +175,14 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
-        self.apps = result
-        self.isScanning = false
-        self.statusMessage = "Đã quét xong: \(result.count) app"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
+            DispatchQueue.main.async {
+                self.apps = result
+                self.isScanning = false
+                self.statusMessage = "Đã quét xong: \(result.count) app"
+            }
+        }
     }
 }
 
@@ -237,7 +259,9 @@ struct AppPickerScannerView: View {
             }
             .onAppear {
                 if vm.apps.isEmpty {
-                    vm.scan(forceRefresh: false)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        vm.scan(forceRefresh: false)
+                    }
                 }
             }
         }
