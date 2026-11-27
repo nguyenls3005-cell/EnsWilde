@@ -14,7 +14,6 @@ struct zPatchCustomView: View {
 
     @State private var selectedAppName: String = ""
     @State private var selectedAppIcon: UIImage? = nil
-    @State private var appMetaByBID: [String: (name: String, icon: UIImage?)] = [:]
 
     @State private var newBundleID: String = ""
     @State private var newRelativeDest: String = ""
@@ -128,10 +127,6 @@ struct zPatchCustomView: View {
     private func handleImportedEns(_ url: URL) {
         switch patchStore.importEnsAndApplyNow(from: url) {
         case .success(let bundle):
-            let icon = bundle.iconPNGBase64
-                .flatMap { Data(base64Encoded: $0) }
-                .flatMap { UIImage(data: $0) }
-            appMetaByBID[bundle.bundleID.lowercased()] = (name: bundle.appName, icon: icon)
             draftEnabled = patchStore.isTweakEnabled
             popupMessage = "Đã import & chạy ngay .ens cho \(bundle.appName) (\(bundle.bundleID))."
             showSavedPopup = true
@@ -201,7 +196,7 @@ struct zPatchCustomView: View {
                 .buttonStyle(.bordered)
 
                 Button {
-                    triggerExport(for: patch, appName: meta.name)
+                    triggerExport(for: patch, appName: meta.name, icon: meta.icon)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.arrow.up")
@@ -242,8 +237,8 @@ struct zPatchCustomView: View {
         .padding(.vertical, 6)
     }
 
-    private func triggerExport(for patch: zPatchItem, appName: String) {
-        switch patchStore.exportEnsFile(for: patch, appName: appName, icon: nil) {
+    private func triggerExport(for patch: zPatchItem, appName: String, icon: UIImage?) {
+        switch patchStore.exportEnsFile(for: patch, appName: appName, icon: icon) {
         case .success(let url):
             guard FileManager.default.fileExists(atPath: url.path) else {
                 errorMessage = "Không tìm thấy file .ens vừa xuất."
@@ -258,17 +253,20 @@ struct zPatchCustomView: View {
     }
 
     private func presentActivityVC(for fileURL: URL) {
-        guard let topVC = topMostViewController() else {
-            errorMessage = "Không mở được bảng chia sẻ."
-            showErrorAlert = true
-            return
+        DispatchQueue.main.async {
+            guard let topVC = topMostViewController() else {
+                errorMessage = "Không mở được bảng chia sẻ."
+                showErrorAlert = true
+                return
+            }
+            let ac = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+            if let pop = ac.popoverPresentationController {
+                pop.sourceView = topVC.view
+                pop.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 1, height: 1)
+                pop.permittedArrowDirections = []
+            }
+            topVC.present(ac, animated: true)
         }
-        let ac = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-        if let pop = ac.popoverPresentationController {
-            pop.sourceView = topVC.view
-            pop.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 1, height: 1)
-        }
-        topVC.present(ac, animated: true)
     }
 
     private func topMostViewController() -> UIViewController? {
@@ -365,7 +363,7 @@ struct zPatchCustomView: View {
                 AppPickerScannerView(selectedBundleID: $newBundleID) { picked in
                     selectedAppName = picked.name
                     selectedAppIcon = picked.icon
-                    appMetaByBID[picked.bundleID.lowercased()] = (name: picked.name, icon: picked.icon)
+                    patchStore.registerAppMeta(bundleID: picked.bundleID, appName: picked.name, icon: picked.icon)
                 }
             }
             .sheet(isPresented: $showDocumentPicker) {
@@ -383,14 +381,11 @@ struct zPatchCustomView: View {
     }
 
     private func resolvedMeta(for bundleID: String) -> (name: String, icon: UIImage?) {
-        let key = zPatchItem.normalizedBundleID(bundleID).lowercased()
-        if let cached = appMetaByBID[key] {
-            return cached
-        }
-        let fallbackName = bundleID.isEmpty
-            ? "Unknown Bundle"
-            : (bundleID.split(separator: ".").last.map(String.init) ?? bundleID)
-        return (name: fallbackName, icon: nil)
+        let clean = zPatchItem.normalizedBundleID(bundleID)
+        let name = patchStore.cachedAppName(for: clean)
+            ?? (clean.isEmpty ? "Unknown Bundle" : (clean.split(separator: ".").last.map(String.init) ?? clean))
+        let icon = patchStore.cachedAppIcon(for: clean)
+        return (name: name, icon: icon)
     }
 
     private func importSourceURL(_ url: URL) {
@@ -428,7 +423,7 @@ struct zPatchCustomView: View {
             let nameToSave = selectedAppName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? (cleanBundle.split(separator: ".").last.map(String.init) ?? cleanBundle)
                 : selectedAppName
-            appMetaByBID[cleanBundle.lowercased()] = (name: nameToSave, icon: selectedAppIcon)
+            patchStore.registerAppMeta(bundleID: cleanBundle, appName: nameToSave, icon: selectedAppIcon)
         }
 
         if var editing = editingPatch {
