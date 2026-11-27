@@ -8,7 +8,7 @@
   <img alt="Swift" src="https://img.shields.io/badge/swift-%23F54A2A.svg?style=for-the-badge&logo=swift&logoColor=white">
 </p>
 
-**EnsWilde** is a an on-device customization tool for iPhone and iPad running iOS/iPadOS 26.0 – 27.3 Beta 1, powered by the `worse_query` and `AirLift` exploits. Once configured, it functions completely standalone without needing a computer (a PC is only required during initial setup on iOS 26).
+**EnsWilde** is an on-device customization tool for iPhone and iPad running iOS/iPadOS 26.0 – 27.3 Beta 1, powered by the `worse_query` and `AirLift` exploits. Once configured, it functions completely standalone without needing a computer (a PC is only required during initial setup on iOS 26).
 
 > [!WARNING]
 > **DISCLAIMER:**
