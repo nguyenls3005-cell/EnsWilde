@@ -87,6 +87,26 @@ class CSStoreEngine {
         return ("", cleaned)
     }
 
+    private static func readPlistDict(at path: String) -> [String: Any]? {
+        let granted = wq.grantAccess(path: path, requireWrite: false, allowFsgetpathFallback: false)
+        defer {
+            if granted.0 {
+                wq.releaseAccess(path: path)
+            }
+        }
+
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path), options: .mappedIfSafe),
+              !data.isEmpty,
+              let parsed = try? PropertyListSerialization.propertyList(
+                  from: data,
+                  options: [],
+                  format: nil
+              ) as? [String: Any] else {
+            return nil
+        }
+        return parsed
+    }
+
     private func loadSnapshot() -> StoreSnapshot? {
         cacheLock.lock()
         defer { cacheLock.unlock() }
@@ -99,17 +119,13 @@ class CSStoreEngine {
 
         let candidates = [
             Self.launchServicesMapPath,
-            "/private/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
+            "/private/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist",
+            "/var/mobile/Library/Caches/com.apple.mobile.installation.plist"
         ]
 
         var plistDict: [String: Any]?
         for path in candidates {
-            if let data = FileManager.default.contents(atPath: path),
-               let parsed = try? PropertyListSerialization.propertyList(
-                   from: data,
-                   options: [],
-                   format: nil
-               ) as? [String: Any] {
+            if let parsed = Self.readPlistDict(at: path), !parsed.isEmpty {
                 plistDict = parsed
                 break
             }
