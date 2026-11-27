@@ -1,5 +1,14 @@
 import Foundation
 
+struct CSAppRecord: Identifiable, Hashable {
+    var id: String { bundleID.lowercased() }
+    let bundleID: String
+    let name: String
+    let dataContainerPath: String
+    let bundleContainerPath: String
+    let appBundlePath: String
+}
+
 class CSStoreEngine {
     static let shared = CSStoreEngine()
     private init() {}
@@ -17,6 +26,7 @@ class CSStoreEngine {
     private static let appBundleContainerRoot = "/var/containers/Bundle/Application"
 
     private struct StoreSnapshot {
+        let recordsByLowerBID: [String: CSAppRecord]
         let dataByBundleID: [String: String]
         let bundleByBundleID: [String: String]
     }
@@ -35,32 +45,46 @@ class CSStoreEngine {
         return normalizeVarPath((stripped as NSString).standardizingPath)
     }
 
-    private static func extractBundlePath(from dict: [String: Any]) -> String? {
-        if let raw = (dict["Path"] as? String)
-            ?? (dict["BundleURL"] as? String)
-            ?? (dict["BundlePath"] as? String) {
-            if let cleaned = cleanPath(raw) {
-                if cleaned.hasPrefix(appBundleContainerRoot) {
-                    return cleaned
-                }
-                if cleaned.hasSuffix(".app") {
-                    return (cleaned as NSString).deletingLastPathComponent
-                }
-                return cleaned
+    private static func cleanName(from dict: [String: Any], bundleID: String) -> String {
+        for key in ["CFBundleDisplayName", "CFBundleName", "itemName"] {
+            if let val = (dict[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !val.isEmpty {
+                return val
             }
         }
-        return nil
+        return bundleID.split(separator: ".").last.map(String.init) ?? bundleID
     }
 
-    private static func extractDataPath(from dict: [String: Any]) -> String? {
+    private static func extractDataPath(from dict: [String: Any]) -> String {
         guard let rawContainer = dict["Container"] as? String,
               let cleaned = cleanPath(rawContainer) else {
-            return nil
+            return ""
         }
         if cleaned.hasPrefix("/") {
             return cleaned
         }
         return "\(appDataContainerRoot)/\(cleaned)"
+    }
+
+    private static func extractBundlePaths(from dict: [String: Any]) -> (containerPath: String, appPath: String) {
+        let raw = (dict["Path"] as? String)
+            ?? (dict["BundleURL"] as? String)
+            ?? (dict["BundlePath"] as? String)
+        guard let cleaned = cleanPath(raw) else {
+            return ("", "")
+        }
+
+        if cleaned.hasSuffix(".app") {
+            let parent = (cleaned as NSString).deletingLastPathComponent
+            let cPath = parent.hasPrefix(appBundleContainerRoot) ? parent : ""
+            return (cPath, cleaned)
+        }
+
+        if cleaned.hasPrefix(appBundleContainerRoot) {
+            return (cleaned, "")
+        }
+
+        return ("", cleaned)
     }
 
     private func loadSnapshot() -> StoreSnapshot? {
@@ -93,28 +117,73 @@ class CSStoreEngine {
 
         guard let plist = plistDict else { return nil }
 
+        var records: [String: CSAppRecord] = [:]
         var dataMap: [String: String] = [:]
         var bundleMap: [String: String] = [:]
 
         for sectionKey in ["User", "System", "Internal"] {
             guard let section = plist[sectionKey] as? [String: Any] else { continue }
-            for (bundleID, value) in section {
-                let bid = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
+            for (rawBID, value) in section {
+                let bid = rawBID.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !bid.isEmpty, let dict = value as? [String: Any] else { continue }
 
-                if let dataPath = Self.extractDataPath(from: dict) {
-                    dataMap[bid] = dataPath
+                let lower = bid.lowercased()
+                let title = Self.cleanName(from: dict, bundleID: bid)
+                let dataPath = Self.extractDataPath(from: dict)
+                let bundleInfo = Self.extractBundlePaths(from: dict)
+
+                let prev = records[lower]
+                let mergedName = title.isEmpty ? (prev?.name ?? bid) : title
+                let mergedData = dataPath.isEmpty ? (prev?.dataContainerPath ?? "") : dataPath
+                let mergedBundleContainer = bundleInfo.containerPath.isEmpty
+                    ? (prev?.bundleContainerPath ?? "")
+                    : bundleInfo.containerPath
+                let mergedAppPath = bundleInfo.appPath.isEmpty
+                    ? (prev?.appBundlePath ?? "")
+                    : bundleInfo.appPath
+
+                let record = CSAppRecord(
+                    bundleID: prev?.bundleID ?? bid,
+                    name: mergedName,
+                    dataContainerPath: mergedData,
+                    bundleContainerPath: mergedBundleContainer,
+                    appBundlePath: mergedAppPath
+                )
+                records[lower] = record
+
+                if !mergedData.isEmpty {
+                    dataMap[record.bundleID] = mergedData
                 }
-                if let bundlePath = Self.extractBundlePath(from: dict) {
-                    bundleMap[bid] = bundlePath
+                if !mergedBundleContainer.isEmpty {
+                    bundleMap[record.bundleID] = mergedBundleContainer
                 }
             }
         }
 
-        let snap = StoreSnapshot(dataByBundleID: dataMap, bundleByBundleID: bundleMap)
+        let snap = StoreSnapshot(
+            recordsByLowerBID: records,
+            dataByBundleID: dataMap,
+            bundleByBundleID: bundleMap
+        )
         cachedSnapshot = snap
         cacheTimestamp = Date()
         return snap
+    }
+
+    func allAppRecords() -> [CSAppRecord] {
+        guard let snap = loadSnapshot() else { return [] }
+        return snap.recordsByLowerBID.values.sorted {
+            let cmp = $0.name.localizedCaseInsensitiveCompare($1.name)
+            if cmp == .orderedSame {
+                return $0.bundleID.localizedCaseInsensitiveCompare($1.bundleID) == .orderedAscending
+            }
+            return cmp == .orderedAscending
+        }
+    }
+
+    func record(forBundleID bundleID: String) -> CSAppRecord? {
+        guard let snap = loadSnapshot() else { return nil }
+        return snap.recordsByLowerBID[bundleID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()]
     }
 
     func lookupAppContainer(forBundleID bundleID: String) -> (Bool, String?) {
