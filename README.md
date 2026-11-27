@@ -10,7 +10,7 @@
 
 **EnsWilde** is a tool utilizing `Worse_query` & `Airlift` exploits, designed for iPhone and iPad running the  **Worse_query iOS Version 27.0-27.3 (24C5370i) Airlift iOS Version : 26.0-27.2 Beta 2**.
 
-It operates as a standalone on-device application, functioning independently like modern apps. It leverages the `Bad_query` exploit to write data to files situated outside of the intended restore location.
+It operates as a standalone on-device application, functioning independently like modern apps. It leverages the `Worse_query` exploit to write data to files situated outside of the intended restore location.
 
 > [!WARNING]
 > **DISCLAIMER:**
