@@ -9,6 +9,7 @@ struct ScannedAppEntry: Identifiable, Hashable {
     let bundleID: String
     let containerUUID: String
     let containerPath: String
+    let appBundlePath: String
     let icon: UIImage?
 
     static func == (lhs: ScannedAppEntry, rhs: ScannedAppEntry) -> Bool {
@@ -22,104 +23,124 @@ struct ScannedAppEntry: Identifiable, Hashable {
 }
 
 private enum AppScannerEngine {
-    private static func readFromWorkspace() -> [(bid: String, name: String)] {
-        guard let wsClass = NSClassFromString("LSApplicationWorkspace") as? NSObject.Type,
-              wsClass.responds(to: NSSelectorFromString("defaultWorkspace")),
-              let workspace = wsClass.perform(NSSelectorFromString("defaultWorkspace"))?.takeUnretainedValue() as? NSObject,
-              workspace.responds(to: NSSelectorFromString("allApplications")),
-              let rawApps = workspace.perform(NSSelectorFromString("allApplications"))?.takeUnretainedValue() as? [NSObject] else {
-            return []
-        }
+    private static func fallbackName(for bundleID: String) -> String {
+        let last = bundleID.split(separator: ".").last.map(String.init) ?? bundleID
+        return last.isEmpty ? bundleID : last
+    }
 
-        var items: [(bid: String, name: String)] = []
-        items.reserveCapacity(rawApps.count)
+    static func iconFromBundlePath(_ appBundlePath: String) -> UIImage? {
+        guard !appBundlePath.isEmpty else { return nil }
+        let fm = FileManager.default
+        let infoPath = (appBundlePath as NSString).appendingPathComponent("Info.plist")
 
-        for proxy in rawApps {
-            let rawBID = proxy.value(forKey: "applicationIdentifier") as? String ?? ""
-            let bid = zPatchItem.normalizedBundleID(rawBID)
-            guard !bid.isEmpty else { continue }
-
-            let localized = (proxy.value(forKey: "localizedName") as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let itemName = (proxy.value(forKey: "itemName") as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let fallback = bid.split(separator: ".").last.map(String.init) ?? bid
-
-            let displayName: String
-            if let localized, !localized.isEmpty {
-                displayName = localized
-            } else if let itemName, !itemName.isEmpty {
-                displayName = itemName
-            } else {
-                displayName = fallback
+        var candidateFiles: [String] = []
+        if let data = fm.contents(atPath: infoPath),
+           let plist = try? PropertyListSerialization.propertyList(
+               from: data,
+               options: [],
+               format: nil
+           ) as? [String: Any] {
+            if let iconsDict = plist["CFBundleIcons"] as? [String: Any],
+               let primary = iconsDict["CFBundlePrimaryIcon"] as? [String: Any],
+               let files = primary["CFBundleIconFiles"] as? [String] {
+                candidateFiles.append(contentsOf: files.reversed())
             }
-
-            items.append((bid: bid, name: displayName))
+            if let legacyFiles = plist["CFBundleIconFiles"] as? [String] {
+                candidateFiles.append(contentsOf: legacyFiles.reversed())
+            }
         }
 
-        return items
+        for base in candidateFiles {
+            for suffix in ["@3x.png", "@2x.png", ".png"] {
+                let name = base.hasSuffix(".png") ? base : base + suffix
+                let full = (appBundlePath as NSString).appendingPathComponent(name)
+                if fm.fileExists(atPath: full), let img = UIImage(contentsOfFile: full) {
+                    return img
+                }
+            }
+        }
+
+        if let items = try? fm.contentsOfDirectory(atPath: appBundlePath) {
+            for file in items where file.lowercased().hasPrefix("appicon") && file.lowercased().hasSuffix(".png") {
+                let full = (appBundlePath as NSString).appendingPathComponent(file)
+                if let img = UIImage(contentsOfFile: full) {
+                    return img
+                }
+            }
+        }
+
+        return nil
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
         let _ = forceRefresh
         let ud = UserDefaults.standard
         let savedNames = ud.dictionary(forKey: zPatchStore.appNameMapKey) as? [String: String] ?? [:]
+        let savedContainers = ud.dictionary(forKey: zPatchStore.containerMapKey) as? [String: String] ?? [:]
 
-        var merged: [String: (bid: String, name: String)] = [:]
+        var merged: [String: ScannedAppEntry] = [:]
 
         for (rawBID, rawName) in savedNames {
             let bid = zPatchItem.normalizedBundleID(rawBID)
             guard !bid.isEmpty else { continue }
+            let lower = bid.lowercased()
+            let cPath = CSStoreEngine.normalizeVarPath(savedContainers[lower] ?? savedContainers[rawBID] ?? "")
+            let uuid = cPath.isEmpty ? "" : (cPath as NSString).lastPathComponent
             let cleanName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let finalName = cleanName.isEmpty
-                ? (bid.split(separator: ".").last.map(String.init) ?? bid)
-                : cleanName
-            merged[bid.lowercased()] = (bid: bid, name: finalName)
+            let displayName = cleanName.isEmpty ? fallbackName(for: bid) : cleanName
+
+            merged[lower] = ScannedAppEntry(
+                id: bid,
+                name: displayName,
+                bundleID: bid,
+                containerUUID: uuid,
+                containerPath: cPath,
+                appBundlePath: "",
+                icon: zPatchStore.shared.cachedAppIcon(for: bid)
+            )
         }
 
-        for item in readFromWorkspace() {
-            let key = item.bid.lowercased()
-            if let existing = merged[key] {
-                merged[key] = (
-                    bid: existing.bid,
-                    name: item.name.isEmpty ? existing.name : item.name
-                )
-            } else {
-                merged[key] = item
-            }
+        for rec in CSStoreEngine.shared.allAppRecords() {
+            let bid = zPatchItem.normalizedBundleID(rec.bundleID)
+            guard !bid.isEmpty else { continue }
+            let lower = bid.lowercased()
+            let cPath = !rec.dataContainerPath.isEmpty ? rec.dataContainerPath : rec.bundleContainerPath
+            let uuid = cPath.isEmpty ? "" : (cPath as NSString).lastPathComponent
+            let title = rec.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? fallbackName(for: bid)
+                : rec.name
+
+            merged[lower] = ScannedAppEntry(
+                id: bid,
+                name: title,
+                bundleID: bid,
+                containerUUID: uuid,
+                containerPath: cPath,
+                appBundlePath: rec.appBundlePath,
+                icon: zPatchStore.shared.cachedAppIcon(for: bid)
+            )
         }
 
-        if let data = ud.data(forKey: zPatchStore.itemsKey),
-           let decoded = try? JSONDecoder().decode([zPatchItem].self, from: data) {
-            for patch in decoded {
-                let bid = zPatchItem.normalizedBundleID(patch.bundleID)
-                guard !bid.isEmpty else { continue }
-                let key = bid.lowercased()
-                if merged[key] == nil {
-                    let fallback = bid.split(separator: ".").last.map(String.init) ?? bid
-                    merged[key] = (bid: bid, name: fallback)
+        if !merged.isEmpty {
+            var nextNames = savedNames
+            var nextContainers = savedContainers
+            for (lower, entry) in merged {
+                nextNames[lower] = entry.name
+                if !entry.containerPath.isEmpty {
+                    nextContainers[lower] = entry.containerPath
                 }
             }
+            ud.set(nextNames, forKey: zPatchStore.appNameMapKey)
+            ud.set(nextContainers, forKey: zPatchStore.containerMapKey)
         }
 
-        return merged.values
-            .map { item in
-                ScannedAppEntry(
-                    id: item.bid,
-                    name: item.name,
-                    bundleID: item.bid,
-                    containerUUID: "",
-                    containerPath: "",
-                    icon: nil
-                )
+        return merged.values.sorted {
+            let cmp = $0.name.localizedCaseInsensitiveCompare($1.name)
+            if cmp == .orderedSame {
+                return $0.bundleID.localizedCaseInsensitiveCompare($1.bundleID) == .orderedAscending
             }
-            .sorted {
-                let cmp = $0.name.localizedCaseInsensitiveCompare($1.name)
-                if cmp == .orderedSame {
-                    return $0.bundleID.localizedCaseInsensitiveCompare($1.bundleID) == .orderedAscending
-                }
-                return cmp == .orderedAscending
-            }
+            return cmp == .orderedAscending
+        }
     }
 }
 
@@ -144,10 +165,14 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
-        self.apps = result
-        self.isScanning = false
-        self.statusMessage = "Đã quét xong: \(result.count) app"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
+            DispatchQueue.main.async {
+                self.apps = result
+                self.isScanning = false
+                self.statusMessage = "Đã quét xong: \(result.count) app"
+            }
+        }
     }
 }
 
@@ -195,12 +220,19 @@ struct AppPickerScannerView: View {
                 List(vm.filteredApps) { app in
                     AppScannerRowButton(app: app) { resolvedIcon in
                         selectedBundleID = app.bundleID
+                        if !app.containerPath.isEmpty {
+                            zPatchStore.shared.registerContainer(
+                                bundleID: app.bundleID,
+                                containerPath: app.containerPath
+                            )
+                        }
                         let picked = ScannedAppEntry(
                             id: app.id,
                             name: app.name,
                             bundleID: app.bundleID,
                             containerUUID: app.containerUUID,
                             containerPath: app.containerPath,
+                            appBundlePath: app.appBundlePath,
                             icon: resolvedIcon
                         )
                         zPatchStore.shared.registerAppMeta(
@@ -226,6 +258,28 @@ struct AppPickerScannerView: View {
                 if vm.apps.isEmpty {
                     vm.scan(forceRefresh: false)
                 }
+            }
+        }
+    }
+}
+
+private final class BundleIconQueue {
+    static let shared = BundleIconQueue()
+    private let queue = DispatchQueue(label: "zpatch.bundle.icon.queue", qos: .utility)
+
+    func loadIcon(for app: ScannedAppEntry, completion: @escaping (UIImage?) -> Void) {
+        if let cached = zPatchStore.shared.cachedAppIcon(for: app.bundleID) {
+            completion(cached)
+            return
+        }
+
+        queue.async {
+            let img = AppScannerEngine.iconFromBundlePath(app.appBundlePath)
+            if let img {
+                zPatchStore.shared.registerAppMeta(bundleID: app.bundleID, appName: app.name, icon: img)
+            }
+            DispatchQueue.main.async {
+                completion(img)
             }
         }
     }
@@ -274,8 +328,12 @@ private struct AppScannerRowButton: View {
             .padding(.vertical, 3)
         }
         .onAppear {
-            if lazyIcon == nil, let cached = zPatchStore.shared.cachedAppIcon(for: app.bundleID) {
-                lazyIcon = cached
+            if lazyIcon == nil {
+                BundleIconQueue.shared.loadIcon(for: app) { img in
+                    if let img {
+                        lazyIcon = img
+                    }
+                }
             }
         }
     }
