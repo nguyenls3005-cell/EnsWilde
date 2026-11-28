@@ -94,15 +94,22 @@ private enum AppScannerEngine {
                 let normalizedDataPath = CSStoreEngine.normalizeVarPath(rec.dataContainerPath)
                 var uuid = extractUUID(from: normalizedDataPath)
 
-                if uuid.isEmpty, let (_, hitPath) = CSStoreEngine.shared.lookupAppContainer(forBundleID: rawBID),
-                   let hitPath, !hitPath.isEmpty {
-                    let normHit = CSStoreEngine.normalizeVarPath(hitPath)
-                    uuid = extractUUID(from: normHit)
+                var hitContainerPath: String? = nil
+                if uuid.isEmpty {
+                    let (_, hitPath) = CSStoreEngine.shared.lookupAppContainer(forBundleID: rawBID)
+                    if let hitPath, !hitPath.isEmpty {
+                        let normHit = CSStoreEngine.normalizeVarPath(hitPath)
+                        hitContainerPath = normHit
+                        uuid = extractUUID(from: normHit)
+                    }
                 }
 
                 let resolvedContainerPath: String = {
                     if !normalizedDataPath.isEmpty {
                         return normalizedDataPath
+                    }
+                    if let hitContainerPath, !hitContainerPath.isEmpty {
+                        return hitContainerPath
                     }
                     if !uuid.isEmpty, let phys = physicalUUIDs[uuid.lowercased()] {
                         return phys
