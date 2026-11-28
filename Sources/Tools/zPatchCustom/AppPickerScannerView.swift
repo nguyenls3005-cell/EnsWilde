@@ -22,12 +22,14 @@ struct ScannedAppEntry: Identifiable, Hashable {
 }
 
 private enum AppScannerEngine {
-    private static func defaultName(for bundleID: String) -> String {
+    private static let targetRoot = "/private/var/mobile/Containers/Data/Application"
+
+    private static func fallbackName(for bundleID: String) -> String {
         let last = bundleID.split(separator: ".").last.map(String.init) ?? bundleID
         return last.isEmpty ? bundleID : last
     }
 
-    private static func resolveBundleID(for containerPath: String) -> String? {
+    private static func resolveBundleID(at containerPath: String) -> String? {
         let url = URL(fileURLWithPath: containerPath)
         if let bid = getBIDFromXattr(url)?.trimmingCharacters(in: .whitespacesAndNewlines), !bid.isEmpty {
             return bid
@@ -45,19 +47,17 @@ private enum AppScannerEngine {
             fsHandlers.invalidateCache()
         }
 
-        let rootPath = CSStoreEngine.normalizeVarPath(FSURL.appContainers.path)
-        let paths = fsHandlers.getDirPaths(rootPath, forceRefresh: forceRefresh)
-
+        let paths = fsHandlers.getDirPaths(targetRoot, forceRefresh: forceRefresh)
         var seen: [String: ScannedAppEntry] = [:]
 
         for rawPath in paths {
             autoreleasepool {
-                let normPath = CSStoreEngine.normalizeVarPath(rawPath)
-                guard !normPath.isEmpty else { return }
+                let cleanPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cleanPath.isEmpty else { return }
 
-                let uuid = (normPath as NSString).lastPathComponent
+                let uuid = (cleanPath as NSString).lastPathComponent
                 let bidFromStore = zPatchStore.shared.bundleIDForContainerUUID(uuid)
-                guard let rawBID = (bidFromStore?.isEmpty == false ? bidFromStore : resolveBundleID(for: normPath)),
+                guard let rawBID = (bidFromStore?.isEmpty == false ? bidFromStore : resolveBundleID(at: cleanPath)),
                       !rawBID.isEmpty else {
                     return
                 }
@@ -66,19 +66,19 @@ private enum AppScannerEngine {
                 guard !bid.isEmpty else { return }
                 let key = bid.lowercased()
 
-                let appName = zPatchStore.shared.cachedAppName(for: bid)
+                let name = zPatchStore.shared.cachedAppName(for: bid)
                     ?? seen[key]?.name
-                    ?? defaultName(for: bid)
+                    ?? fallbackName(for: bid)
 
-                zPatchStore.shared.registerContainer(bundleID: bid, containerPath: normPath)
-                zPatchStore.shared.registerAppMeta(bundleID: bid, appName: appName, icon: nil)
+                zPatchStore.shared.registerContainer(bundleID: bid, containerPath: cleanPath)
+                zPatchStore.shared.registerAppMeta(bundleID: bid, appName: name, icon: nil)
 
                 seen[key] = ScannedAppEntry(
                     id: bid,
-                    name: appName,
+                    name: name,
                     bundleID: bid,
                     containerUUID: uuid,
-                    containerPath: normPath,
+                    containerPath: cleanPath,
                     icon: zPatchStore.shared.cachedAppIcon(for: bid)
                 )
             }
@@ -201,7 +201,9 @@ struct AppPickerScannerView: View {
             }
             .onAppear {
                 if vm.apps.isEmpty {
-                    vm.scan(forceRefresh: false)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        vm.scan(forceRefresh: false)
+                    }
                 }
             }
         }
