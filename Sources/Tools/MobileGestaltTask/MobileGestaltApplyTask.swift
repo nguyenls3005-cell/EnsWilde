@@ -11,6 +11,23 @@ import CryptoKit
 enum MobileGestaltApplyTask {
     static var onDeviceMGPath: String { MGURL.fsGestaltURL.path }
 
+    private static let stepDelayNanoseconds: UInt64 = 1_200_000_000
+
+    private static func emitStep(_ message: String, onLogUpdate: @escaping (String) -> Void) async {
+        await MainActor.run {
+            GLOBAL_LOG.step(message)
+            onLogUpdate(message)
+        }
+        try? await Task.sleep(nanoseconds: stepDelayNanoseconds)
+    }
+
+    private static func emitDetail(_ message: String, onLogUpdate: @escaping (String) -> Void) async {
+        await MainActor.run {
+            GLOBAL_LOG.step(message)
+            onLogUpdate(message)
+        }
+    }
+
     private static func ensureAccess() throws {
         let dir = MGURL.fsGestaltURL.deletingLastPathComponent().path
         if wq.hasActiveAccess(path: dir) { return }
@@ -41,17 +58,22 @@ enum MobileGestaltApplyTask {
 
         let liveURL = MGURL.fsGestaltURL
         guard FileManager.default.fileExists(atPath: liveURL.path) else {
-            throw NSError(domain: "MG", code: -404, userInfo: [NSLocalizedDescriptionKey: L("mg_err_cache_missing")])
+            let msg = L("mg_err_cache_missing")
+            await MainActor.run { GLOBAL_LOG.error(msg) }
+            throw NSError(domain: "MG", code: -404, userInfo: [NSLocalizedDescriptionKey: msg])
         }
 
-        onLogUpdate(L("mg_log_reading"))
+        // BƯỚC 1
+        await emitStep(L("mg_log_reading"), onLogUpdate: onLogUpdate)
         let liveData = try Data(contentsOf: liveURL)
         guard let liveDict = try PropertyListSerialization.propertyList(
             from: liveData,
             options: [.mutableContainersAndLeaves],
             format: nil
         ) as? NSMutableDictionary else {
-            throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: L("mg_err_parse_failed")])
+            let msg = L("mg_err_parse_failed")
+            await MainActor.run { GLOBAL_LOG.error(msg) }
+            throw NSError(domain: "MG", code: -8, userInfo: [NSLocalizedDescriptionKey: msg])
         }
 
         try saveVerifiedBackup(data: liveData, to: MGURL.preApplyGestaltURL)
@@ -61,7 +83,8 @@ enum MobileGestaltApplyTask {
 
         let candidateDict = NSMutableDictionary(dictionary: liveDict)
 
-        onLogUpdate(L("mg_log_syncing_cachedata"))
+        // BƯỚC 2
+        await emitStep(L("mg_log_syncing_cachedata"), onLogUpdate: onLogUpdate)
         if let liveCacheData = liveDict["CacheData"] as? Data,
            let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
            liveCacheData.count == storeCacheData.count {
@@ -77,12 +100,13 @@ enum MobileGestaltApplyTask {
             }
 
             candidateDict["CacheData"] = patchedData
-            onLogUpdate(String(format: L("mg_log_patched_bytes"), patchedBytes))
+            await emitDetail(String(format: L("mg_log_patched_bytes"), patchedBytes), onLogUpdate: onLogUpdate)
         } else {
-            onLogUpdate(L("mg_log_cache_size_mismatch"))
+            await emitDetail(L("mg_log_cache_size_mismatch"), onLogUpdate: onLogUpdate)
         }
 
-        onLogUpdate(L("mg_log_syncing_cacheextra"))
+        // BƯỚC 3
+        await emitStep(L("mg_log_syncing_cacheextra"), onLogUpdate: onLogUpdate)
         let liveExtra: NSMutableDictionary = {
             if let existing = liveDict["CacheExtra"] as? NSMutableDictionary {
                 return existing
@@ -127,15 +151,20 @@ enum MobileGestaltApplyTask {
         candidateDict["CacheExtra"] = liveExtra
 
         guard PropertyListSerialization.propertyList(candidateDict, isValidFor: .binary) else {
-            throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: L("mg_err_parse_failed")])
+            let msg = L("mg_err_parse_failed")
+            await MainActor.run { GLOBAL_LOG.error(msg) }
+            throw NSError(domain: "MG", code: -9, userInfo: [NSLocalizedDescriptionKey: msg])
         }
         let finalData = try PropertyListSerialization.data(fromPropertyList: candidateDict, format: .binary, options: 0)
-        onLogUpdate(String(format: L("mg_log_new_size"), finalData.count, liveData.count))
+        await emitDetail(String(format: L("mg_log_new_size"), finalData.count, liveData.count), onLogUpdate: onLogUpdate)
 
-        onLogUpdate(L("mg_log_writing"))
+        // BƯỚC 4
+        await emitStep(L("mg_log_writing"), onLogUpdate: onLogUpdate)
         let fd = open(onDeviceMGPath, O_RDWR)
         guard fd >= 0 else {
-            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: L("mg_err_open_failed")])
+            let msg = L("mg_err_open_failed")
+            await MainActor.run { GLOBAL_LOG.error(msg) }
+            throw NSError(domain: "MG", code: -20, userInfo: [NSLocalizedDescriptionKey: msg])
         }
         defer { close(fd) }
 
@@ -147,7 +176,9 @@ enum MobileGestaltApplyTask {
         }
 
         guard written == finalData.count else {
-            throw NSError(domain: "MG", code: -21, userInfo: [NSLocalizedDescriptionKey: String(format: L("mg_err_pwrite_failed"), written, finalData.count)])
+            let msg = String(format: L("mg_err_pwrite_failed"), written, finalData.count)
+            await MainActor.run { GLOBAL_LOG.error(msg) }
+            throw NSError(domain: "MG", code: -21, userInfo: [NSLocalizedDescriptionKey: msg])
         }
 
         if oldSize > off_t(finalData.count) {
@@ -156,18 +187,26 @@ enum MobileGestaltApplyTask {
 
         if fcntl(fd, F_FULLFSYNC) == -1 {
             fsync(fd)
-            onLogUpdate(L("mg_log_fullfsync_failed"))
+            await emitDetail(L("mg_log_fullfsync_failed"), onLogUpdate: onLogUpdate)
         } else {
-            onLogUpdate(L("mg_log_fullfsync_success"))
+            await emitDetail(L("mg_log_fullfsync_success"), onLogUpdate: onLogUpdate)
         }
 
         let readback = try Data(contentsOf: liveURL)
         guard readback == finalData else {
-            throw NSError(domain: "MG", code: -22, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
+            let msg = L("mg_verify_failed")
+            await MainActor.run { GLOBAL_LOG.error(msg) }
+            throw NSError(domain: "MG", code: -22, userInfo: [NSLocalizedDescriptionKey: msg])
         }
 
         store.mgCurrentDict = NSMutableDictionary(dictionary: candidateDict)
-        onLogUpdate(L("mg_log_write_success"))
+
+        let doneMsg = L("mg_log_write_success")
+        await MainActor.run {
+            GLOBAL_LOG.success(doneMsg)
+            onLogUpdate(doneMsg)
+        }
+        try? await Task.sleep(nanoseconds: 800_000_000)
     }
 
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
@@ -175,18 +214,24 @@ enum MobileGestaltApplyTask {
 
         let liveURL = MGURL.fsGestaltURL
         if FileManager.default.fileExists(atPath: MGURL.savedGestaltURL.path) {
+            await emitStep(L("mg_log_reading"), onLogUpdate: onLogUpdate)
             let savedData = try Data(contentsOf: MGURL.savedGestaltURL)
             if let shaData = try? Data(contentsOf: MGURL.savedGestaltSHA256URL),
                let expectedHash = String(data: shaData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
                !expectedHash.isEmpty {
                 guard sha256Hex(savedData) == expectedHash else {
-                    throw NSError(domain: "MG", code: -30, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
+                    let msg = L("mg_verify_failed")
+                    await MainActor.run { GLOBAL_LOG.error(msg) }
+                    throw NSError(domain: "MG", code: -30, userInfo: [NSLocalizedDescriptionKey: msg])
                 }
             }
 
+            await emitStep(L("mg_log_writing"), onLogUpdate: onLogUpdate)
             let fd = open(onDeviceMGPath, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
             guard fd >= 0 else {
-                throw NSError(domain: "MG", code: -31, userInfo: [NSLocalizedDescriptionKey: L("mg_err_open_failed")])
+                let msg = L("mg_err_open_failed")
+                await MainActor.run { GLOBAL_LOG.error(msg) }
+                throw NSError(domain: "MG", code: -31, userInfo: [NSLocalizedDescriptionKey: msg])
             }
             defer { close(fd) }
 
@@ -196,7 +241,9 @@ enum MobileGestaltApplyTask {
                 return pwrite(fd, base, savedData.count, 0)
             }
             guard written == savedData.count else {
-                throw NSError(domain: "MG", code: -32, userInfo: [NSLocalizedDescriptionKey: String(format: L("mg_err_pwrite_failed"), written, savedData.count)])
+                let msg = String(format: L("mg_err_pwrite_failed"), written, savedData.count)
+                await MainActor.run { GLOBAL_LOG.error(msg) }
+                throw NSError(domain: "MG", code: -32, userInfo: [NSLocalizedDescriptionKey: msg])
             }
             if oldSize > off_t(savedData.count) {
                 ftruncate(fd, off_t(savedData.count))
@@ -207,7 +254,9 @@ enum MobileGestaltApplyTask {
 
             let readback = try Data(contentsOf: liveURL)
             guard readback == savedData else {
-                throw NSError(domain: "MG", code: -33, userInfo: [NSLocalizedDescriptionKey: L("mg_verify_failed")])
+                let msg = L("mg_verify_failed")
+                await MainActor.run { GLOBAL_LOG.error(msg) }
+                throw NSError(domain: "MG", code: -33, userInfo: [NSLocalizedDescriptionKey: msg])
             }
 
             if let dict = try? PropertyListSerialization.propertyList(
@@ -217,13 +266,24 @@ enum MobileGestaltApplyTask {
             ) as? NSMutableDictionary {
                 GestaltStore.shared.mgCurrentDict = dict
             }
-            onLogUpdate(L("mg_log_restored"))
+
+            let doneMsg = L("mg_log_restored")
+            await MainActor.run {
+                GLOBAL_LOG.success(doneMsg)
+                onLogUpdate(doneMsg)
+            }
+            try? await Task.sleep(nanoseconds: 800_000_000)
             return
         }
 
         if FileManager.default.fileExists(atPath: onDeviceMGPath) {
             try FileManager.default.removeItem(atPath: onDeviceMGPath)
-            onLogUpdate(L("mg_log_restored"))
+            let doneMsg = L("mg_log_restored")
+            await MainActor.run {
+                GLOBAL_LOG.success(doneMsg)
+                onLogUpdate(doneMsg)
+            }
+            try? await Task.sleep(nanoseconds: 800_000_000)
         }
     }
 }

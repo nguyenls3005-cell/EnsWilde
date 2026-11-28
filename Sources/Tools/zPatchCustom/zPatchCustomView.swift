@@ -7,6 +7,8 @@ struct zPatchCustomView: View {
     var onNavigateToApply: (() -> Void)? = nil
 
     @State private var draftEnabled: Bool = false
+    @State private var isBusy: Bool = false
+    @State private var actionTask: Task<Void, Never>?
 
     @State private var showAddSheet = false
     @State private var showAppPicker = false
@@ -37,14 +39,13 @@ struct zPatchCustomView: View {
                     }
                 ))
 
+                UniversalLogView()
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
+
                 HStack(spacing: 10) {
                     Button {
-                        patchStore.saveChange(enableTweak: draftEnabled)
-                        UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-                        popupMessage = draftEnabled
-                            ? "Đã bật và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
-                            : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
-                        showSavedPopup = true
+                        applySaveChange()
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle.fill")
@@ -53,6 +54,7 @@ struct zPatchCustomView: View {
                         }
                         .fixedSize(horizontal: true, vertical: false)
                     }
+                    .disabled(isBusy)
 
                     Spacer()
 
@@ -67,6 +69,7 @@ struct zPatchCustomView: View {
                         .fixedSize(horizontal: true, vertical: false)
                     }
                     .buttonStyle(.bordered)
+                    .disabled(isBusy)
                 }
             }
 
@@ -75,6 +78,7 @@ struct zPatchCustomView: View {
                     resetForm()
                     showAddSheet = true
                 }
+                .disabled(isBusy)
 
                 if !patchStore.patches.isEmpty {
                     ForEach(patchStore.patches) { patch in
@@ -96,6 +100,10 @@ struct zPatchCustomView: View {
             patchStore.ensureLoaded()
             draftEnabled = patchStore.isTweakEnabled
         }
+        .onDisappear {
+            actionTask?.cancel()
+            isBusy = false
+        }
         .sheet(isPresented: $showAddSheet) {
             addPatchSheet
         }
@@ -105,6 +113,7 @@ struct zPatchCustomView: View {
                     handleImportedEns(url)
                 },
                 onError: { msg in
+                    GLOBAL_LOG.error("Import .ens lỗi: \(msg)")
                     errorMessage = msg
                     showErrorAlert = true
                 }
@@ -124,15 +133,74 @@ struct zPatchCustomView: View {
         }
     }
 
-    private func handleImportedEns(_ url: URL) {
-        switch patchStore.importEnsAndApplyNow(from: url) {
-        case .success(let bundle):
-            draftEnabled = patchStore.isTweakEnabled
-            popupMessage = "Đã import & chạy ngay .ens cho \(bundle.appName) (\(bundle.bundleID))."
+    private func applySaveChange() {
+        guard !isBusy else { return }
+        isBusy = true
+        let enabledSnapshot = draftEnabled
+        GLOBAL_LOG.step("Đang lưu thay đổi zPatch Custom...")
+
+        actionTask?.cancel()
+        actionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            patchStore.saveChange(enableTweak: enabledSnapshot)
+            UserDefaults.standard.set(true, forKey: "ShowApplyTab")
+            let msg = enabledSnapshot
+                ? "Đã bật và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
+                : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
+
+            isBusy = false
+            popupMessage = msg
+            GLOBAL_LOG.success(msg)
             showSavedPopup = true
-        case .failure(let err):
-            errorMessage = "Import .ens lỗi: \(err.localizedDescription)"
-            showErrorAlert = true
+        }
+    }
+
+    private func handleImportedEns(_ url: URL) {
+        guard !isBusy else { return }
+        isBusy = true
+        GLOBAL_LOG.step("Đang import gói .ens: \(url.lastPathComponent)...")
+
+        actionTask?.cancel()
+        actionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            switch patchStore.importEnsAndApplyNow(from: url) {
+            case .success(let bundle):
+                draftEnabled = patchStore.isTweakEnabled
+                let msg = "Đã import & chạy ngay .ens cho \(bundle.appName) (\(bundle.bundleID))."
+                isBusy = false
+                popupMessage = msg
+                GLOBAL_LOG.success(msg)
+                showSavedPopup = true
+            case .failure(let err):
+                let errMsg = "Import .ens lỗi: \(err.localizedDescription)"
+                isBusy = false
+                errorMessage = errMsg
+                GLOBAL_LOG.error(errMsg)
+                showErrorAlert = true
+            }
+        }
+    }
+
+    private func requestRevertPatch(_ patch: zPatchItem) {
+        guard !isBusy else { return }
+        isBusy = true
+        GLOBAL_LOG.step("Đang đánh dấu Revert cho \(patch.bundleID)...")
+
+        actionTask?.cancel()
+        actionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            patchStore.requestRevert(patch)
+            let msg = "Đã chọn Revert cho \(patch.bundleID). Bạn có thể tự chuyển qua tab Apply để khôi phục về patch cũ."
+            isBusy = false
+            popupMessage = msg
+            GLOBAL_LOG.success(msg)
+            showSavedPopup = true
         }
     }
 
@@ -147,6 +215,7 @@ struct zPatchCustomView: View {
                 ))
                 .labelsHidden()
                 .fixedSize()
+                .disabled(isBusy)
 
                 zPatchAppIconBadge(icon: meta.icon)
 
@@ -171,7 +240,7 @@ struct zPatchCustomView: View {
                         .lineLimit(2)
 
                     if patch.pendingRevert {
-                        Text("Trạng thái: Đã chọn Revert — qua tab Apply để khôi phục")
+                        Text("Trạng thái: Đã chọn Revert -- qua tab Apply để khôi phục")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.orange)
                     } else if patch.hasInitialBackup && patch.backupPath != nil {
@@ -194,6 +263,7 @@ struct zPatchCustomView: View {
                     .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.bordered)
+                .disabled(isBusy)
 
                 Button {
                     triggerExport(for: patch, appName: meta.name, icon: meta.icon)
@@ -206,11 +276,10 @@ struct zPatchCustomView: View {
                     .fixedSize(horizontal: true, vertical: false)
                 }
                 .buttonStyle(.bordered)
+                .disabled(isBusy)
 
                 Button {
-                    patchStore.requestRevert(patch)
-                    popupMessage = "Đã chọn Revert cho \(patch.bundleID). Bạn có thể tự chuyển qua tab Apply để khôi phục về patch cũ."
-                    showSavedPopup = true
+                    requestRevertPatch(patch)
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.uturn.backward")
@@ -221,6 +290,7 @@ struct zPatchCustomView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
+                .disabled(isBusy)
 
                 Spacer(minLength: 0)
 
@@ -232,24 +302,30 @@ struct zPatchCustomView: View {
                 }
                 .buttonStyle(.bordered)
                 .fixedSize()
+                .disabled(isBusy)
             }
         }
         .padding(.vertical, 6)
     }
 
     private func triggerExport(for patch: zPatchItem, appName: String, icon: UIImage?) {
+        GLOBAL_LOG.step("Đang xuất file .ens cho \(patch.bundleID)...")
         Task.detached(priority: .userInitiated) {
             let result = zPatchStore.shared.exportEnsFile(for: patch, appName: appName, icon: icon)
             await MainActor.run {
                 switch result {
                 case .success(let url):
                     guard FileManager.default.fileExists(atPath: url.path) else {
-                        errorMessage = "Không tìm thấy file .ens vừa xuất."
+                        let msg = "Không tìm thấy file .ens vừa xuất."
+                        GLOBAL_LOG.error(msg)
+                        errorMessage = msg
                         showErrorAlert = true
                         return
                     }
+                    GLOBAL_LOG.success("Đã xuất file .ens: \(url.lastPathComponent)")
                     presentActivityVC(for: url)
                 case .failure(let err):
+                    GLOBAL_LOG.error("Xuất .ens lỗi: \(err.localizedDescription)")
                     errorMessage = err.localizedDescription
                     showErrorAlert = true
                 }
@@ -419,7 +495,9 @@ struct zPatchCustomView: View {
             let data = try Data(contentsOf: url)
             try data.write(to: destURL, options: .atomic)
             newSourcePath = destURL.path
+            GLOBAL_LOG.step("Đã chọn file nguồn: \(safeName)")
         } catch {
+            GLOBAL_LOG.error("Không thể import file: \(error.localizedDescription)")
             errorMessage = "Không thể import file: \(error.localizedDescription)"
             showErrorAlert = true
         }
@@ -448,6 +526,7 @@ struct zPatchCustomView: View {
                 editing.sourcePath = srcPath
                 editing.cachedDestinationPath = editing.fastPreviewPath
                 patchStore.updatePatch(editing)
+                GLOBAL_LOG.success("Đã cập nhật patch cho \(cleanBundle)")
             } else {
                 var item = zPatchItem(
                     bundleID: cleanBundle,
@@ -460,6 +539,7 @@ struct zPatchCustomView: View {
                 item.cachedDestinationPath = item.fastPreviewPath
                 patchStore.patches.append(item)
                 patchStore.savePatches()
+                GLOBAL_LOG.success("Đã thêm patch cho \(cleanBundle)")
             }
         }
     }

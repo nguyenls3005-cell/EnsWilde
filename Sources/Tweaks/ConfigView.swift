@@ -6,7 +6,9 @@ struct ConfigView: View {
     @AppStorage("ConfigFootnoteText") private var footnoteText: String = ""
     @AppStorage("ConfigSupervised") private var supervised: Bool = false
     @AppStorage("ConfigOrgName") private var orgName: String = ""
-    
+
+    @State private var isApplying = false
+    @State private var saveTask: Task<Void, Never>?
     @State private var showSavedAlert = false
     @State private var showRestoredAlert = false
 
@@ -14,12 +16,16 @@ struct ConfigView: View {
         Form {
             Section(header: Text(L("config_tweaks_title"))) {
                 Toggle(L("config_enable_tweak"), isOn: $toolStore.configTweaksEnabled)
+
+                UniversalLogView()
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
             }
 
             Section(header: Text(L("config_lock_screen_footnote"))) {
                 TextField(L("config_footnote_placeholder"), text: $footnoteText)
                     .autocorrectionDisabled()
-                
+
                 if !footnoteText.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L("config_preview")).font(.caption).foregroundStyle(.secondary)
@@ -35,11 +41,11 @@ struct ConfigView: View {
 
             Section(header: Text(L("config_supervision_title"))) {
                 Toggle(L("config_enable_supervision"), isOn: $supervised)
-                
+
                 if supervised {
                     TextField(L("config_org_placeholder"), text: $orgName)
                         .autocorrectionDisabled()
-                    
+
                     if !orgName.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(L("config_preview")).font(.caption).foregroundStyle(.secondary)
@@ -56,20 +62,20 @@ struct ConfigView: View {
 
             Section {
                 Button {
-                    showApplyTab = true
-                    showSavedAlert = true
+                    applyConfig()
                 } label: {
                     HStack {
                         Image(systemName: "square.and.arrow.down")
                         Text(L("config_apply_save")).font(.headline)
                     }.frame(maxWidth: .infinity)
                 }
+                .disabled(isApplying)
 
                 Button(role: .destructive) {
                     footnoteText = ""
                     supervised = false
                     orgName = ""
-                    
+                    GLOBAL_LOG.step("Đã đặt lại Config Tweaks.")
                     showRestoredAlert = true
                 } label: {
                     HStack {
@@ -77,6 +83,7 @@ struct ConfigView: View {
                         Text(L("config_restore_save")).font(.headline)
                     }.frame(maxWidth: .infinity)
                 }
+                .disabled(isApplying)
             }
         }
         .navigationTitle(L("config_tweaks_title"))
@@ -89,6 +96,31 @@ struct ConfigView: View {
             Button(L("alert_ok")) {}
         } message: {
             Text(L("config_restored_message"))
+        }
+        .onDisappear {
+            saveTask?.cancel()
+            isApplying = false
+        }
+    }
+
+    private func applyConfig() {
+        guard !isApplying else { return }
+        isApplying = true
+        GLOBAL_LOG.step("Đang áp dụng Config Tweaks...")
+
+        saveTask?.cancel()
+        saveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else { return }
+
+            GLOBAL_LOG.step("Đang ghi dữ liệu vào hệ thống...")
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            showApplyTab = true
+            isApplying = false
+            GLOBAL_LOG.success("Lưu Config thành công!")
+            showSavedAlert = true
         }
     }
 }

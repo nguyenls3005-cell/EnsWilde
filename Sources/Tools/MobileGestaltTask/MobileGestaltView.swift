@@ -62,6 +62,10 @@ struct MobileGestaltView: View {
                     .onChange(of: toolStore.replaceMobileGestaltEnabled) { isEnabled in
                         if !isEnabled { showApplyTab = false }
                     }
+
+                UniversalLogView()
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
             }
 
             Section(header: Text(L("section_device_subtype"))) {
@@ -223,9 +227,11 @@ struct MobileGestaltView: View {
                 Button(action: saveChanges) {
                     Label(L("mg_save_settings"), systemImage: "square.and.arrow.down")
                 }
+                .disabled(taskRunning)
                 Button(role: .destructive, action: resetOriginal) {
                     Label(L("mg_revert_tweaks"), systemImage: "arrow.counterclockwise")
                 }
+                .disabled(taskRunning)
             }
         }
         .navigationTitle(L("tool_mobile_gestalt"))
@@ -331,7 +337,12 @@ struct MobileGestaltView: View {
     }
 
     private func saveChanges() {
+        guard !taskRunning else { return }
+        taskRunning = true
+        GLOBAL_LOG.step("Đang bắt đầu lưu MobileGestalt...")
+
         Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 let ce = store.cacheExtra
                 let targetProductType = productType
@@ -396,7 +407,6 @@ struct MobileGestaltView: View {
                 }
                 ce[MGKey.artwork] = art
 
-                // Áp dụng vùng theo lựa chọn người dùng (ví dụ VN -> "VN" / "VN/A") sau cùng để không bị đè
                 if chosenRegionCode != "CUSTOM", let preset = regionPresets.first(where: { $0.id == chosenRegionCode }) {
                     ce[MGKey.regionCode] = preset.id
                     ce[MGKey.regionSysconfig] = preset.suffix
@@ -418,11 +428,15 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
+                    taskRunning = false
+                    GLOBAL_LOG.success("Lưu MobileGestalt thành công!")
                     lastError = L("mg_save_success_message")
                     showErrorAlert = true
                 }
             } catch {
                 await MainActor.run {
+                    taskRunning = false
+                    GLOBAL_LOG.error("Lỗi: \(error.localizedDescription)")
                     lastError = L("mg_save_failed") + " \(error.localizedDescription)"
                     showErrorAlert = true
                 }
@@ -431,7 +445,12 @@ struct MobileGestaltView: View {
     }
 
     private func resetOriginal() {
+        guard !taskRunning else { return }
+        taskRunning = true
+        GLOBAL_LOG.step("Đang khôi phục MobileGestalt gốc...")
+
         Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 try await MobileGestaltApplyTask.restoreGestalt { log in
                     print(log)
@@ -444,11 +463,15 @@ struct MobileGestaltView: View {
                     self.mobileGestalt = store.mgCurrentDict
                     hydrateFromDict()
                     showApplyTab = true
+                    taskRunning = false
+                    GLOBAL_LOG.success("Đã khôi phục MobileGestalt thành công!")
                     lastError = L("mg_revert_success_message")
                     showErrorAlert = true
                 }
             } catch {
                 await MainActor.run {
+                    taskRunning = false
+                    GLOBAL_LOG.error("Lỗi: \(error.localizedDescription)")
                     lastError = L("mg_revert_failed") + " \(error.localizedDescription)"
                     showErrorAlert = true
                 }

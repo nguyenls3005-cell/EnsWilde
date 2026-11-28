@@ -185,6 +185,10 @@ struct ManualCacheExtraEditorView: View {
                     .onChange(of: manualCacheEditorEnabled) { isEnabled in
                         if !isEnabled { showApplyTab = false }
                     }
+
+                UniversalLogView()
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowBackground(Color.clear)
             }
 
             Section(header: Text(L("manual_editor_fields"))) {
@@ -275,10 +279,10 @@ struct ManualCacheExtraEditorView: View {
                 ce[entry.key] = parsed
             }
             ManualEditTracker.setValue(parsed, forKey: entry.key)
-            
+
             let newDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
             store.mgCurrentDict = newDict
-            
+
             reload()
         } catch {
             errorMessage = error.localizedDescription
@@ -290,16 +294,20 @@ struct ManualCacheExtraEditorView: View {
             ce.removeObject(forKey: entry.key)
         }
         ManualEditTracker.removeKey(entry.key)
-        
+
         let newDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
         store.mgCurrentDict = newDict
-        
+
         reload()
     }
 
     private func saveChanges() {
+        guard !isSaving && !isReverting else { return }
         isSaving = true
+        GLOBAL_LOG.step("Đang chuẩn bị lưu Cache Extra...")
+
         Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in print(log) }
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
@@ -311,17 +319,26 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isSaving = false
                     showApplyTab = true
+                    GLOBAL_LOG.success("Đã lưu Cache Extra thành công!")
                     successMessage = L("mg_save_success_message")
                 }
             } catch {
-                await MainActor.run { isSaving = false; errorMessage = L("mg_save_failed") + " \(error.localizedDescription)" }
+                await MainActor.run {
+                    isSaving = false
+                    GLOBAL_LOG.error("Lỗi: \(error.localizedDescription)")
+                    errorMessage = L("mg_save_failed") + " \(error.localizedDescription)"
+                }
             }
         }
     }
 
     private func revertChanges() {
+        guard !isSaving && !isReverting else { return }
         isReverting = true
+        GLOBAL_LOG.step("Đang khôi phục Cache Extra...")
+
         Task {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 try await MobileGestaltApplyTask.restoreGestalt { log in print(log) }
                 ManualEditTracker.clear()
@@ -333,10 +350,15 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isReverting = false
                     showApplyTab = true
+                    GLOBAL_LOG.success("Đã khôi phục Cache Extra thành công!")
                     successMessage = L("mg_revert_success_message")
                 }
             } catch {
-                await MainActor.run { isReverting = false; errorMessage = L("mg_revert_failed") + " \(error.localizedDescription)" }
+                await MainActor.run {
+                    isReverting = false
+                    GLOBAL_LOG.error("Lỗi: \(error.localizedDescription)")
+                    errorMessage = L("mg_revert_failed") + " \(error.localizedDescription)"
+                }
             }
         }
     }
