@@ -26,27 +26,27 @@ extension LogModel {
         }
     }
 
-    func step(_ message: String) {
+    func pushStep(_ message: String) {
         postMain {
             UniversalLogStore.state = .running
             UniversalLogStore.currentLine = message
-            self.append("[STEP] \(message)")
+            self.step(message)
         }
     }
 
-    func success(_ message: String) {
+    func pushSuccess(_ message: String) {
         postMain {
             UniversalLogStore.state = .success
             UniversalLogStore.currentLine = message
-            self.append("[SUCCESS] \(message)")
+            self.success(message)
         }
     }
 
-    func error(_ message: String) {
+    func pushError(_ message: String) {
         postMain {
             UniversalLogStore.state = .error
             UniversalLogStore.currentLine = message
-            self.append("[ERROR] \(message)")
+            self.error(message)
         }
     }
 
