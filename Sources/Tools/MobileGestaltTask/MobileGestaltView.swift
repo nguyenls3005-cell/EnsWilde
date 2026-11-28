@@ -335,10 +335,9 @@ struct MobileGestaltView: View {
     private func saveChanges() {
         guard !taskRunning else { return }
         taskRunning = true
-        GLOBAL_LOG.step("Đang bắt đầu lưu MobileGestalt...")
+        GLOBAL_LOG.step("Đang lưu MobileGestalt...")
 
         Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 let ce = store.cacheExtra
                 let targetProductType = productType
@@ -425,7 +424,7 @@ struct MobileGestaltView: View {
                     hydrateFromDict()
                     showApplyTab = true
                     taskRunning = false
-                    GLOBAL_LOG.success("Lưu MobileGestalt thành công!")
+                    GLOBAL_LOG.success("Lưu MobileGestalt thành công.")
                     lastError = L("mg_save_success_message")
                     showErrorAlert = true
                 }
@@ -446,7 +445,6 @@ struct MobileGestaltView: View {
         GLOBAL_LOG.step("Đang khôi phục MobileGestalt gốc...")
 
         Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 try await MobileGestaltApplyTask.restoreGestalt { log in
                     print(log)
@@ -460,7 +458,7 @@ struct MobileGestaltView: View {
                     hydrateFromDict()
                     showApplyTab = true
                     taskRunning = false
-                    GLOBAL_LOG.success("Đã khôi phục MobileGestalt thành công!")
+                    GLOBAL_LOG.success("Đã khôi phục MobileGestalt thành công.")
                     lastError = L("mg_revert_success_message")
                     showErrorAlert = true
                 }

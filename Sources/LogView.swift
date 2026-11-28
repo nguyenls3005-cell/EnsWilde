@@ -15,15 +15,15 @@ final class LogModel: ObservableObject {
     }
 
     func step(_ msg: String) {
-        append("[STEP] \(msg)")
+        append(msg)
     }
 
     func success(_ msg: String) {
-        append("[SUCCESS] \(msg)")
+        append(msg)
     }
 
     func error(_ msg: String) {
-        append("[ERROR] \(msg)")
+        append(msg)
     }
 
     func clear() {
@@ -56,7 +56,7 @@ struct LogView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 Text(GLOBAL_LOG.text)
-                    .font(.system(size: 12).monospaced())
+                    .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)

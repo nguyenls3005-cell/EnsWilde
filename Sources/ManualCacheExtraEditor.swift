@@ -300,10 +300,9 @@ struct ManualCacheExtraEditorView: View {
     private func saveChanges() {
         guard !isSaving && !isReverting else { return }
         isSaving = true
-        GLOBAL_LOG.step("Đang chuẩn bị lưu Cache Extra...")
+        GLOBAL_LOG.step("Đang lưu Cache Extra...")
 
         Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 try await MobileGestaltApplyTask.applyGestalt(store: store) { log in print(log) }
                 let liveURL = URL(filePath: MobileGestaltApplyTask.onDeviceMGPath)
@@ -315,7 +314,7 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isSaving = false
                     showApplyTab = true
-                    GLOBAL_LOG.success("Đã lưu Cache Extra thành công!")
+                    GLOBAL_LOG.success("Đã lưu Cache Extra thành công.")
                     successMessage = L("mg_save_success_message")
                 }
             } catch {
@@ -334,7 +333,6 @@ struct ManualCacheExtraEditorView: View {
         GLOBAL_LOG.step("Đang khôi phục Cache Extra...")
 
         Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
             do {
                 try await MobileGestaltApplyTask.restoreGestalt { log in print(log) }
                 ManualEditTracker.clear()
@@ -346,7 +344,7 @@ struct ManualCacheExtraEditorView: View {
                     reload()
                     isReverting = false
                     showApplyTab = true
-                    GLOBAL_LOG.success("Đã khôi phục Cache Extra thành công!")
+                    GLOBAL_LOG.success("Đã khôi phục Cache Extra thành công.")
                     successMessage = L("mg_revert_success_message")
                 }
             } catch {

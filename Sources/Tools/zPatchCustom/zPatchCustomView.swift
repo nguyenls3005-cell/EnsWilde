@@ -137,7 +137,7 @@ struct zPatchCustomView: View {
 
         actionTask?.cancel()
         actionTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
 
             patchStore.saveChange(enableTweak: enabledSnapshot)
@@ -160,7 +160,7 @@ struct zPatchCustomView: View {
 
         actionTask?.cancel()
         actionTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
 
             switch patchStore.importEnsAndApplyNow(from: url) {
@@ -188,7 +188,7 @@ struct zPatchCustomView: View {
 
         actionTask?.cancel()
         actionTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
 
             patchStore.requestRevert(patch)

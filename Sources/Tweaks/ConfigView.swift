@@ -106,16 +106,16 @@ struct ConfigView: View {
 
         saveTask?.cancel()
         saveTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
 
             GLOBAL_LOG.step("Đang ghi dữ liệu vào hệ thống...")
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
 
             showApplyTab = true
             isApplying = false
-            GLOBAL_LOG.success("Lưu Config thành công!")
+            GLOBAL_LOG.success("Lưu Config thành công.")
             showSavedAlert = true
         }
     }

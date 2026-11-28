@@ -116,8 +116,8 @@ struct ApplyTabView: View {
     }
 
     private var statusTextColor: Color {
-        if isFailed || currentLine.hasPrefix("❌") { return .red }
-        if isSuccess || currentLine.hasPrefix("✅") { return .green }
+        if isFailed { return .red }
+        if isSuccess { return .green }
         if isApplying { return .primary }
         return .secondary
     }
@@ -126,7 +126,6 @@ struct ApplyTabView: View {
         var lines = statusLogs
         let globalText = GLOBAL_LOG.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !globalText.isEmpty {
-            lines.append("--- GLOBAL LOG ---")
             lines.append(globalText)
         }
         return lines.joined(separator: "\n")
@@ -154,32 +153,41 @@ struct ApplyTabView: View {
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
-                Section(header: Text(L("section_status")).font(.headline).textCase(nil)) {
+                Section {
                     HStack(spacing: 10) {
                         if isApplying {
                             ProgressView()
                                 .controlSize(.small)
                                 .tint(Color(hex: userTintColorHex))
-                        } else if isFailed || currentLine.hasPrefix("❌") {
+                        } else if isFailed {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.subheadline)
+                                .font(.body)
                                 .foregroundStyle(.red)
-                        } else if isSuccess || currentLine.hasPrefix("✅") {
+                        } else if isSuccess {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.subheadline)
+                                .font(.body)
                                 .foregroundStyle(.green)
                         } else {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.subheadline)
+                                .font(.body)
                                 .foregroundStyle(.secondary)
                         }
 
                         Text(currentLine)
-                            .font(.system(size: 13, weight: .regular, design: .monospaced))
+                            .font(.subheadline)
                             .foregroundStyle(statusTextColor)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.vertical, 2)
+                } header: {
+                    HStack {
+                        Text(L("section_status"))
+                            .font(.headline)
+                            .textCase(nil)
+
+                        Spacer()
 
                         Button {
                             UIPasteboard.general.string = fullLogString
@@ -198,11 +206,10 @@ struct ApplyTabView: View {
                             }
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(copiedLog ? .green : .secondary)
-                            .fixedSize(horizontal: true, vertical: false)
+                            .textCase(nil)
                         }
                         .buttonStyle(.borderless)
                     }
-                    .padding(.vertical, 2)
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
@@ -236,7 +243,7 @@ struct ApplyTabView: View {
             self.currentLine = message
             GLOBAL_LOG.step(message)
         }
-        try? await Task.sleep(nanoseconds: 850_000_000)
+        try? await Task.sleep(nanoseconds: 500_000_000)
     }
 
     private func performApply() {
@@ -250,7 +257,7 @@ struct ApplyTabView: View {
 
         applyTask?.cancel()
         applyTask = Task {
-            try? await Task.sleep(nanoseconds: 850_000_000)
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
 
             await toolRunner.applyAll(
@@ -265,7 +272,6 @@ struct ApplyTabView: View {
                         self.currentLine = message
                         GLOBAL_LOG.step(message)
                     }
-                    Thread.sleep(forTimeInterval: 0.75)
                 }
             )
 
@@ -274,17 +280,17 @@ struct ApplyTabView: View {
                 isApplyingUI = false
 
                 if case .failed(let msg) = toolRunner.state {
-                    let errLine = "❌ \(L("alert_error")): \(msg)"
+                    let errLine = "\(L("alert_error")): \(msg)"
                     self.lastError = msg
                     self.statusLogs.append(errLine)
                     self.currentLine = errLine
                     GLOBAL_LOG.error(msg)
                     self.showErrorAlert = true
                 } else if toolRunner.state == .success {
-                    let doneLine = "✅ \(L("apply_done"))"
+                    let doneLine = L("apply_done")
                     self.statusLogs.append(doneLine)
                     self.currentLine = doneLine
-                    GLOBAL_LOG.success(L("apply_done"))
+                    GLOBAL_LOG.success(doneLine)
                 } else {
                     if let last = self.statusLogs.last {
                         self.currentLine = last
