@@ -8,7 +8,6 @@ struct zPatchCustomView: View {
 
     @State private var draftEnabled: Bool = false
     @State private var isBusy: Bool = false
-    @State private var actionTask: Task<Void, Never>?
 
     @State private var showAddSheet = false
     @State private var showAppPicker = false
@@ -96,10 +95,6 @@ struct zPatchCustomView: View {
             patchStore.ensureLoaded()
             draftEnabled = patchStore.isTweakEnabled
         }
-        .onDisappear {
-            actionTask?.cancel()
-            isBusy = false
-        }
         .sheet(isPresented: $showAddSheet) {
             addPatchSheet
         }
@@ -135,22 +130,16 @@ struct zPatchCustomView: View {
         let enabledSnapshot = draftEnabled
         GLOBAL_LOG.step("Đang lưu thay đổi zPatch Custom...")
 
-        actionTask?.cancel()
-        actionTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
+        patchStore.saveChange(enableTweak: enabledSnapshot)
+        UserDefaults.standard.set(true, forKey: "ShowApplyTab")
+        let msg = enabledSnapshot
+            ? "Đã bật và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
+            : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
 
-            patchStore.saveChange(enableTweak: enabledSnapshot)
-            UserDefaults.standard.set(true, forKey: "ShowApplyTab")
-            let msg = enabledSnapshot
-                ? "Đã bật và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
-                : "Đã tắt và lưu thay đổi. Bạn có thể tự chuyển sang tab Apply để áp dụng."
-
-            isBusy = false
-            popupMessage = msg
-            GLOBAL_LOG.success(msg)
-            showSavedPopup = true
-        }
+        isBusy = false
+        popupMessage = msg
+        GLOBAL_LOG.success(msg)
+        showSavedPopup = true
     }
 
     private func handleImportedEns(_ url: URL) {
@@ -158,26 +147,38 @@ struct zPatchCustomView: View {
         isBusy = true
         GLOBAL_LOG.step("Đang import gói .ens: \(url.lastPathComponent)...")
 
-        actionTask?.cancel()
-        actionTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-
-            switch patchStore.importEnsAndApplyNow(from: url) {
-            case .success(let bundle):
-                draftEnabled = patchStore.isTweakEnabled
-                let msg = "Đã import & chạy ngay .ens cho \(bundle.appName) (\(bundle.bundleID))."
-                isBusy = false
-                popupMessage = msg
-                GLOBAL_LOG.success(msg)
-                showSavedPopup = true
-            case .failure(let err):
-                let errMsg = "Import .ens lỗi: \(err.localizedDescription)"
-                isBusy = false
-                errorMessage = errMsg
-                GLOBAL_LOG.error(errMsg)
-                showErrorAlert = true
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
             }
+        }
+
+        switch patchStore.importEnsAndApplyNow(from: url) {
+        case .success(let bundle):
+            let cleanBundle = zPatchItem.normalizedBundleID(bundle.bundleID)
+            let resolvedName = bundle.appName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? (cleanBundle.isEmpty ? url.deletingPathExtension().lastPathComponent : (cleanBundle.split(separator: ".").last.map(String.init) ?? cleanBundle))
+                : bundle.appName
+
+            if !cleanBundle.isEmpty {
+                patchStore.registerAppMeta(bundleID: cleanBundle, appName: resolvedName, icon: nil)
+            }
+
+            draftEnabled = patchStore.isTweakEnabled
+            patchStore.reloadFromStorage()
+
+            let msg = "Đã import & chạy ngay .ens cho \(resolvedName) (\(cleanBundle.isEmpty ? "Chưa rõ Bundle ID" : cleanBundle))."
+            isBusy = false
+            popupMessage = msg
+            GLOBAL_LOG.success(msg)
+            showSavedPopup = true
+        case .failure(let err):
+            let errMsg = "Import .ens lỗi: \(err.localizedDescription)"
+            isBusy = false
+            errorMessage = errMsg
+            GLOBAL_LOG.error(errMsg)
+            showErrorAlert = true
         }
     }
 
@@ -186,18 +187,12 @@ struct zPatchCustomView: View {
         isBusy = true
         GLOBAL_LOG.step("Đang đánh dấu Revert cho \(patch.bundleID)...")
 
-        actionTask?.cancel()
-        actionTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-
-            patchStore.requestRevert(patch)
-            let msg = "Đã chọn Revert cho \(patch.bundleID). Bạn có thể tự chuyển qua tab Apply để khôi phục về patch cũ."
-            isBusy = false
-            popupMessage = msg
-            GLOBAL_LOG.success(msg)
-            showSavedPopup = true
-        }
+        patchStore.requestRevert(patch)
+        let msg = "Đã chọn Revert cho \(patch.bundleID). Bạn có thể tự chuyển qua tab Apply để khôi phục về patch cũ."
+        isBusy = false
+        popupMessage = msg
+        GLOBAL_LOG.success(msg)
+        showSavedPopup = true
     }
 
     private func patchRow(_ patch: zPatchItem) -> some View {
@@ -220,7 +215,7 @@ struct zPatchCustomView: View {
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
 
-                    Text(patch.bundleID.isEmpty ? "Unknown Bundle" : patch.bundleID)
+                    Text(patch.bundleID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Chưa có Bundle ID" : patch.bundleID)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -330,7 +325,7 @@ struct zPatchCustomView: View {
     }
 
     private func presentActivityVC(for fileURL: URL) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        DispatchQueue.main.async {
             guard let topVC = topMostViewController() else {
                 errorMessage = "Không mở được bảng chia sẻ."
                 showErrorAlert = true

@@ -8,7 +8,6 @@ struct ConfigView: View {
     @AppStorage("ConfigOrgName") private var orgName: String = ""
 
     @State private var isApplying = false
-    @State private var saveTask: Task<Void, Never>?
     @State private var showSavedAlert = false
     @State private var showRestoredAlert = false
 
@@ -93,30 +92,16 @@ struct ConfigView: View {
         } message: {
             Text(L("config_restored_message"))
         }
-        .onDisappear {
-            saveTask?.cancel()
-            isApplying = false
-        }
     }
 
     private func applyConfig() {
         guard !isApplying else { return }
         isApplying = true
         GLOBAL_LOG.step("Đang áp dụng Config Tweaks...")
-
-        saveTask?.cancel()
-        saveTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-
-            GLOBAL_LOG.step("Đang ghi dữ liệu vào hệ thống...")
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-
-            showApplyTab = true
-            isApplying = false
-            GLOBAL_LOG.success("Lưu Config thành công.")
-            showSavedAlert = true
-        }
+        GLOBAL_LOG.step("Đang ghi dữ liệu vào hệ thống...")
+        showApplyTab = true
+        isApplying = false
+        GLOBAL_LOG.success("Lưu Config thành công.")
+        showSavedAlert = true
     }
 }

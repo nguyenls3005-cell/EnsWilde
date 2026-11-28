@@ -194,7 +194,7 @@ struct ApplyTabView: View {
                             withAnimation {
                                 copiedLog = true
                             }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                                 withAnimation {
                                     copiedLog = false
                                 }
@@ -243,7 +243,6 @@ struct ApplyTabView: View {
             self.currentLine = message
             GLOBAL_LOG.step(message)
         }
-        try? await Task.sleep(nanoseconds: 500_000_000)
     }
 
     private func performApply() {
@@ -257,7 +256,6 @@ struct ApplyTabView: View {
 
         applyTask?.cancel()
         applyTask = Task {
-            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
 
             await toolRunner.applyAll(
