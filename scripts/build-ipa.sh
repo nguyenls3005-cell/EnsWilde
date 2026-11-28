@@ -111,6 +111,7 @@ ruby -e '
     target.frameworks_build_phase.add_file_reference(lib_ref)
   end
 
+  # --- XỬ LÝ GRAPPA HELPER ---
   grappa_m_path = Dir.glob("**/GrappaHelper.m").first
   if grappa_m_path
     abs_grappa = File.expand_path(grappa_m_path)
@@ -132,6 +133,33 @@ ruby -e '
     end
   end
 
+  # --- XỬ LÝ WQ FILES (TỰ ĐỘNG ADD VÀO BUILD) ---
+  wq_dir_path = File.expand_path("source/tool/zPachCustom")
+  if Dir.exist?(wq_dir_path)
+    puts "==> Đang thêm các file WQ từ #{wq_dir_path} vào build..."
+    
+    # 1. Thêm các file .m
+    Dir.glob(File.join(wq_dir_path, "*.m")).each do |src|
+      file_name = File.basename(src)
+      unless target.source_build_phase.files.any? { |f| f.file_ref && f.file_ref.path && f.file_ref.path.include?(file_name) }
+        file_ref = project.files.find { |f| f.path && f.path.include?(file_name) } || project.new_file(src)
+        target.source_build_phase.add_file_reference(file_ref, true)
+        puts "    -> Đã thêm #{file_name} vào build"
+      end
+    end
+
+    # 2. Thêm các file .swift
+    Dir.glob(File.join(wq_dir_path, "*.swift")).each do |src|
+      file_name = File.basename(src)
+      unless target.source_build_phase.files.any? { |f| f.file_ref && f.file_ref.path && f.file_ref.path.include?(file_name) }
+        file_ref = project.files.find { |f| f.path && f.path.include?(file_name) } || project.new_file(src)
+        target.source_build_phase.add_file_reference(file_ref, true)
+        puts "    -> Đã thêm #{file_name} vào build"
+      end
+    end
+  end
+  # ------------------------------------------------
+
   target.build_configurations.each do |config|
     lib_paths = Array(config.build_settings["LIBRARY_SEARCH_PATHS"] || ["$(inherited)"])
     lib_paths = lib_paths.reject { |p| p.to_s =~ /simulator/i }
@@ -141,6 +169,8 @@ ruby -e '
     hdr_paths = Array(config.build_settings["HEADER_SEARCH_PATHS"] || ["$(inherited)"])
     hdr_paths = hdr_paths.reject { |p| p.to_s =~ /simulator/i }
     hdr_paths << abs_hdr_dir
+    # Thêm đường dẫn header của WQ
+    hdr_paths << File.expand_path("source/tool/zPachCustom")
     config.build_settings["HEADER_SEARCH_PATHS"] = hdr_paths.uniq
 
     ldflags = ["$(inherited)"]
@@ -181,12 +211,8 @@ APP_BASENAME="$(basename "$APP_PATH")"
 rm -rf "$BUILD_DIR/Payload" && mkdir -p "$BUILD_DIR/Payload"
 cp -R "$APP_PATH" "$BUILD_DIR/Payload/"
 rm -rf "$BUILD_DIR/Payload/${APP_BASENAME}/_CodeSignature"
+
+# Nén thành file IPA chuẩn (bản chất IPA là 1 file zip chứa thư mục Payload)
 (cd "$BUILD_DIR" && zip -qry "$IPA_PATH" Payload)
 
-# Copy file entitlements ra ngoài
-if [ -f "EnsWilde.entitlements" ]; then
-    cp "EnsWilde.entitlements" "$BUILD_DIR/"
-    echo "✅ Đã copy EnsWilde.entitlements ra thư mục build"
-fi
-
-echo "🔥 Done: $IPA_PATH"
+echo "🔥 Done: Unsigned IPA tại $IPA_PATH"

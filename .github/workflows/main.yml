@@ -29,8 +29,6 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: EnsWilde-Build
-          path: |
-            build/EnsWilde.ipa
-            build/EnsWilde.entitlements
+          name: EnsWilde-Unsigned-IPA
+          path: build/EnsWilde unsigned.ipa
           if-no-files-found: error
