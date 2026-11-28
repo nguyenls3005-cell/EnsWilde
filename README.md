@@ -74,4 +74,7 @@ Special thanks to everyone who made this project possible:
 * **@jailbreakdotparty**: [`Erosion` for config tweaks](https://github.com/jailbreakdotparty/Erosion)
 * **@kianuni**: [`Erosion-CN` for write mobilegestalt logic](https://github.com/Kianuni/Erosion-CN)
 * **@Litle_34306**: [`Original of Disable call recording sound`]
+* **@LinkPass888**: [`AirBeep` Disable call recording sound iOS 27](https://github.com/LinkPass888/AirBeep)
+* **@YiHoooong**: [disable call recording sound research]
+* **Cộng đồng LSNguyen Group & YangJiii và những người bạn chat ⚡️**
 * **DeepSeek**: AI assistance during development
