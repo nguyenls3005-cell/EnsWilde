@@ -66,7 +66,8 @@ private enum AppScannerEngine {
         let parts = bundleID.split(separator: ".").map(String.init)
         let stopWords: Set<String> = [
             "com", "net", "org", "io", "app", "ios", "mobile",
-            "client", "iphone", "ipad", "free", "vip", "pro", "official"
+            "client", "iphone", "ipad", "free", "vip", "pro", "official",
+            "apple", "cn", "vn", "jp", "kr"
         ]
 
         for part in parts.reversed() {
@@ -77,6 +78,19 @@ private enum AppScannerEngine {
         }
 
         return parts.last?.capitalized ?? bundleID
+    }
+
+    private static func readFileDataWithWq(at fullPath: String) -> Data? {
+        let g = wq.grantAccess(path: fullPath, requireWrite: false, allowFsgetpathFallback: true)
+        defer { if g.0 { wq.releaseAccess(path: fullPath) } }
+
+        if let data = fm.contents(atPath: fullPath), !data.isEmpty {
+            return data
+        }
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: fullPath), options: .uncached), !data.isEmpty {
+            return data
+        }
+        return nil
     }
 
     private static func extractMetaFromPlistData(_ data: Data) -> (bundleID: String?, appName: String?) {
@@ -93,7 +107,8 @@ private enum AppScannerEngine {
             "CFBundleIdentifier",
             "applicationIdentifier",
             "BundleIdentifier",
-            "Identifier"
+            "Identifier",
+            "com.apple.containermanagerd.metadata.bundle-identifier"
         ]
         var foundBID: String? = nil
         for k in bidKeys {
@@ -142,7 +157,7 @@ private enum AppScannerEngine {
 
         for rel in directCandidates {
             let full = (containerPath as NSString).appendingPathComponent(rel)
-            if let data = fm.contents(atPath: full) {
+            if let data = readFileDataWithWq(at: full) {
                 let extracted = extractMetaFromPlistData(data)
                 if bestBID == nil, let b = cleanBundleID(extracted.bundleID, uuid: uuid) {
                     bestBID = b
@@ -156,9 +171,8 @@ private enum AppScannerEngine {
             }
         }
 
-        // Quét nhẹ tối đa 3 lớp thư mục để tìm plist có chứa CFBundleIdentifier / CFBundleDisplayName nếu có
         func walkPlist(dir: String, depth: Int) {
-            guard depth <= 3 else { return }
+            guard depth <= 2 else { return }
             guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return }
 
             for name in names {
@@ -174,8 +188,8 @@ private enum AppScannerEngine {
                 } else if name.lowercased().hasSuffix(".plist") {
                     if let attrs = try? fm.attributesOfItem(atPath: full),
                        let size = (attrs[.size] as? NSNumber)?.intValue,
-                       size > 0, size < 512_000,
-                       let data = fm.contents(atPath: full) {
+                       size > 0, size < 256_000,
+                       let data = readFileDataWithWq(at: full) {
                         let extracted = extractMetaFromPlistData(data)
                         if bestBID == nil, let b = cleanBundleID(extracted.bundleID, uuid: uuid) {
                             bestBID = b
@@ -199,27 +213,56 @@ private enum AppScannerEngine {
         return (bestBID, bestName)
     }
 
-    private static func buildCSStoreLookup() -> (uuidToBID: [String: String], bidToName: [String: String]) {
+    private static func buildKnownMaps() -> (uuidToBID: [String: String], bidToName: [String: String]) {
         var uuidToBID: [String: String] = [:]
         var bidToName: [String: String] = [:]
 
-        let records = CSStoreEngine.shared.allAppRecords()
-        for rec in records {
-            let bid = rec.bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !bid.isEmpty else { continue }
-            let lowerBID = bid.lowercased()
+        func indexPath(_ rawPath: String, bid: String) {
+            let cleanBID = zPatchItem.normalizedBundleID(bid)
+            guard !cleanBID.isEmpty, !isUUIDString(cleanBID) else { return }
+            let norm = CSStoreEngine.normalizeVarPath(rawPath.trimmingCharacters(in: .whitespacesAndNewlines))
+            guard !norm.isEmpty else { return }
+            let last = ((norm as NSString).lastPathComponent).lowercased()
+            if isUUIDString(last) {
+                uuidToBID[last] = cleanBID
+            }
+        }
 
+        for rec in CSStoreEngine.shared.allAppRecords() {
+            let bid = zPatchItem.normalizedBundleID(rec.bundleID)
+            guard !bid.isEmpty else { continue }
             let cleanName = rec.name.trimmingCharacters(in: .whitespacesAndNewlines)
             if !cleanName.isEmpty && cleanName.caseInsensitiveCompare(bid) != .orderedSame {
-                bidToName[lowerBID] = cleanName
+                bidToName[bid.lowercased()] = cleanName
             }
+            indexPath(rec.dataContainerPath, bid: bid)
+        }
 
-            let dataNorm = CSStoreEngine.normalizeVarPath(rec.dataContainerPath)
-            if !dataNorm.isEmpty {
-                let last = ((dataNorm as NSString).lastPathComponent).lowercased()
-                if isUUIDString(last) {
-                    uuidToBID[last] = bid
+        for patch in zPatchStore.shared.patches {
+            let bid = zPatchItem.normalizedBundleID(patch.bundleID)
+            guard !bid.isEmpty else { continue }
+            if let cached = zPatchStore.shared.cachedContainer(for: bid) {
+                indexPath(cached, bid: bid)
+            }
+            if let fast = patch.cachedDestinationPath, !fast.isEmpty {
+                let normFast = CSStoreEngine.normalizeVarPath(fast)
+                if normFast.contains("/Containers/Data/Application/") {
+                    var cur = normFast
+                    while cur != "/" && cur.count > 1 {
+                        let base = (cur as NSString).lastPathComponent
+                        if isUUIDString(base) {
+                            uuidToBID[base.lowercased()] = bid
+                            break
+                        }
+                        cur = (cur as NSString).deletingLastPathComponent
+                    }
                 }
+            }
+        }
+
+        if let savedMap = UserDefaults.standard.dictionary(forKey: zPatchStore.containerMapKey) as? [String: String] {
+            for (k, v) in savedMap {
+                indexPath(v, bid: k)
             }
         }
 
@@ -270,7 +313,7 @@ private enum AppScannerEngine {
             fsHandlers.invalidateCache()
         }
 
-        let csLookup = buildCSStoreLookup()
+        let maps = buildKnownMaps()
         let containerPaths = listAllContainerPaths(forceRefresh: forceRefresh)
 
         var entries: [ScannedAppEntry] = []
@@ -286,8 +329,8 @@ private enum AppScannerEngine {
                     zPatchStore.shared.bundleIDForContainerUUID(uuid),
                     uuid: uuid
                 )
-                let fromCS = cleanBundleID(
-                    csLookup.uuidToBID[uuidLower],
+                let fromMap = cleanBundleID(
+                    maps.uuidToBID[uuidLower],
                     uuid: uuid
                 )
                 let fromXattr = cleanBundleID(
@@ -295,8 +338,8 @@ private enum AppScannerEngine {
                     uuid: uuid
                 )
 
-                var resolvedBID = fromStore ?? fromCS ?? fromXattr
-                var detectedName = resolvedBID.flatMap { csLookup.bidToName[$0.lowercased()] }
+                var resolvedBID = fromStore ?? fromMap ?? fromXattr
+                var detectedName = resolvedBID.flatMap { maps.bidToName[$0.lowercased()] }
 
                 if resolvedBID == nil || detectedName == nil {
                     let fileMeta = inspectContainerFiles(at: path, uuid: uuid)
