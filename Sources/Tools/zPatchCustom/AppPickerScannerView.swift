@@ -21,8 +21,16 @@ struct ScannedAppEntry: Identifiable, Hashable {
 
 private enum AppScannerEngine {
     private static let fm = FileManager.default
-    private static let dataRoot = CSStoreEngine.normalizeVarPath(FSURL.appContainers.path)
-    private static let bundleRoot = "/private/var/containers/Bundle/Application"
+    private static let dataRoots: [String] = [
+        CSStoreEngine.normalizeVarPath(FSURL.appContainers.path),
+        "/private/var/mobile/Containers/Data/Application",
+        "/var/mobile/Containers/Data/Application",
+        "/private/var/containers/Data/Application"
+    ]
+    private static let bundleRoots: [String] = [
+        "/private/var/containers/Bundle/Application",
+        "/var/containers/Bundle/Application"
+    ]
 
     private static func normalizePath(_ raw: String) -> String {
         let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -96,21 +104,13 @@ private enum AppScannerEngine {
     }
 
     private static var iconCache: [String: UIImage] = [:]
-    private static let iconCacheLock = NSLock()
-
-    private static func cachedIcon(_ b: String) -> UIImage? {
-        iconCacheLock.lock(); defer { iconCacheLock.unlock() }
-        return iconCache[b]
-    }
-    private static func storeIcon(_ b: String, _ i: UIImage) {
-        iconCacheLock.lock(); iconCache[b] = i; iconCacheLock.unlock()
-    }
 
     private static func iconForBundleID(_ bundleID: String, appPathHint: String?) -> UIImage? {
         if isUUIDString(bundleID) { return nil }
-        if let c = cachedIcon(bundleID) { return c }
+        if let c = iconCache[bundleID] { return c }
         if let zp = zPatchStore.shared.cachedAppIcon(for: bundleID) {
-            storeIcon(bundleID, zp); return zp
+            iconCache[bundleID] = zp
+            return zp
         }
 
         guard let appPath = appPathHint, !appPath.isEmpty else { return nil }
@@ -144,7 +144,8 @@ private enum AppScannerEngine {
                 let p = (norm as NSString).appendingPathComponent(name)
                 _ = grantRead(at: p)
                 if let img = UIImage(contentsOfFile: p) {
-                    storeIcon(bundleID, img); return img
+                    iconCache[bundleID] = img
+                    return img
                 }
             }
         }
@@ -156,26 +157,36 @@ private enum AppScannerEngine {
             let p = (norm as NSString).appendingPathComponent(name)
             _ = grantRead(at: p)
             if let img = UIImage(contentsOfFile: p) {
-                storeIcon(bundleID, img); return img
+                iconCache[bundleID] = img
+                return img
             }
         }
 
         return nil
     }
 
-    static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
+    static func scan(forceRefresh: Bool = false, onPartialResult: (([ScannedAppEntry]) -> Void)? = nil) -> [ScannedAppEntry] {
         if forceRefresh {
             fsHandlers.invalidateCache()
             clearXattrBIDCache()
-            iconCacheLock.lock(); iconCache.removeAll(); iconCacheLock.unlock()
+            iconCache.removeAll()
         }
 
         var entries: [ScannedAppEntry] = []
         var processedUUIDs = Set<String>()
         var processedBundleIDs = Set<String>()
-        let stateLock = NSLock()
 
-        // 1. Nguồn nhanh nhất: CSStoreEngine
+        func sortedEntries() -> [ScannedAppEntry] {
+            entries.sorted {
+                let cmp = $0.name.localizedCaseInsensitiveCompare($1.name)
+                if cmp == .orderedSame {
+                    return $0.bundleID.localizedCaseInsensitiveCompare($1.bundleID) == .orderedAscending
+                }
+                return cmp == .orderedAscending
+            }
+        }
+
+        // Bước 1: Quét từ CSStoreEngine và đẩy lên UI ngay nếu có
         let records = CSStoreEngine.shared.allAppRecords()
         for rec in records {
             let bid = zPatchItem.normalizedBundleID(rec.bundleID)
@@ -197,24 +208,29 @@ private enum AppScannerEngine {
                 icon: icon
             ))
         }
+        if !entries.isEmpty {
+            onPartialResult?(sortedEntries())
+        }
 
-        // 2. Quét song song Data Containers (cấp quyền từng thư mục con)
-        let actualContainers = listSubdirectories(at: dataRoot, forceRefresh: forceRefresh)
-        if !actualContainers.isEmpty {
-            DispatchQueue.concurrentPerform(iterations: actualContainers.count) { idx in
-                let path = actualContainers[idx]
+        // Bước 2: Quét tuần tự từng Data Container (tránh xung đột FFI/XPC đa luồng)
+        var uniqueDataRoots: [String] = []
+        for root in dataRoots {
+            let norm = normalizePath(root)
+            if !norm.isEmpty && !uniqueDataRoots.contains(norm) {
+                uniqueDataRoots.append(norm)
+            }
+        }
+
+        for root in uniqueDataRoots {
+            let actualContainers = listSubdirectories(at: root, forceRefresh: forceRefresh)
+            for path in actualContainers {
                 let uuid = (path as NSString).lastPathComponent
                 let uuidLower = uuid.lowercased()
-                guard !uuidLower.isEmpty else { return }
+                guard !uuidLower.isEmpty, !processedUUIDs.contains(uuidLower) else { continue }
 
-                stateLock.lock()
-                let already = processedUUIDs.contains(uuidLower)
-                stateLock.unlock()
-                if already { return }
-
-                _ = grantRead(at: path)
                 var bid = getBIDFromXattr(URL(fileURLWithPath: path))
                 if bid == nil {
+                    _ = grantRead(at: path)
                     let metaPath = (path as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
                     _ = grantRead(at: metaPath)
                     if let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
@@ -224,80 +240,66 @@ private enum AppScannerEngine {
                 }
 
                 if let validBid = cleanBundleID(bid, uuid: uuid) {
+                    processedUUIDs.insert(uuidLower)
+                    processedBundleIDs.insert(validBid.lowercased())
                     let finalName = resolveDisplayName(bundleID: validBid, uuid: uuid, detectedName: nil)
-                    let icon = iconForBundleID(validBid, appPathHint: nil)
-                    stateLock.lock()
-                    if !processedUUIDs.contains(uuidLower) {
-                        processedUUIDs.insert(uuidLower)
-                        processedBundleIDs.insert(validBid.lowercased())
-                        entries.append(ScannedAppEntry(
-                            id: "\(uuidLower)_\(validBid.lowercased())",
-                            name: finalName,
-                            bundleID: validBid,
-                            containerUUID: uuid,
-                            containerPath: path,
-                            icon: icon
-                        ))
-                    }
-                    stateLock.unlock()
+                    entries.append(ScannedAppEntry(
+                        id: "\(uuidLower)_\(validBid.lowercased())",
+                        name: finalName,
+                        bundleID: validBid,
+                        containerUUID: uuid,
+                        containerPath: path,
+                        icon: iconForBundleID(validBid, appPathHint: nil)
+                    ))
                 }
+            }
+            if !entries.isEmpty {
+                onPartialResult?(sortedEntries())
             }
         }
 
-        // 3. Quét song song Bundle Containers (.app/Info.plist)
-        let bundleContainers = listSubdirectories(at: bundleRoot, forceRefresh: forceRefresh)
-        if !bundleContainers.isEmpty {
-            DispatchQueue.concurrentPerform(iterations: bundleContainers.count) { idx in
-                let bContainer = bundleContainers[idx]
+        // Bước 3: Quét Bundle Containers (.app/Info.plist) nếu vẫn còn app chưa có
+        var uniqueBundleRoots: [String] = []
+        for root in bundleRoots {
+            let norm = normalizePath(root)
+            if !norm.isEmpty && !uniqueBundleRoots.contains(norm) {
+                uniqueBundleRoots.append(norm)
+            }
+        }
+
+        for bRoot in uniqueBundleRoots {
+            let bundleContainers = listSubdirectories(at: bRoot, forceRefresh: forceRefresh)
+            for bContainer in bundleContainers {
                 let uuid = (bContainer as NSString).lastPathComponent
                 _ = grantRead(at: bContainer)
-                guard let subItems = try? fm.contentsOfDirectory(atPath: bContainer) else { return }
-
+                guard let subItems = try? fm.contentsOfDirectory(atPath: bContainer) else { continue }
                 for item in subItems where item.hasSuffix(".app") {
                     let appPath = (bContainer as NSString).appendingPathComponent(item)
                     _ = grantRead(at: appPath)
                     let infoPath = (appPath as NSString).appendingPathComponent("Info.plist")
                     _ = grantRead(at: infoPath)
-
                     guard let data = try? Data(contentsOf: URL(fileURLWithPath: infoPath)),
                           let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
                           let rawBid = plist["CFBundleIdentifier"] as? String,
-                          let validBid = cleanBundleID(rawBid, uuid: uuid) else { continue }
+                          let validBid = cleanBundleID(rawBid, uuid: uuid),
+                          !processedBundleIDs.contains(validBid.lowercased()) else { continue }
 
-                    let bidLower = validBid.lowercased()
-                    stateLock.lock()
-                    let exists = processedBundleIDs.contains(bidLower)
-                    stateLock.unlock()
-                    if exists { continue }
-
+                    processedBundleIDs.insert(validBid.lowercased())
                     let detName = (plist["CFBundleDisplayName"] as? String) ?? (plist["CFBundleName"] as? String)
                     let finalName = resolveDisplayName(bundleID: validBid, uuid: uuid, detectedName: detName)
-                    let icon = iconForBundleID(validBid, appPathHint: appPath)
-
-                    stateLock.lock()
-                    if !processedBundleIDs.contains(bidLower) {
-                        processedBundleIDs.insert(bidLower)
-                        entries.append(ScannedAppEntry(
-                            id: "\(uuid)_\(bidLower)",
-                            name: finalName,
-                            bundleID: validBid,
-                            containerUUID: uuid,
-                            containerPath: "",
-                            icon: icon
-                        ))
-                    }
-                    stateLock.unlock()
+                    entries.append(ScannedAppEntry(
+                        id: "\(uuid)_\(validBid.lowercased())",
+                        name: finalName,
+                        bundleID: validBid,
+                        containerUUID: uuid,
+                        containerPath: "",
+                        icon: iconForBundleID(validBid, appPathHint: appPath)
+                    ))
                 }
             }
         }
 
-        return entries.sorted {
-            let cmp = $0.name.localizedCaseInsensitiveCompare($1.name)
-            if cmp == .orderedSame {
-                return $0.bundleID.localizedCaseInsensitiveCompare($1.bundleID) == .orderedAscending
-            }
-            return cmp == .orderedAscending
-        }
+        return sortedEntries()
     }
 }
 
@@ -307,6 +309,8 @@ private final class AppScannerVM: ObservableObject {
     @Published var searchText: String = ""
     @Published var isScanning: Bool = false
     @Published var statusMessage: String = "Đang chuẩn bị quét..."
+
+    private let scanQueue = DispatchQueue(label: "com.enswilde.appscanner.serial", qos: .userInitiated)
 
     var filteredApps: [ScannedAppEntry] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -323,8 +327,13 @@ private final class AppScannerVM: ObservableObject {
         isScanning = true
         statusMessage = "Đang quét danh sách app..."
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = AppScannerEngine.scan(forceRefresh: forceRefresh)
+        scanQueue.async {
+            let result = AppScannerEngine.scan(forceRefresh: forceRefresh) { partial in
+                DispatchQueue.main.async {
+                    self.apps = partial
+                    self.statusMessage = "Đang quét... tìm thấy \(partial.count) app"
+                }
+            }
             DispatchQueue.main.async {
                 self.apps = result
                 self.isScanning = false
