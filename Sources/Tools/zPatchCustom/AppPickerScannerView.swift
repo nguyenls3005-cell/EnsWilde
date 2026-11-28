@@ -22,24 +22,82 @@ struct ScannedAppEntry: Identifiable, Hashable {
 }
 
 private enum AppScannerEngine {
+    private static let fm = FileManager.default
     private static let targetRoot = "/private/var/mobile/Containers/Data/Application"
 
-    private static func fallbackName(for bundleID: String) -> String {
-        let last = bundleID.split(separator: ".").last.map(String.init) ?? bundleID
-        return last.isEmpty ? bundleID : last
+    private static func fallbackName(from identifier: String) -> String {
+        let last = identifier.split(separator: ".").last.map(String.init) ?? identifier
+        return last.isEmpty ? identifier : last
     }
 
-    private static func resolveBundleID(at containerPath: String) -> String? {
-        let url = URL(fileURLWithPath: containerPath)
-        if let bid = getBIDFromXattr(url)?.trimmingCharacters(in: .whitespacesAndNewlines), !bid.isEmpty {
-            return bid
+    private static func readMCMMetadata(at containerPath: String) -> (bundleID: String?, displayName: String?) {
+        let metaNames = [
+            ".com.apple.mobile_container_manager.metadata.plist",
+            "com.apple.mobile_container_manager.metadata.plist"
+        ]
+        for name in metaNames {
+            let full = (containerPath as NSString).appendingPathComponent(name)
+            guard let data = fm.contents(atPath: full),
+                  let dict = try? PropertyListSerialization.propertyList(
+                      from: data,
+                      options: [],
+                      format: nil
+                  ) as? [String: Any] else {
+                continue
+            }
+
+            let bid = (dict["MCMMetadataIdentifier"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            var appName: String? = nil
+            for key in ["CFBundleDisplayName", "CFBundleName", "itemName"] {
+                if let val = (dict[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !val.isEmpty {
+                    appName = val
+                    break
+                }
+            }
+
+            if (bid != nil && !bid!.isEmpty) || appName != nil {
+                return (
+                    bundleID: (bid?.isEmpty == false) ? bid : nil,
+                    displayName: appName
+                )
+            }
         }
-        let granted = wq.grantAccess(path: containerPath, requireWrite: false, allowFsgetpathFallback: true)
-        defer { if granted.0 { wq.releaseAccess(path: containerPath) } }
-        if let bid = getBIDFromXattr(url)?.trimmingCharacters(in: .whitespacesAndNewlines), !bid.isEmpty {
-            return bid
+        return (nil, nil)
+    }
+
+    private static func listContainerDirectories(forceRefresh: Bool) -> [String] {
+        var paths: [String] = []
+        var seen = Set<String>()
+
+        let granted = wq.grantAccess(path: targetRoot, requireWrite: false, allowFsgetpathFallback: true)
+        defer { if granted.0 { wq.releaseAccess(path: targetRoot) } }
+
+        if let names = try? fm.contentsOfDirectory(atPath: targetRoot), !names.isEmpty {
+            for name in names {
+                let full = (targetRoot as NSString).appendingPathComponent(name)
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue {
+                    if seen.insert(full).inserted {
+                        paths.append(full)
+                    }
+                }
+            }
         }
-        return nil
+
+        if paths.isEmpty {
+            let fsList = fsHandlers.getDirPaths(targetRoot, forceRefresh: forceRefresh)
+            for p in fsList {
+                let clean = p.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !clean.isEmpty && seen.insert(clean).inserted {
+                    paths.append(clean)
+                }
+            }
+        }
+
+        return paths
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
@@ -47,45 +105,53 @@ private enum AppScannerEngine {
             fsHandlers.invalidateCache()
         }
 
-        let paths = fsHandlers.getDirPaths(targetRoot, forceRefresh: forceRefresh)
-        var seen: [String: ScannedAppEntry] = [:]
+        let dirs = listContainerDirectories(forceRefresh: forceRefresh)
+        var entries: [ScannedAppEntry] = []
+        entries.reserveCapacity(dirs.count)
 
-        for rawPath in paths {
+        for path in dirs {
             autoreleasepool {
-                let cleanPath = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !cleanPath.isEmpty else { return }
+                let uuid = (path as NSString).lastPathComponent
+                let url = URL(fileURLWithPath: path)
 
-                let uuid = (cleanPath as NSString).lastPathComponent
-                let bidFromStore = zPatchStore.shared.bundleIDForContainerUUID(uuid)
-                guard let rawBID = (bidFromStore?.isEmpty == false ? bidFromStore : resolveBundleID(at: cleanPath)),
-                      !rawBID.isEmpty else {
-                    return
+                let meta = readMCMMetadata(at: path)
+                let fromStore = zPatchStore.shared.bundleIDForContainerUUID(uuid)
+                let fromXattr = getBIDFromXattr(url)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                let rawBID = [fromStore, fromXattr, meta.bundleID]
+                    .compactMap { $0 }
+                    .first(where: { !$0.isEmpty }) ?? uuid
+
+                let bundleID = zPatchItem.normalizedBundleID(rawBID).isEmpty ? rawBID : zPatchItem.normalizedBundleID(rawBID)
+                let cachedName = zPatchStore.shared.cachedAppName(for: bundleID)
+                let resolvedName = [cachedName, meta.displayName]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .first(where: { !$0.isEmpty }) ?? fallbackName(from: bundleID)
+
+                if bundleID.caseInsensitiveCompare(uuid) != .orderedSame {
+                    zPatchStore.shared.registerContainer(bundleID: bundleID, containerPath: path)
                 }
+                zPatchStore.shared.registerAppMeta(bundleID: bundleID, appName: resolvedName, icon: nil)
 
-                let bid = zPatchItem.normalizedBundleID(rawBID)
-                guard !bid.isEmpty else { return }
-                let key = bid.lowercased()
-
-                let name = zPatchStore.shared.cachedAppName(for: bid)
-                    ?? seen[key]?.name
-                    ?? fallbackName(for: bid)
-
-                zPatchStore.shared.registerContainer(bundleID: bid, containerPath: cleanPath)
-                zPatchStore.shared.registerAppMeta(bundleID: bid, appName: name, icon: nil)
-
-                seen[key] = ScannedAppEntry(
-                    id: bid,
-                    name: name,
-                    bundleID: bid,
-                    containerUUID: uuid,
-                    containerPath: cleanPath,
-                    icon: zPatchStore.shared.cachedAppIcon(for: bid)
+                entries.append(
+                    ScannedAppEntry(
+                        id: "\(uuid)_\(bundleID.lowercased())",
+                        name: resolvedName,
+                        bundleID: bundleID,
+                        containerUUID: uuid,
+                        containerPath: path,
+                        icon: zPatchStore.shared.cachedAppIcon(for: bundleID)
+                    )
                 )
             }
         }
 
-        return seen.values.sorted {
-            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        return entries.sorted {
+            let cmp = $0.name.localizedCaseInsensitiveCompare($1.name)
+            if cmp == .orderedSame {
+                return $0.bundleID.localizedCaseInsensitiveCompare($1.bundleID) == .orderedAscending
+            }
+            return cmp == .orderedAscending
         }
     }
 }
@@ -102,7 +168,8 @@ private final class AppScannerVM: ObservableObject {
         guard !q.isEmpty else { return apps }
         return apps.filter {
             $0.name.lowercased().contains(q) ||
-            $0.bundleID.lowercased().contains(q)
+            $0.bundleID.lowercased().contains(q) ||
+            $0.containerUUID.lowercased().contains(q)
         }
     }
 
@@ -116,7 +183,7 @@ private final class AppScannerVM: ObservableObject {
             DispatchQueue.main.async {
                 self.apps = result
                 self.isScanning = false
-                self.statusMessage = "Đã quét xong: \(result.count) app"
+                self.statusMessage = "Đã quét xong: \(result.count) mục"
             }
         }
     }
