@@ -1,10 +1,6 @@
-//
-//  MobileGestaltView.swift
-//  EnsWilde
-//
-
 import SwiftUI
 import UniformTypeIdentifiers
+import CoreFoundation
 
 struct MGRegionPreset: Identifiable, Hashable {
     let id: String

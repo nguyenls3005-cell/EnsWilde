@@ -1,8 +1,3 @@
-//
-//  MobileGestaltApplyTask.swift
-//  EnsWilde
-//
-
 import Foundation
 import UIKit
 import Darwin
@@ -11,14 +6,11 @@ import CryptoKit
 enum MobileGestaltApplyTask {
     static var onDeviceMGPath: String { MGURL.fsGestaltURL.path }
 
-    private static let stepDelayNanoseconds: UInt64 = 1_200_000_000
-
     private static func emitStep(_ message: String, onLogUpdate: @escaping (String) -> Void) async {
         await MainActor.run {
             GLOBAL_LOG.step(message)
             onLogUpdate(message)
         }
-        try? await Task.sleep(nanoseconds: stepDelayNanoseconds)
     }
 
     private static func emitDetail(_ message: String, onLogUpdate: @escaping (String) -> Void) async {
@@ -63,7 +55,6 @@ enum MobileGestaltApplyTask {
             throw NSError(domain: "MG", code: -404, userInfo: [NSLocalizedDescriptionKey: msg])
         }
 
-        // BƯỚC 1
         await emitStep(L("mg_log_reading"), onLogUpdate: onLogUpdate)
         let liveData = try Data(contentsOf: liveURL)
         guard let liveDict = try PropertyListSerialization.propertyList(
@@ -83,7 +74,6 @@ enum MobileGestaltApplyTask {
 
         let candidateDict = NSMutableDictionary(dictionary: liveDict)
 
-        // BƯỚC 2
         await emitStep(L("mg_log_syncing_cachedata"), onLogUpdate: onLogUpdate)
         if let liveCacheData = liveDict["CacheData"] as? Data,
            let storeCacheData = store.mgCurrentDict["CacheData"] as? Data,
@@ -92,10 +82,16 @@ enum MobileGestaltApplyTask {
             var patchedData = liveCacheData
             var patchedBytes = 0
 
-            for i in 0..<patchedData.count {
-                if patchedData[i] != storeCacheData[i] {
-                    patchedData[i] = storeCacheData[i]
-                    patchedBytes += 1
+            patchedData.withUnsafeMutableBytes { dstBuf in
+                storeCacheData.withUnsafeBytes { srcBuf in
+                    guard let dst = dstBuf.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                          let src = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+                    for i in 0..<patchedData.count {
+                        if dst[i] != src[i] {
+                            dst[i] = src[i]
+                            patchedBytes += 1
+                        }
+                    }
                 }
             }
 
@@ -105,7 +101,6 @@ enum MobileGestaltApplyTask {
             await emitDetail(L("mg_log_cache_size_mismatch"), onLogUpdate: onLogUpdate)
         }
 
-        // BƯỚC 3
         await emitStep(L("mg_log_syncing_cacheextra"), onLogUpdate: onLogUpdate)
         let liveExtra: NSMutableDictionary = {
             if let existing = liveDict["CacheExtra"] as? NSMutableDictionary {
@@ -158,7 +153,6 @@ enum MobileGestaltApplyTask {
         let finalData = try PropertyListSerialization.data(fromPropertyList: candidateDict, format: .binary, options: 0)
         await emitDetail(String(format: L("mg_log_new_size"), finalData.count, liveData.count), onLogUpdate: onLogUpdate)
 
-        // BƯỚC 4
         await emitStep(L("mg_log_writing"), onLogUpdate: onLogUpdate)
         let fd = open(onDeviceMGPath, O_RDWR)
         guard fd >= 0 else {
@@ -206,7 +200,6 @@ enum MobileGestaltApplyTask {
             GLOBAL_LOG.success(doneMsg)
             onLogUpdate(doneMsg)
         }
-        try? await Task.sleep(nanoseconds: 800_000_000)
     }
 
     static func restoreGestalt(onLogUpdate: @escaping (String) -> Void) async throws {
@@ -272,7 +265,6 @@ enum MobileGestaltApplyTask {
                 GLOBAL_LOG.success(doneMsg)
                 onLogUpdate(doneMsg)
             }
-            try? await Task.sleep(nanoseconds: 800_000_000)
             return
         }
 
@@ -283,7 +275,6 @@ enum MobileGestaltApplyTask {
                 GLOBAL_LOG.success(doneMsg)
                 onLogUpdate(doneMsg)
             }
-            try? await Task.sleep(nanoseconds: 800_000_000)
         }
     }
 }

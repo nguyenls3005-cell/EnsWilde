@@ -102,7 +102,6 @@ private enum AppScannerEngine {
         return dirs
     }
 
-    // MARK: - Icon
     private static var iconCache: [String: UIImage] = [:]
     private static let iconCacheLock = NSLock()
 
@@ -182,7 +181,6 @@ private enum AppScannerEngine {
         return nil
     }
 
-    // MARK: - Scan
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
         if forceRefresh {
             fsHandlers.invalidateCache()
@@ -194,7 +192,6 @@ private enum AppScannerEngine {
         var processedUUIDs = Set<String>()
         var processedBundleIDs = Set<String>()
 
-        // 1. LẤY DỮ LIỆU TỪ CSSTOREENGINE
         let records = CSStoreEngine.shared.allAppRecords()
         for rec in records {
             let bid = zPatchItem.normalizedBundleID(rec.bundleID)
@@ -217,7 +214,6 @@ private enum AppScannerEngine {
             ))
         }
 
-        // 2. QUÉT CÁC DATA CONTAINER CHƯA CÓ TRONG CSSTORE
         let actualContainers = listSubdirectories(at: dataRoot, forceRefresh: forceRefresh)
         for path in actualContainers {
             let uuid = (path as NSString).lastPathComponent
@@ -253,7 +249,6 @@ private enum AppScannerEngine {
             }
         }
 
-        // 3. FALLBACK QUÉT BUNDLE CONTAINER (.app) NẾU VẪN ÍT/RỖNG
         let bundleContainers = listSubdirectories(at: bundleRoot, forceRefresh: forceRefresh)
         for bContainer in bundleContainers {
             let uuid = (bContainer as NSString).lastPathComponent

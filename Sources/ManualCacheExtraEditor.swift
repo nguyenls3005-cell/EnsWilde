@@ -1,12 +1,6 @@
-//
-//  ManualCacheExtraEditor.swift
-//  EnsWilde
-//
-
 import SwiftUI
 import CoreFoundation
 
-// MARK: - Value kinds
 enum MGValueKind: String, CaseIterable, Identifiable {
     case string = "String"
     case integer = "Integer"
@@ -108,7 +102,6 @@ struct MGCacheExtraEntry: Identifiable, Equatable {
     var text: String
 }
 
-// MARK: - Edit Tracker
 enum ManualEditTracker {
     private static let setKey = "EnsWilde.manualCacheExtraSet.v1"
     private static let removedKey = "EnsWilde.manualCacheExtraRemoved.v1"
@@ -157,7 +150,6 @@ enum ManualEditTracker {
     }
 }
 
-// MARK: - Main View
 struct ManualCacheExtraEditorView: View {
     @ObservedObject var store: GestaltStore
     @AppStorage("manualCacheEditorEnabled") private var manualCacheEditorEnabled: Bool = false
@@ -275,10 +267,7 @@ struct ManualCacheExtraEditorView: View {
                 ce[entry.key] = parsed
             }
             ManualEditTracker.setValue(parsed, forKey: entry.key)
-
-            let newDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
-            store.mgCurrentDict = newDict
-
+            store.mgCurrentDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
             reload()
         } catch {
             errorMessage = error.localizedDescription
@@ -290,10 +279,7 @@ struct ManualCacheExtraEditorView: View {
             ce.removeObject(forKey: entry.key)
         }
         ManualEditTracker.removeKey(entry.key)
-
-        let newDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
-        store.mgCurrentDict = newDict
-
+        store.mgCurrentDict = NSMutableDictionary(dictionary: store.mgCurrentDict)
         reload()
     }
 
@@ -358,7 +344,6 @@ struct ManualCacheExtraEditorView: View {
     }
 }
 
-// MARK: - Field Editor
 struct ManualCacheExtraFieldEditor: View {
     @Environment(\.dismiss) var dismiss
     let field: MGCacheExtraEntry?

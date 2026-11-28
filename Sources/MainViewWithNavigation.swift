@@ -3,6 +3,10 @@ import UIKit
 import UserNotifications
 import AirliftFFI
 
+extension Notification.Name {
+    static let ensWildeNavigateToApply = Notification.Name("EnsWilde.NavigateToApply")
+}
+
 struct MainViewWithNavigation: View {
     @State private var selectedTab: NavigationTab = .home
     @StateObject private var themeStore = PasscodeThemeStore()
@@ -43,13 +47,23 @@ struct MainViewWithNavigation: View {
                 .tabItem { Label(L("nav_about"), systemImage: "info.circle.fill") }.tag(NavigationTab.about)
 
             if showApplyTab {
-                ApplyTabView(toolStore: toolStore, toolRunner: toolRunner, walletStore: walletStore, themeStore: themeStore, featureFlagsStore: featureFlagsStore)
-                    .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }.tag(NavigationTab.apply)
+                ApplyTabView(
+                    toolStore: toolStore,
+                    toolRunner: toolRunner,
+                    walletStore: walletStore,
+                    themeStore: themeStore,
+                    featureFlagsStore: featureFlagsStore
+                )
+                .tabItem { Label(L("nav_apply"), systemImage: "checkmark.circle.fill") }.tag(NavigationTab.apply)
             }
         }
         .tint(Color(hex: userTintColorHex))
         .id(tintRefreshID)
         .onChange(of: userTintColorHex) { _ in applyTintColor() }
+        .onReceive(NotificationCenter.default.publisher(for: .ensWildeNavigateToApply)) { _ in
+            showApplyTab = true
+            selectedTab = .apply
+        }
         .onAppear { applyTintColor() }
     }
 
@@ -65,7 +79,6 @@ struct MainViewWithNavigation: View {
     }
 }
 
-// MARK: - APPLY TAB VIEW
 struct ApplyTabView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject var toolRunner: ToolRunner
@@ -194,7 +207,7 @@ struct ApplyTabView: View {
                             withAnimation {
                                 copiedLog = true
                             }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                                 withAnimation {
                                     copiedLog = false
                                 }
@@ -248,6 +261,8 @@ struct ApplyTabView: View {
     private func performApply() {
         guard !isApplying else { return }
 
+        let startTime = Date()
+        let targetDuration: TimeInterval = 0.2
         let startMsg = L("apply_starting")
         statusLogs = [startMsg]
         currentLine = startMsg
@@ -272,6 +287,12 @@ struct ApplyTabView: View {
                     }
                 }
             )
+
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed < targetDuration {
+                let remainingNs = UInt64((targetDuration - elapsed) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: remainingNs)
+            }
 
             await MainActor.run {
                 patchStore.reloadFromStorage()
