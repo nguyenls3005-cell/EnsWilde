@@ -23,101 +23,52 @@ struct ScannedAppEntry: Identifiable, Hashable {
 
 private enum AppScannerEngine {
     private static let fm = FileManager.default
-    private static let targetRoot = "/private/var/mobile/Containers/Data/Application"
+    private static let targetRoot = "/var/mobile/Containers/Data/Application"
 
-    private static func fallbackName(from bundleID: String, uuid: String) -> String {
-        if bundleID.caseInsensitiveCompare(uuid) == .orderedSame {
-            return "App (\(String(uuid.prefix(8))))"
-        }
-        let parts = bundleID.split(separator: ".").map(String.init)
-        if let last = parts.last, !last.isEmpty {
-            return last
-        }
-        return bundleID
+    private static func extractUUID(from containerPath: String) -> String {
+        let norm = CSStoreEngine.normalizeVarPath(containerPath.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard !norm.isEmpty else { return "" }
+        let last = (norm as NSString).lastPathComponent
+        return last == "Application" ? "" : last
     }
 
-    private static func buildUUIDToBundleIDMap() -> [String: String] {
-        var map: [String: String] = [:]
-
-        let ud = UserDefaults.standard
-        if let savedContainers = ud.dictionary(forKey: zPatchStore.containerMapKey) as? [String: String] {
-            for (rawBID, rawPath) in savedContainers {
-                let bid = zPatchItem.normalizedBundleID(rawBID)
-                let norm = CSStoreEngine.normalizeVarPath(rawPath)
-                guard !bid.isEmpty, !norm.isEmpty else { continue }
-                let uuid = ((norm as NSString).lastPathComponent).lowercased()
-                if !uuid.isEmpty {
-                    map[uuid] = bid
-                }
+    private static func fallbackName(from bundleID: String, uuid: String) -> String {
+        if !bundleID.isEmpty {
+            let parts = bundleID.split(separator: ".").map(String.init)
+            if let last = parts.last, !last.isEmpty {
+                return last
             }
+            return bundleID
         }
+        return uuid.isEmpty ? "Unknown App" : "App (\(String(uuid.prefix(8))))"
+    }
 
-        let lsPaths = [
-            "/private/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist",
-            "/var/mobile/Library/MobileInstallation/LastLaunchServicesMap.plist"
+    private static func listPhysicalContainerUUIDs() -> [String: String] {
+        var uuidToPath: [String: String] = [:]
+        let roots = [
+            "/private/var/mobile/Containers/Data/Application",
+            "/var/mobile/Containers/Data/Application"
         ]
-        for plistPath in lsPaths {
-            let g = wq.grantAccess(path: plistPath, requireWrite: false, allowFsgetpathFallback: true)
-            defer { if g.0 { wq.releaseAccess(path: plistPath) } }
 
-            if let data = fm.contents(atPath: plistPath),
-               let root = try? PropertyListSerialization.propertyList(
-                   from: data,
-                   options: [],
-                   format: nil
-               ) as? [String: Any] {
-                for (_, sectionVal) in root {
-                    guard let sectionDict = sectionVal as? [String: Any] else { continue }
-                    for (rawBID, infoVal) in sectionDict {
-                        let bid = zPatchItem.normalizedBundleID(rawBID)
-                        guard !bid.isEmpty, let info = infoVal as? [String: Any] else { continue }
-                        for key in ["Container", "DataContainer", "Path", "URL"] {
-                            if let cPath = info[key] as? String, !cPath.isEmpty {
-                                let norm = CSStoreEngine.normalizeVarPath(cPath)
-                                let uuid = ((norm as NSString).lastPathComponent).lowercased()
-                                if !uuid.isEmpty {
-                                    map[uuid] = bid
-                                }
-                            }
+        for root in roots {
+            let granted = wq.grantAccess(path: root, requireWrite: false, allowFsgetpathFallback: true)
+            defer { if granted.0 { wq.releaseAccess(path: root) } }
+
+            if let names = try? fm.contentsOfDirectory(atPath: root), !names.isEmpty {
+                for name in names {
+                    let full = CSStoreEngine.normalizeVarPath((root as NSString).appendingPathComponent(name))
+                    var isDir: ObjCBool = false
+                    if fm.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue {
+                        let key = name.lowercased()
+                        if uuidToPath[key] == nil {
+                            uuidToPath[key] = full
                         }
                     }
                 }
             }
         }
 
-        return map
-    }
-
-    private static func listContainerDirectories(forceRefresh: Bool) -> [String] {
-        var paths: [String] = []
-        var seen = Set<String>()
-
-        let granted = wq.grantAccess(path: targetRoot, requireWrite: false, allowFsgetpathFallback: true)
-        defer { if granted.0 { wq.releaseAccess(path: targetRoot) } }
-
-        if let names = try? fm.contentsOfDirectory(atPath: targetRoot), !names.isEmpty {
-            for name in names {
-                let full = (targetRoot as NSString).appendingPathComponent(name)
-                var isDir: ObjCBool = false
-                if fm.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue {
-                    if seen.insert(full).inserted {
-                        paths.append(full)
-                    }
-                }
-            }
-        }
-
-        if paths.isEmpty {
-            let fsList = fsHandlers.getDirPaths(targetRoot, forceRefresh: forceRefresh)
-            for p in fsList {
-                let clean = p.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !clean.isEmpty && seen.insert(clean).inserted {
-                    paths.append(clean)
-                }
-            }
-        }
-
-        return paths
+        return uuidToPath
     }
 
     static func scan(forceRefresh: Bool = false) -> [ScannedAppEntry] {
@@ -125,47 +76,90 @@ private enum AppScannerEngine {
             fsHandlers.invalidateCache()
         }
 
-        let uuidMap = buildUUIDToBundleIDMap()
-        let dirs = listContainerDirectories(forceRefresh: forceRefresh)
+        let records = CSStoreEngine.shared.allAppRecords()
+        let physicalUUIDs = listPhysicalContainerUUIDs()
+
         var entries: [ScannedAppEntry] = []
-        entries.reserveCapacity(dirs.count)
+        entries.reserveCapacity(records.count)
+        var seenBIDs = Set<String>()
 
-        for path in dirs {
+        for rec in records {
             autoreleasepool {
-                let uuid = (path as NSString).lastPathComponent
-                let uuidLower = uuid.lowercased()
-                let url = URL(fileURLWithPath: path)
+                let rawBID = zPatchItem.normalizedBundleID(rec.bundleID)
+                guard !rawBID.isEmpty else { return }
 
-                let fromStore = zPatchStore.shared.bundleIDForContainerUUID(uuid)
-                let fromMap = uuidMap[uuidLower]
-                let fromXattr = getBIDFromXattr(url)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let lowerBID = rawBID.lowercased()
+                guard seenBIDs.insert(lowerBID).inserted else { return }
 
-                let rawBID = [fromStore, fromMap, fromXattr]
-                    .compactMap { $0 }
-                    .first(where: { !$0.isEmpty }) ?? uuid
+                let normalizedDataPath = CSStoreEngine.normalizeVarPath(rec.dataContainerPath)
+                var uuid = extractUUID(from: normalizedDataPath)
 
-                let normBID = zPatchItem.normalizedBundleID(rawBID)
-                let bundleID = normBID.isEmpty ? rawBID : normBID
-
-                let cachedName = zPatchStore.shared.cachedAppName(for: bundleID)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                let title = (cachedName?.isEmpty == false)
-                    ? cachedName!
-                    : fallbackName(from: bundleID, uuid: uuid)
-
-                if bundleID.caseInsensitiveCompare(uuid) != .orderedSame {
-                    zPatchStore.shared.registerContainer(bundleID: bundleID, containerPath: path)
+                if uuid.isEmpty, let (_, hitPath) = CSStoreEngine.shared.lookupAppContainer(forBundleID: rawBID),
+                   let hitPath, !hitPath.isEmpty {
+                    let normHit = CSStoreEngine.normalizeVarPath(hitPath)
+                    uuid = extractUUID(from: normHit)
                 }
-                zPatchStore.shared.registerAppMeta(bundleID: bundleID, appName: title, icon: nil)
 
+                let resolvedContainerPath: String = {
+                    if !normalizedDataPath.isEmpty {
+                        return normalizedDataPath
+                    }
+                    if !uuid.isEmpty, let phys = physicalUUIDs[uuid.lowercased()] {
+                        return phys
+                    }
+                    return ""
+                }()
+
+                let resolvedName: String = {
+                    if let cached = zPatchStore.shared.cachedAppName(for: rawBID)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                       !cached.isEmpty {
+                        return cached
+                    }
+                    let cleanRecName = rec.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !cleanRecName.isEmpty, cleanRecName.caseInsensitiveCompare(rawBID) != .orderedSame {
+                        return cleanRecName
+                    }
+                    return fallbackName(from: rawBID, uuid: uuid)
+                }()
+
+                if !resolvedContainerPath.isEmpty {
+                    zPatchStore.shared.registerContainer(bundleID: rawBID, containerPath: resolvedContainerPath)
+                }
+                zPatchStore.shared.registerAppMeta(bundleID: rawBID, appName: resolvedName, icon: nil)
+
+                let entryID = uuid.isEmpty ? lowerBID : "\(uuid.lowercased())_\(lowerBID)"
                 entries.append(
                     ScannedAppEntry(
-                        id: "\(uuid)_\(bundleID.lowercased())",
-                        name: title,
-                        bundleID: bundleID,
+                        id: entryID,
+                        name: resolvedName,
+                        bundleID: rawBID,
                         containerUUID: uuid,
-                        containerPath: path,
-                        icon: zPatchStore.shared.cachedAppIcon(for: bundleID)
+                        containerPath: resolvedContainerPath,
+                        icon: zPatchStore.shared.cachedAppIcon(for: rawBID)
+                    )
+                )
+            }
+        }
+
+        if entries.isEmpty {
+            let dirs = fsHandlers.getDirPaths(targetRoot, forceRefresh: forceRefresh)
+            for path in dirs {
+                let norm = CSStoreEngine.normalizeVarPath(path)
+                let uuid = (norm as NSString).lastPathComponent
+                let bid = zPatchStore.shared.bundleIDForContainerUUID(uuid)
+                    ?? getBIDFromXattr(URL(fileURLWithPath: norm))
+                    ?? uuid
+                let cleanBID = zPatchItem.normalizedBundleID(bid)
+                let name = zPatchStore.shared.cachedAppName(for: cleanBID) ?? fallbackName(from: cleanBID, uuid: uuid)
+                entries.append(
+                    ScannedAppEntry(
+                        id: "\(uuid)_\(cleanBID.lowercased())",
+                        name: name,
+                        bundleID: cleanBID,
+                        containerUUID: uuid,
+                        containerPath: norm,
+                        icon: zPatchStore.shared.cachedAppIcon(for: cleanBID)
                     )
                 )
             }
