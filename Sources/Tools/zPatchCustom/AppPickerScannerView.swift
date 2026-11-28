@@ -23,7 +23,18 @@ struct ScannedAppEntry: Identifiable, Hashable {
 
 private enum AppScannerEngine {
     private static let fm = FileManager.default
-    private static let targetRoot = "/var/mobile/Containers/Data/Application"
+    private static let targetRoot = CSStoreEngine.normalizeVarPath(FSURL.appContainers.path)
+
+    private static func normalizePath(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let std = (trimmed as NSString).standardizingPath
+        var norm = CSStoreEngine.normalizeVarPath(std)
+        while norm.count > 1 && norm.hasSuffix("/") {
+            norm.removeLast()
+        }
+        return norm
+    }
 
     private static func isUUIDString(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,14 +91,48 @@ private enum AppScannerEngine {
         return parts.last?.capitalized ?? bundleID
     }
 
-    private static func readFileDataWithWq(at fullPath: String) -> Data? {
-        let g = wq.grantAccess(path: fullPath, requireWrite: false, allowFsgetpathFallback: true)
-        defer { if g.0 { wq.releaseAccess(path: fullPath) } }
+    private static func grantReadAccess(at path: String, allowFsgetpathFallback: Bool = true) -> Bool {
+        let norm = normalizePath(path)
+        guard !norm.isEmpty else { return false }
 
-        if let data = fm.contents(atPath: fullPath), !data.isEmpty {
+        let granted = wq.grantAccess(path: norm, requireWrite: false, allowFsgetpathFallback: allowFsgetpathFallback)
+        if granted.0 {
+            return true
+        }
+
+        if allowFsgetpathFallback {
+            let (fsHandle, _) = NativeWorseQuery.shared.grantViaFsgetpath(
+                targetFile: norm,
+                requireWrite: false,
+                allowRecursiveWq: false
+            )
+            if fsHandle >= 0 {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private static func releaseReadAccess(at path: String) {
+        let norm = normalizePath(path)
+        guard !norm.isEmpty else { return }
+        if wq.hasActiveAccess(path: norm) {
+            wq.releaseAccess(path: norm)
+        }
+    }
+
+    private static func readFileDataWithWq(at fullPath: String) -> Data? {
+        let norm = normalizePath(fullPath)
+        guard !norm.isEmpty else { return nil }
+
+        let didGrant = grantReadAccess(at: norm, allowFsgetpathFallback: true)
+        defer { if didGrant { releaseReadAccess(at: norm) } }
+
+        if let data = fm.contents(atPath: norm), !data.isEmpty {
             return data
         }
-        if let data = try? Data(contentsOf: URL(fileURLWithPath: fullPath), options: .uncached), !data.isEmpty {
+        if let data = try? Data(contentsOf: URL(fileURLWithPath: norm), options: .uncached), !data.isEmpty {
             return data
         }
         return nil
@@ -143,8 +188,9 @@ private enum AppScannerEngine {
     }
 
     private static func inspectContainerFiles(at containerPath: String, uuid: String) -> (bundleID: String?, appName: String?) {
-        let granted = wq.grantAccess(path: containerPath, requireWrite: false, allowFsgetpathFallback: true)
-        defer { if granted.0 { wq.releaseAccess(path: containerPath) } }
+        let normContainer = normalizePath(containerPath)
+        let didGrant = grantReadAccess(at: normContainer, allowFsgetpathFallback: true)
+        defer { if didGrant { releaseReadAccess(at: normContainer) } }
 
         let directCandidates = [
             ".com.apple.mobile_container_manager.metadata.plist",
@@ -156,7 +202,7 @@ private enum AppScannerEngine {
         var bestName: String? = nil
 
         for rel in directCandidates {
-            let full = (containerPath as NSString).appendingPathComponent(rel)
+            let full = (normContainer as NSString).appendingPathComponent(rel)
             if let data = readFileDataWithWq(at: full) {
                 let extracted = extractMetaFromPlistData(data)
                 if bestBID == nil, let b = cleanBundleID(extracted.bundleID, uuid: uuid) {
@@ -173,11 +219,15 @@ private enum AppScannerEngine {
 
         func walkPlist(dir: String, depth: Int) {
             guard depth <= 2 else { return }
-            guard let names = try? fm.contentsOfDirectory(atPath: dir) else { return }
+            let normDir = normalizePath(dir)
+            let gDir = grantReadAccess(at: normDir, allowFsgetpathFallback: true)
+            defer { if gDir { releaseReadAccess(at: normDir) } }
+
+            guard let names = try? fm.contentsOfDirectory(atPath: normDir) else { return }
 
             for name in names {
                 if name == "." || name == ".." { continue }
-                let full = (dir as NSString).appendingPathComponent(name)
+                let full = normalizePath((normDir as NSString).appendingPathComponent(name))
                 var isDir: ObjCBool = false
                 guard fm.fileExists(atPath: full, isDirectory: &isDir) else { continue }
 
@@ -207,7 +257,7 @@ private enum AppScannerEngine {
         }
 
         if bestBID == nil || bestName == nil {
-            walkPlist(dir: containerPath, depth: 1)
+            walkPlist(dir: normContainer, depth: 1)
         }
 
         return (bestBID, bestName)
@@ -220,7 +270,7 @@ private enum AppScannerEngine {
         func indexPath(_ rawPath: String, bid: String) {
             let cleanBID = zPatchItem.normalizedBundleID(bid)
             guard !cleanBID.isEmpty, !isUUIDString(cleanBID) else { return }
-            let norm = CSStoreEngine.normalizeVarPath(rawPath.trimmingCharacters(in: .whitespacesAndNewlines))
+            let norm = normalizePath(rawPath)
             guard !norm.isEmpty else { return }
             let last = ((norm as NSString).lastPathComponent).lowercased()
             if isUUIDString(last) {
@@ -235,7 +285,12 @@ private enum AppScannerEngine {
             if !cleanName.isEmpty && cleanName.caseInsensitiveCompare(bid) != .orderedSame {
                 bidToName[bid.lowercased()] = cleanName
             }
-            indexPath(rec.dataContainerPath, bid: bid)
+            if !rec.dataContainerPath.isEmpty {
+                indexPath(rec.dataContainerPath, bid: bid)
+            } else if let (_, fastContainer) = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid),
+                      let fastContainer, !fastContainer.isEmpty {
+                indexPath(fastContainer, bid: bid)
+            }
         }
 
         for patch in zPatchStore.shared.patches {
@@ -245,7 +300,7 @@ private enum AppScannerEngine {
                 indexPath(cached, bid: bid)
             }
             if let fast = patch.cachedDestinationPath, !fast.isEmpty {
-                let normFast = CSStoreEngine.normalizeVarPath(fast)
+                let normFast = normalizePath(fast)
                 if normFast.contains("/Containers/Data/Application/") {
                     var cur = normFast
                     while cur != "/" && cur.count > 1 {
@@ -274,17 +329,21 @@ private enum AppScannerEngine {
         var seen = Set<String>()
 
         let roots = [
+            targetRoot,
             "/var/mobile/Containers/Data/Application",
             "/private/var/mobile/Containers/Data/Application"
         ]
 
         for root in roots {
-            let g = wq.grantAccess(path: root, requireWrite: false, allowFsgetpathFallback: true)
-            defer { if g.0 { wq.releaseAccess(path: root) } }
+            let normRoot = normalizePath(root)
+            guard !normRoot.isEmpty else { continue }
 
-            if let names = try? fm.contentsOfDirectory(atPath: root), !names.isEmpty {
+            let didGrant = grantReadAccess(at: normRoot, allowFsgetpathFallback: true)
+            defer { if didGrant { releaseReadAccess(at: normRoot) } }
+
+            if let names = try? fm.contentsOfDirectory(atPath: normRoot), !names.isEmpty {
                 for name in names {
-                    let full = CSStoreEngine.normalizeVarPath((root as NSString).appendingPathComponent(name))
+                    let full = normalizePath((normRoot as NSString).appendingPathComponent(name))
                     let key = full.lowercased()
                     var isDir: ObjCBool = false
                     if fm.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue, seen.insert(key).inserted {
@@ -294,10 +353,20 @@ private enum AppScannerEngine {
             }
         }
 
+        if let storePaths = CSStoreEngine.shared.containerPaths(forRoot: targetRoot) {
+            for p in storePaths {
+                let norm = normalizePath(p)
+                let key = norm.lowercased()
+                if !norm.isEmpty && seen.insert(key).inserted {
+                    result.append(norm)
+                }
+            }
+        }
+
         if result.count < 5 {
             let leaked = fsHandlers.getDirPaths(targetRoot, forceRefresh: forceRefresh)
             for p in leaked {
-                let norm = CSStoreEngine.normalizeVarPath(p.trimmingCharacters(in: .whitespacesAndNewlines))
+                let norm = normalizePath(p)
                 let key = norm.lowercased()
                 if !norm.isEmpty && seen.insert(key).inserted {
                     result.append(norm)
@@ -319,8 +388,9 @@ private enum AppScannerEngine {
         var entries: [ScannedAppEntry] = []
         entries.reserveCapacity(containerPaths.count)
 
-        for path in containerPaths {
+        for rawPath in containerPaths {
             autoreleasepool {
+                let path = normalizePath(rawPath)
                 let uuid = (path as NSString).lastPathComponent
                 let uuidLower = uuid.lowercased()
                 let url = URL(fileURLWithPath: path)
@@ -333,10 +403,15 @@ private enum AppScannerEngine {
                     maps.uuidToBID[uuidLower],
                     uuid: uuid
                 )
+
+                let didGrantXattr = grantReadAccess(at: path, allowFsgetpathFallback: true)
                 let fromXattr = cleanBundleID(
                     getBIDFromXattr(url),
                     uuid: uuid
                 )
+                if didGrantXattr {
+                    releaseReadAccess(at: path)
+                }
 
                 var resolvedBID = fromStore ?? fromMap ?? fromXattr
                 var detectedName = resolvedBID.flatMap { maps.bidToName[$0.lowercased()] }
