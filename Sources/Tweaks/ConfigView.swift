@@ -1,4 +1,6 @@
 import SwiftUI
+import Darwin
+import AirliftFFI
 
 private struct QuickActionBackground: ViewModifier {
     func body(content: Content) -> some View {
@@ -36,12 +38,13 @@ struct ConfigView: View {
     @State private var orgName = ""
     @State private var showSupervisionWarning = false
     @State private var showSaveAlert = false
+    @State private var saveAlertTitle = L("saved")
     @State private var saveAlertMessage = ""
     @State private var navigateAfterAlert = false
     @State private var justRestored = false
 
     private let fm = FileManager.default
-    private let configDir = "/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
+    private let configDir = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles/Library/ConfigurationProfiles"
 
     private var sharedDevConfigURL: URL {
         URL(fileURLWithPath: "\(configDir)/SharedDeviceConfiguration.plist")
@@ -175,7 +178,7 @@ struct ConfigView: View {
         } message: {
             Text(L("supervision_warning_message"))
         }
-        .alert(L("saved"), isPresented: $showSaveAlert) {
+        .alert(saveAlertTitle, isPresented: $showSaveAlert) {
             Button("OK") {
                 if navigateAfterAlert {
                     navigateAfterAlert = false
@@ -188,20 +191,54 @@ struct ConfigView: View {
         }
     }
 
-    @discardableResult
-    private func ensureConfigAccess() -> Bool {
-        let granted = wq.grantAccess(path: configDir, requireWrite: true)
-        if !fm.fileExists(atPath: sharedDevConfigURL.path) {
-            let dict: [String: Any] = ["LockScreenFootnote": ""]
-            if let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .binary, options: 0) {
-                try? data.write(to: sharedDevConfigURL, options: .atomic)
-            }
+    private func grantDirectFileWrite(at filePath: String) {
+        _ = wq.grantAccess(path: configDir, requireWrite: true, allowFsgetpathFallback: true)
+        _ = wq.grantAccess(path: filePath, requireWrite: true, allowFsgetpathFallback: true)
+        _ = NativeWorseQuery.shared.grantViaFsgetpath(targetFile: filePath, requireWrite: true, allowRecursiveWq: true)
+
+        var st = stat()
+        if stat(filePath, &st) == 0, (st.st_flags & UInt32(UF_IMMUTABLE)) != 0 {
+            _ = chflags(filePath, st.st_flags & ~UInt32(UF_IMMUTABLE))
         }
-        return granted.0
+    }
+
+    private func directOverwritePlist(data: Data, to url: URL) throws {
+        let path = url.path
+        grantDirectFileWrite(at: path)
+
+        let fd = open(path, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+        guard fd >= 0 else {
+            let err = errno
+            throw NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(err),
+                userInfo: [NSLocalizedDescriptionKey: "Mở file thất bại: \(url.lastPathComponent) (errno: \(err))"]
+            )
+        }
+        defer { close(fd) }
+
+        let oldSize = lseek(fd, 0, SEEK_END)
+        let written = data.withUnsafeBytes { ptr -> Int in
+            guard let base = ptr.baseAddress else { return -1 }
+            return pwrite(fd, base, data.count, 0)
+        }
+        guard written == data.count else {
+            throw NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(errno),
+                userInfo: [NSLocalizedDescriptionKey: "Ghi file thất bại: \(url.lastPathComponent) (errno: \(errno))"]
+            )
+        }
+        if oldSize > off_t(data.count) {
+            ftruncate(fd, off_t(data.count))
+        }
+        if fcntl(fd, F_FULLFSYNC) == -1 {
+            fsync(fd)
+        }
     }
 
     private func doSetup() {
-        _ = ensureConfigAccess()
+        _ = wq.grantAccess(path: configDir, requireWrite: true, allowFsgetpathFallback: true)
         if justRestored { return }
         if let ftDict = NSDictionary(contentsOf: sharedDevConfigURL) as? [String: Any],
            let diskFootnote = ftDict["LockScreenFootnote"] as? String, !diskFootnote.isEmpty {
@@ -221,12 +258,10 @@ struct ConfigView: View {
         }
     }
 
-    private func writeConfigFiles(footnote: String, isSupervised: Bool, organization: String) {
-        _ = ensureConfigAccess()
+    private func writeConfigFiles(footnote: String, isSupervised: Bool, organization: String) throws {
         let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
-        if let ftData = try? PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0) {
-            try? ftData.write(to: sharedDevConfigURL, options: .atomic)
-        }
+        let ftData = try PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0)
+        try directOverwritePlist(data: ftData, to: sharedDevConfigURL)
 
         let ccDict = NSMutableDictionary(contentsOf: cloudConfigURL) ?? NSMutableDictionary()
         ccDict["IsSupervised"] = isSupervised
@@ -235,9 +270,8 @@ struct ConfigView: View {
         } else {
             ccDict.removeObject(forKey: "OrganizationName")
         }
-        if let ccData = try? PropertyListSerialization.data(fromPropertyList: ccDict, format: .binary, options: 0) {
-            try? ccData.write(to: cloudConfigURL, options: .atomic)
-        }
+        let ccData = try PropertyListSerialization.data(fromPropertyList: ccDict, format: .binary, options: 0)
+        try directOverwritePlist(data: ccData, to: cloudConfigURL)
     }
 
     private func apply() {
@@ -248,12 +282,25 @@ struct ConfigView: View {
         storedSupervised = supervised
         storedOrgName = orgName
         toolStore.configTweaksEnabled = true
-        writeConfigFiles(footnote: footnoteText, isSupervised: supervised, organization: orgName)
-        showApplyTab = true
+
         GLOBAL_LOG.beginNewSession(header: "=== Config Tweaks ===")
-        GLOBAL_LOG.success("Đã lưu Config Tweaks.")
-        saveAlertMessage = L("config_saved_message")
-        showSaveAlert = true
+        GLOBAL_LOG.step("[Config] Đang xin quyền ghi vào ConfigurationProfiles...")
+
+        do {
+            try writeConfigFiles(footnote: footnoteText, isSupervised: supervised, organization: orgName)
+            showApplyTab = true
+            GLOBAL_LOG.success("Đã lưu Config Tweaks.")
+            saveAlertTitle = L("saved")
+            saveAlertMessage = L("config_saved_message")
+            showSaveAlert = true
+        } catch {
+            let detail = error.localizedDescription
+            GLOBAL_LOG.error("Chạy không thành công")
+            GLOBAL_LOG.error("Chi tiết lỗi: \(detail)")
+            saveAlertTitle = "Chạy không thành công"
+            saveAlertMessage = "Chạy không thành công do: \(detail). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
+            showSaveAlert = true
+        }
     }
 
     private func reset() {
@@ -266,12 +313,25 @@ struct ConfigView: View {
         storedSupervised = false
         storedOrgName = ""
         toolStore.configTweaksEnabled = true
-        writeConfigFiles(footnote: "", isSupervised: false, organization: "")
-        showApplyTab = true
-        navigateAfterAlert = true
+
         GLOBAL_LOG.beginNewSession(header: "=== Reset Config Tweaks ===")
-        GLOBAL_LOG.step("Đã đặt lại Config Tweaks & xoá footnote.")
-        saveAlertMessage = L("reset_tweaks_info")
-        showSaveAlert = true
+        GLOBAL_LOG.step("Đang đặt lại Config Tweaks & xoá footnote...")
+
+        do {
+            try writeConfigFiles(footnote: "", isSupervised: false, organization: "")
+            showApplyTab = true
+            navigateAfterAlert = true
+            GLOBAL_LOG.success("Đã đặt lại Config Tweaks & xoá footnote.")
+            saveAlertTitle = L("saved")
+            saveAlertMessage = L("reset_tweaks_info")
+            showSaveAlert = true
+        } catch {
+            let detail = error.localizedDescription
+            GLOBAL_LOG.error("Chạy không thành công")
+            GLOBAL_LOG.error("Chi tiết lỗi: \(detail)")
+            saveAlertTitle = "Chạy không thành công"
+            saveAlertMessage = "Chạy không thành công do: \(detail). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
+            showSaveAlert = true
+        }
     }
 }

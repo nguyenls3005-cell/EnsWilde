@@ -66,10 +66,9 @@ private enum AppScannerEngine {
     }
 
     @discardableResult
-    private static func grantReadIfNeeded(at path: String) -> Bool {
+    private static func grantRead(at path: String) -> Bool {
         let norm = normalizePath(path)
         guard !norm.isEmpty else { return false }
-        if wq.hasActiveAccess(path: norm) { return true }
         let r = wq.grantAccess(path: norm, requireWrite: false, allowFsgetpathFallback: true)
         if r.0 { return true }
         let (fsHandle, _) = NativeWorseQuery.shared.grantViaFsgetpath(
@@ -77,20 +76,23 @@ private enum AppScannerEngine {
         return fsHandle >= 0
     }
 
-    private static func listSubdirectoriesFast(at rootPath: String, forceRefresh: Bool) -> [String] {
+    private static func listSubdirectories(at rootPath: String, forceRefresh: Bool) -> [String] {
         let norm = normalizePath(rootPath)
         guard !norm.isEmpty else { return [] }
-        _ = grantReadIfNeeded(at: norm)
+        _ = grantRead(at: norm)
 
-        let dirs = fsHandlers.getDirPaths(norm, forceRefresh: forceRefresh)
-        if !dirs.isEmpty { return dirs }
-
-        guard let names = try? fm.contentsOfDirectory(atPath: norm) else { return [] }
-        return names.compactMap { name in
-            let full = (norm as NSString).appendingPathComponent(name)
-            var isDir: ObjCBool = false
-            return (fm.fileExists(atPath: full, isDirectory: &isDir) && isDir.boolValue) ? full : nil
+        var dirs = fsHandlers.getDirPaths(norm, forceRefresh: forceRefresh)
+        if dirs.isEmpty, let names = try? fm.contentsOfDirectory(atPath: norm) {
+            dirs = names.compactMap { name in
+                let full = (norm as NSString).appendingPathComponent(name)
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: full, isDirectory: &isDir), isDir.boolValue {
+                    return full
+                }
+                return nil
+            }
         }
+        return dirs
     }
 
     private static var iconCache: [String: UIImage] = [:]
@@ -113,11 +115,14 @@ private enum AppScannerEngine {
 
         guard let appPath = appPathHint, !appPath.isEmpty else { return nil }
         let norm = normalizePath(appPath)
+        _ = grantRead(at: norm)
 
+        var candidates: [String] = []
         let infoPath = (norm as NSString).appendingPathComponent("Info.plist")
+        _ = grantRead(at: infoPath)
+
         if let data = try? Data(contentsOf: URL(fileURLWithPath: infoPath)),
            let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
-            var candidates: [String] = []
             for key in ["CFBundleIcons", "CFBundleIcons~ipad"] {
                 if let icons = plist[key] as? [String: Any],
                    let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
@@ -131,14 +136,15 @@ private enum AppScannerEngine {
             if let single = plist["CFBundleIconFile"] as? String {
                 candidates.append(single)
             }
+        }
 
-            for base in candidates.reversed() {
-                for suffix in ["@3x.png", "@2x.png", "@2x~ipad.png", ".png"] {
-                    let name = base.hasSuffix(".png") ? base : "\(base)\(suffix)"
-                    let p = (norm as NSString).appendingPathComponent(name)
-                    if let img = UIImage(contentsOfFile: p) {
-                        storeIcon(bundleID, img); return img
-                    }
+        for base in candidates.reversed() {
+            for suffix in ["@3x.png", "@2x.png", "@2x~ipad.png", ".png"] {
+                let name = base.hasSuffix(".png") ? base : "\(base)\(suffix)"
+                let p = (norm as NSString).appendingPathComponent(name)
+                _ = grantRead(at: p)
+                if let img = UIImage(contentsOfFile: p) {
+                    storeIcon(bundleID, img); return img
                 }
             }
         }
@@ -148,6 +154,7 @@ private enum AppScannerEngine {
                      "Icon-60@3x.png","Icon-60@2x.png","Icon-76@2x.png",
                      "Icon@2x.png","Icon.png","AppIcon.png"] {
             let p = (norm as NSString).appendingPathComponent(name)
+            _ = grantRead(at: p)
             if let img = UIImage(contentsOfFile: p) {
                 storeIcon(bundleID, img); return img
             }
@@ -166,7 +173,9 @@ private enum AppScannerEngine {
         var entries: [ScannedAppEntry] = []
         var processedUUIDs = Set<String>()
         var processedBundleIDs = Set<String>()
+        let stateLock = NSLock()
 
+        // 1. Nguồn nhanh nhất: CSStoreEngine
         let records = CSStoreEngine.shared.allAppRecords()
         for rec in records {
             let bid = zPatchItem.normalizedBundleID(rec.bundleID)
@@ -189,62 +198,96 @@ private enum AppScannerEngine {
             ))
         }
 
-        let actualContainers = listSubdirectoriesFast(at: dataRoot, forceRefresh: forceRefresh)
-        for path in actualContainers {
-            let uuid = (path as NSString).lastPathComponent
-            let uuidLower = uuid.lowercased()
-            guard !uuidLower.isEmpty, !processedUUIDs.contains(uuidLower) else { continue }
+        // 2. Quét song song Data Containers (cấp quyền từng thư mục con)
+        let actualContainers = listSubdirectories(at: dataRoot, forceRefresh: forceRefresh)
+        if !actualContainers.isEmpty {
+            DispatchQueue.concurrentPerform(iterations: actualContainers.count) { idx in
+                let path = actualContainers[idx]
+                let uuid = (path as NSString).lastPathComponent
+                let uuidLower = uuid.lowercased()
+                guard !uuidLower.isEmpty else { return }
 
-            var bid = getBIDFromXattr(URL(fileURLWithPath: path))
-            if bid == nil {
-                _ = grantReadIfNeeded(at: path)
-                let metaPath = (path as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
-                if let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
-                   let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
-                    bid = dict["MCMMetadataIdentifier"] as? String
+                stateLock.lock()
+                let already = processedUUIDs.contains(uuidLower)
+                stateLock.unlock()
+                if already { return }
+
+                _ = grantRead(at: path)
+                var bid = getBIDFromXattr(URL(fileURLWithPath: path))
+                if bid == nil {
+                    let metaPath = (path as NSString).appendingPathComponent(".com.apple.mobile_container_manager.metadata.plist")
+                    _ = grantRead(at: metaPath)
+                    if let data = try? Data(contentsOf: URL(fileURLWithPath: metaPath)),
+                       let dict = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
+                        bid = dict["MCMMetadataIdentifier"] as? String
+                    }
                 }
-            }
 
-            if let validBid = cleanBundleID(bid, uuid: uuid) {
-                processedUUIDs.insert(uuidLower)
-                processedBundleIDs.insert(validBid.lowercased())
-                let finalName = resolveDisplayName(bundleID: validBid, uuid: uuid, detectedName: nil)
-                entries.append(ScannedAppEntry(
-                    id: "\(uuidLower)_\(validBid.lowercased())",
-                    name: finalName,
-                    bundleID: validBid,
-                    containerUUID: uuid,
-                    containerPath: path,
-                    icon: iconForBundleID(validBid, appPathHint: nil)
-                ))
+                if let validBid = cleanBundleID(bid, uuid: uuid) {
+                    let finalName = resolveDisplayName(bundleID: validBid, uuid: uuid, detectedName: nil)
+                    let icon = iconForBundleID(validBid, appPathHint: nil)
+                    stateLock.lock()
+                    if !processedUUIDs.contains(uuidLower) {
+                        processedUUIDs.insert(uuidLower)
+                        processedBundleIDs.insert(validBid.lowercased())
+                        entries.append(ScannedAppEntry(
+                            id: "\(uuidLower)_\(validBid.lowercased())",
+                            name: finalName,
+                            bundleID: validBid,
+                            containerUUID: uuid,
+                            containerPath: path,
+                            icon: icon
+                        ))
+                    }
+                    stateLock.unlock()
+                }
             }
         }
 
-        let bundleContainers = listSubdirectoriesFast(at: bundleRoot, forceRefresh: forceRefresh)
-        for bContainer in bundleContainers {
-            let uuid = (bContainer as NSString).lastPathComponent
-            _ = grantReadIfNeeded(at: bContainer)
-            guard let subItems = try? fm.contentsOfDirectory(atPath: bContainer) else { continue }
-            for item in subItems where item.hasSuffix(".app") {
-                let appPath = (bContainer as NSString).appendingPathComponent(item)
-                let infoPath = (appPath as NSString).appendingPathComponent("Info.plist")
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: infoPath)),
-                      let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
-                      let rawBid = plist["CFBundleIdentifier"] as? String,
-                      let validBid = cleanBundleID(rawBid, uuid: uuid),
-                      !processedBundleIDs.contains(validBid.lowercased()) else { continue }
+        // 3. Quét song song Bundle Containers (.app/Info.plist)
+        let bundleContainers = listSubdirectories(at: bundleRoot, forceRefresh: forceRefresh)
+        if !bundleContainers.isEmpty {
+            DispatchQueue.concurrentPerform(iterations: bundleContainers.count) { idx in
+                let bContainer = bundleContainers[idx]
+                let uuid = (bContainer as NSString).lastPathComponent
+                _ = grantRead(at: bContainer)
+                guard let subItems = try? fm.contentsOfDirectory(atPath: bContainer) else { return }
 
-                processedBundleIDs.insert(validBid.lowercased())
-                let detName = (plist["CFBundleDisplayName"] as? String) ?? (plist["CFBundleName"] as? String)
-                let finalName = resolveDisplayName(bundleID: validBid, uuid: uuid, detectedName: detName)
-                entries.append(ScannedAppEntry(
-                    id: "\(uuid)_\(validBid.lowercased())",
-                    name: finalName,
-                    bundleID: validBid,
-                    containerUUID: uuid,
-                    containerPath: "",
-                    icon: iconForBundleID(validBid, appPathHint: appPath)
-                ))
+                for item in subItems where item.hasSuffix(".app") {
+                    let appPath = (bContainer as NSString).appendingPathComponent(item)
+                    _ = grantRead(at: appPath)
+                    let infoPath = (appPath as NSString).appendingPathComponent("Info.plist")
+                    _ = grantRead(at: infoPath)
+
+                    guard let data = try? Data(contentsOf: URL(fileURLWithPath: infoPath)),
+                          let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
+                          let rawBid = plist["CFBundleIdentifier"] as? String,
+                          let validBid = cleanBundleID(rawBid, uuid: uuid) else { continue }
+
+                    let bidLower = validBid.lowercased()
+                    stateLock.lock()
+                    let exists = processedBundleIDs.contains(bidLower)
+                    stateLock.unlock()
+                    if exists { continue }
+
+                    let detName = (plist["CFBundleDisplayName"] as? String) ?? (plist["CFBundleName"] as? String)
+                    let finalName = resolveDisplayName(bundleID: validBid, uuid: uuid, detectedName: detName)
+                    let icon = iconForBundleID(validBid, appPathHint: appPath)
+
+                    stateLock.lock()
+                    if !processedBundleIDs.contains(bidLower) {
+                        processedBundleIDs.insert(bidLower)
+                        entries.append(ScannedAppEntry(
+                            id: "\(uuid)_\(bidLower)",
+                            name: finalName,
+                            bundleID: validBid,
+                            containerUUID: uuid,
+                            containerPath: "",
+                            icon: icon
+                        ))
+                    }
+                    stateLock.unlock()
+                }
             }
         }
 
@@ -406,7 +449,7 @@ struct AppPickerScannerView: View {
             }
             .onAppear {
                 if vm.apps.isEmpty {
-                    vm.scan(forceRefresh: false)
+                    vm.scan(forceRefresh: true)
                 }
             }
         }

@@ -6,12 +6,42 @@ import Combine
 class ToolRunner: ObservableObject {
     @Published var state: ToolState = .idle
 
-    /// Nhịp trễ ~1 giây giữa các bước để dễ quan sát tiến trình.
     private let stepDelayNs: UInt64 = 1_000_000_000
 
     private func paceStep() async {
         guard !Task.isCancelled else { return }
         try? await Task.sleep(nanoseconds: stepDelayNs)
+    }
+
+    /// Chuẩn hóa đường dẫn tương đối để loại bỏ lặp thư mục (vd: Library/Cookies/Library/Cookies/...)
+    static func normalizeRelativePath(_ raw: String) -> String {
+        var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.hasPrefix("/") {
+            cleaned.removeFirst()
+        }
+        let parts = cleaned.components(separatedBy: "/").filter { !$0.isEmpty }
+        var result: [String] = []
+        var i = 0
+        while i < parts.count {
+            // Loại bỏ cặp 2 cấp bị lặp liên tiếp: A/B/A/B -> A/B
+            if i + 3 < parts.count,
+               parts[i] == parts[i + 2],
+               parts[i + 1] == parts[i + 3] {
+                result.append(parts[i])
+                result.append(parts[i + 1])
+                i += 4
+            }
+            // Loại bỏ 1 cấp bị lặp liên tiếp: A/A -> A
+            else if i + 1 < parts.count,
+                    parts[i] == parts[i + 1] {
+                result.append(parts[i])
+                i += 2
+            } else {
+                result.append(parts[i])
+                i += 1
+            }
+        }
+        return result.joined(separator: "/")
     }
 
     func applyAll(
@@ -27,7 +57,8 @@ class ToolRunner: ObservableObject {
         guard isSystemReady else {
             let msg = "System not ready. Check Pairing & VPN."
             state = .failed(msg)
-            onLogUpdate("Chạy không thành công: \(msg)")
+            onLogUpdate("Chạy không thành công")
+            onLogUpdate("Chi tiết lỗi: \(msg)")
             return
         }
 
@@ -77,21 +108,44 @@ class ToolRunner: ObservableObject {
             let zPatch = zPatchStore.shared
             if zPatch.isTweakEnabled || zPatch.pendingApply || zPatch.patches.contains(where: { $0.pendingRevert }) {
                 onLogUpdate(">> Applying zPatch Custom...")
-                let beforeCount = GLOBAL_LOG.text.components(separatedBy: "\n").count
-                try zPatch.applyAllUsingWorseQuery(onLog: onLogUpdate)
 
-                // Kiểm tra nếu log zPatch báo "Ghi đè thất bại" hoặc "doesn't exist" thì coi là lỗi thực thi
-                let recentLines = GLOBAL_LOG.text.components(separatedBy: "\n").dropFirst(max(0, beforeCount - 1))
-                if let failedLine = recentLines.first(where: {
-                    $0.localizedCaseInsensitiveContains("ghi đè thất bại") ||
-                    $0.localizedCaseInsensitiveContains("doesn’t exist") ||
-                    $0.localizedCaseInsensitiveContains("doesn't exist") ||
-                    $0.localizedCaseInsensitiveContains("failed")
-                }) {
+                // Chuẩn hóa đường dẫn của toàn bộ patch (kể cả patch mới nhập từ .ens) trước khi chạy
+                var didFixPath = false
+                for idx in zPatch.patches.indices {
+                    let fixedRel = Self.normalizeRelativePath(zPatch.patches[idx].relativeDestPath)
+                    if fixedRel != zPatch.patches[idx].relativeDestPath {
+                        zPatch.patches[idx].relativeDestPath = fixedRel
+                        zPatch.patches[idx].cachedDestinationPath = zPatch.patches[idx].fastPreviewPath
+                        didFixPath = true
+                    }
+                }
+                if didFixPath {
+                    zPatch.savePatches()
+                }
+
+                // Bắt trực tiếp từng dòng log được bắn ra đồng bộ từ applyAllUsingWorseQuery
+                var capturedErrorLine: String? = nil
+                try zPatch.applyAllUsingWorseQuery(onLog: { line in
+                    let lower = line.lowercased()
+                    if lower.contains("thất bại") ||
+                       lower.contains("lỗi") ||
+                       lower.contains("doesn’t exist") ||
+                       lower.contains("doesn't exist") ||
+                       lower.contains("error") ||
+                       lower.contains("failed") ||
+                       lower.contains("không tìm thấy") {
+                        if capturedErrorLine == nil {
+                            capturedErrorLine = line
+                        }
+                    }
+                    onLogUpdate(line)
+                })
+
+                if let errLine = capturedErrorLine {
                     throw NSError(
                         domain: "zPatchCustom",
                         code: -50,
-                        userInfo: [NSLocalizedDescriptionKey: failedLine]
+                        userInfo: [NSLocalizedDescriptionKey: errLine]
                     )
                 }
 
