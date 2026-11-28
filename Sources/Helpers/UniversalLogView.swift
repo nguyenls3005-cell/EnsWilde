@@ -1,59 +1,66 @@
 import SwiftUI
 import UIKit
 
-enum LogStatus: Equatable {
+enum UniversalLogState: Equatable {
     case idle
     case running
     case success
     case error
 }
 
-@MainActor
-final class LogModel: ObservableObject {
-    static let shared = LogModel()
+private enum UniversalLogStore {
+    @MainActor static var state: UniversalLogState = .idle
+    @MainActor static var currentLine: String = ""
+}
 
-    @Published var currentMessage: String = ""
-    @Published var status: LogStatus = .idle
-    @Published var entries: [String] = []
-
-    nonisolated init() {}
+extension LogModel {
+    private func postMain(_ block: @escaping @MainActor () -> Void) {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                block()
+            }
+        } else {
+            DispatchQueue.main.async {
+                block()
+            }
+        }
+    }
 
     func step(_ message: String) {
-        status = .running
-        currentMessage = message
-        entries.append("[STEP] \(message)")
-        print("[GLOBAL_LOG][STEP] \(message)")
+        postMain {
+            UniversalLogStore.state = .running
+            UniversalLogStore.currentLine = message
+            self.append("[STEP] \(message)")
+        }
     }
 
     func success(_ message: String) {
-        status = .success
-        currentMessage = message
-        entries.append("[SUCCESS] \(message)")
-        print("[GLOBAL_LOG][SUCCESS] \(message)")
+        postMain {
+            UniversalLogStore.state = .success
+            UniversalLogStore.currentLine = message
+            self.append("[SUCCESS] \(message)")
+        }
     }
 
     func error(_ message: String) {
-        status = .error
-        currentMessage = message
-        entries.append("[ERROR] \(message)")
-        print("[GLOBAL_LOG][ERROR] \(message)")
+        postMain {
+            UniversalLogStore.state = .error
+            UniversalLogStore.currentLine = message
+            self.append("[ERROR] \(message)")
+        }
     }
 
-    func clear() {
-        status = .idle
-        currentMessage = ""
-        entries.removeAll()
-    }
-
-    func fullLogText() -> String {
-        entries.joined(separator: "\n")
+    var latestLine: String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, let last = trimmed.components(separatedBy: .newlines).last {
+            return last
+        }
+        return ""
     }
 }
 
-let GLOBAL_LOG = LogModel.shared
-
 struct UniversalLogView: View {
-    @ObservedObject private var logModel = GLOBAL_LOG
+    @ObservedObject private var log = GLOBAL_LOG
     @State private var copied = false
 
     var body: some View {
@@ -68,7 +75,7 @@ struct UniversalLogView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                UIPasteboard.general.string = logModel.fullLogText()
+                UIPasteboard.general.string = log.text
                 withAnimation {
                     copied = true
                 }
@@ -83,7 +90,7 @@ struct UniversalLogView: View {
                     .foregroundStyle(copied ? .green : .secondary)
             }
             .buttonStyle(.plain)
-            .disabled(logModel.entries.isEmpty)
+            .disabled(log.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -93,9 +100,33 @@ struct UniversalLogView: View {
         )
     }
 
+    private var currentState: UniversalLogState {
+        UniversalLogStore.state
+    }
+
+    private var displayText: String {
+        let line = UniversalLogStore.currentLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !line.isEmpty {
+            return line
+        }
+        let fallback = log.latestLine
+        return fallback.isEmpty ? "Sẵn sàng" : fallback
+    }
+
+    private var textColor: Color {
+        switch currentState {
+        case .idle:
+            return .secondary
+        case .running, .success:
+            return .primary
+        case .error:
+            return .red
+        }
+    }
+
     @ViewBuilder
     private var statusIcon: some View {
-        switch logModel.status {
+        switch currentState {
         case .idle:
             Image(systemName: "terminal")
                 .font(.caption)
@@ -111,24 +142,6 @@ struct UniversalLogView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption)
                 .foregroundStyle(.red)
-        }
-    }
-
-    private var displayText: String {
-        if !logModel.currentMessage.isEmpty {
-            return logModel.currentMessage
-        }
-        return "Sẵn sàng"
-    }
-
-    private var textColor: Color {
-        switch logModel.status {
-        case .idle:
-            return .secondary
-        case .running, .success:
-            return .primary
-        case .error:
-            return .red
         }
     }
 }
