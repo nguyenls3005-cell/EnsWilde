@@ -7,7 +7,7 @@ PROJECT="EnsWilde.xcodeproj"
 BUILD_DIR="$(pwd)/build"
 ARCHIVE_PATH="$BUILD_DIR/EnsWilde.xcarchive"
 APP_NAME="EnsWilde"
-IPA_PATH="$BUILD_DIR/${APP_NAME}.ipa"
+IPA_PATH="$BUILD_DIR/EnsWilde unsigned.ipa" # <--- ĐÃ SỬA TÊN FILE Ở ĐÂY
 
 echo "==> Bắt đầu build $APP_NAME ($CONFIG)"
 rm -rf "$BUILD_DIR"
@@ -134,7 +134,7 @@ ruby -e '
   end
 
   # --- XỬ LÝ WQ FILES (TỰ ĐỘNG ADD VÀO BUILD) ---
-  wq_dir_path = File.expand_path("source/tool/zPatchCustom") # Đã sửa thành zPatchCustom
+  wq_dir_path = File.expand_path("source/tool/zPatchCustom")
   if Dir.exist?(wq_dir_path)
     puts "==> Đang thêm các file WQ từ #{wq_dir_path} vào build..."
     
@@ -157,10 +157,7 @@ ruby -e '
         puts "    -> Đã thêm #{file_name} vào build"
       end
     end
-  else
-    puts "⚠️ CẢNH BÁO: Không tìm thấy thư mục source/tool/zPatchCustom. Bỏ qua WQ files."
   end
-  # ------------------------------------------------
 
   target.build_configurations.each do |config|
     lib_paths = Array(config.build_settings["LIBRARY_SEARCH_PATHS"] || ["$(inherited)"])
@@ -171,7 +168,6 @@ ruby -e '
     hdr_paths = Array(config.build_settings["HEADER_SEARCH_PATHS"] || ["$(inherited)"])
     hdr_paths = hdr_paths.reject { |p| p.to_s =~ /simulator/i }
     hdr_paths << abs_hdr_dir
-    # Thêm đường dẫn header của WQ để Bridging Header có thể import trực tiếp
     hdr_paths << wq_dir_path if Dir.exist?(wq_dir_path)
     config.build_settings["HEADER_SEARCH_PATHS"] = hdr_paths.uniq
 
@@ -214,10 +210,7 @@ rm -rf "$BUILD_DIR/Payload" && mkdir -p "$BUILD_DIR/Payload"
 cp -R "$APP_PATH" "$BUILD_DIR/Payload/"
 rm -rf "$BUILD_DIR/Payload/${APP_BASENAME}/_CodeSignature"
 
-# Nén thành file IPA chuẩn
 (cd "$BUILD_DIR" && zip -qry "$IPA_PATH" Payload)
-
-# Dọn dẹp rác
 rm -rf "$BUILD_DIR/Payload"
 
 echo "🔥 Done: Unsigned IPA tại $IPA_PATH"
