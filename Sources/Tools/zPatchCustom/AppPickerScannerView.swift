@@ -122,11 +122,16 @@ private enum AppScannerEngine {
                     .compactMap { $0 }
                     .first(where: { !$0.isEmpty }) ?? uuid
 
-                let bundleID = zPatchItem.normalizedBundleID(rawBID).isEmpty ? rawBID : zPatchItem.normalizedBundleID(rawBID)
+                let normBID = zPatchItem.normalizedBundleID(rawBID)
+                let bundleID = normBID.isEmpty ? rawBID : normBID
+
                 let cachedName = zPatchStore.shared.cachedAppName(for: bundleID)
                 let resolvedName = [cachedName, meta.displayName]
                     .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .first(where: { !$0.isEmpty }) ?? fallbackName(from: bundleID)
+                    .first(where: { !$0.isEmpty })
+                    ?? (bundleID.caseInsensitiveCompare(uuid) == .orderedSame
+                        ? "App (\(String(uuid.prefix(8))))"
+                        : fallbackName(from: bundleID))
 
                 if bundleID.caseInsensitiveCompare(uuid) != .orderedSame {
                     zPatchStore.shared.registerContainer(bundleID: bundleID, containerPath: path)
@@ -183,7 +188,7 @@ private final class AppScannerVM: ObservableObject {
             DispatchQueue.main.async {
                 self.apps = result
                 self.isScanning = false
-                self.statusMessage = "Đã quét xong: \(result.count) mục"
+                self.statusMessage = "Đã quét xong: \(result.count) app"
             }
         }
     }
