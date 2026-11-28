@@ -86,7 +86,8 @@ enum MobileGestaltApplyTask {
                 storeCacheData.withUnsafeBytes { srcBuf in
                     guard let dst = dstBuf.baseAddress?.assumingMemoryBound(to: UInt8.self),
                           let src = srcBuf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
-                    for i in 0..<patchedData.count {
+                    let byteCount = min(dstBuf.count, srcBuf.count)
+                    for i in 0..<byteCount {
                         if dst[i] != src[i] {
                             dst[i] = src[i]
                             patchedBytes += 1
