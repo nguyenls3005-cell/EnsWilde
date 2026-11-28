@@ -95,7 +95,6 @@ struct ApplyTabView: View {
     @State private var statusLogs: [String] = [L("msg_apply_status_ready")]
     @State private var currentLine: String = L("msg_apply_status_ready")
     @State private var isApplyingUI: Bool = false
-    @State private var copiedLog: Bool = false
     @State private var applyTask: Task<Void, Never>?
 
     private var isApplying: Bool {
@@ -135,15 +134,6 @@ struct ApplyTabView: View {
         return .secondary
     }
 
-    private var fullLogString: String {
-        var lines = statusLogs
-        let globalText = GLOBAL_LOG.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !globalText.isEmpty {
-            lines.append(globalText)
-        }
-        return lines.joined(separator: "\n")
-    }
-
     var body: some View {
         NavigationStack {
             Form {
@@ -173,7 +163,7 @@ struct ApplyTabView: View {
                                 .controlSize(.small)
                                 .tint(Color(hex: userTintColorHex))
                         } else if isFailed {
-                            Image(systemName: "exclamationmark.triangle.fill")
+                            Image(systemName: "xmark.circle.fill")
                                 .font(.body)
                                 .foregroundStyle(.red)
                         } else if isSuccess {
@@ -195,34 +185,9 @@ struct ApplyTabView: View {
                     }
                     .padding(.vertical, 2)
                 } header: {
-                    HStack {
-                        Text(L("section_status"))
-                            .font(.headline)
-                            .textCase(nil)
-
-                        Spacer()
-
-                        Button {
-                            UIPasteboard.general.string = fullLogString
-                            withAnimation {
-                                copiedLog = true
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                                withAnimation {
-                                    copiedLog = false
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: copiedLog ? "checkmark" : "doc.on.doc")
-                                Text(copiedLog ? "Copied" : "Copy Log")
-                            }
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(copiedLog ? .green : .secondary)
-                            .textCase(nil)
-                        }
-                        .buttonStyle(.borderless)
-                    }
+                    Text(L("section_status"))
+                        .font(.headline)
+                        .textCase(nil)
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
@@ -243,10 +208,10 @@ struct ApplyTabView: View {
                 applyTask?.cancel()
             }
         }
-        .alert(L("alert_error"), isPresented: $showErrorAlert) {
+        .alert("Chạy không thành công", isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
         } message: {
-            Text(lastError ?? L("msg_error_unknown"))
+            Text("Chạy không thành công do: \(lastError ?? L("msg_error_unknown")). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram.")
         }
     }
 
@@ -262,12 +227,11 @@ struct ApplyTabView: View {
         guard !isApplying else { return }
 
         let startTime = Date()
-        let targetDuration: TimeInterval = 0.2
+        let targetDuration: TimeInterval = 1.0
         let startMsg = L("apply_starting")
         statusLogs = [startMsg]
-        currentLine = startMsg
+        currentLine = "Đang chạy..."
         isApplyingUI = true
-        GLOBAL_LOG.step(startMsg)
 
         applyTask?.cancel()
         applyTask = Task {
@@ -282,7 +246,11 @@ struct ApplyTabView: View {
                 onLogUpdate: { message in
                     Task { @MainActor in
                         self.statusLogs.append(message)
-                        self.currentLine = message
+                        if message == "Chạy không thành công" {
+                            self.currentLine = "Chạy không thành công"
+                        } else if !message.hasPrefix("Chi tiết lỗi:") {
+                            self.currentLine = message
+                        }
                         GLOBAL_LOG.step(message)
                     }
                 }
@@ -299,11 +267,10 @@ struct ApplyTabView: View {
                 isApplyingUI = false
 
                 if case .failed(let msg) = toolRunner.state {
-                    let errLine = "\(L("alert_error")): \(msg)"
+                    let failLine = "Chạy không thành công"
                     self.lastError = msg
-                    self.statusLogs.append(errLine)
-                    self.currentLine = errLine
-                    GLOBAL_LOG.error(msg)
+                    self.statusLogs.append(failLine)
+                    self.currentLine = failLine
                     self.showErrorAlert = true
                 } else if toolRunner.state == .success {
                     let doneLine = L("apply_done")

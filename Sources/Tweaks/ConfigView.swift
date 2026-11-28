@@ -188,18 +188,20 @@ struct ConfigView: View {
         }
     }
 
-    private func ensureConfigAccess() {
-        _ = wq.grantAccess(path: configDir, requireWrite: true)
+    @discardableResult
+    private func ensureConfigAccess() -> Bool {
+        let granted = wq.grantAccess(path: configDir, requireWrite: true)
         if !fm.fileExists(atPath: sharedDevConfigURL.path) {
             let dict: [String: Any] = ["LockScreenFootnote": ""]
             if let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .binary, options: 0) {
                 try? data.write(to: sharedDevConfigURL, options: .atomic)
             }
         }
+        return granted.0
     }
 
     private func doSetup() {
-        ensureConfigAccess()
+        _ = ensureConfigAccess()
         if justRestored { return }
         if let ftDict = NSDictionary(contentsOf: sharedDevConfigURL) as? [String: Any],
            let diskFootnote = ftDict["LockScreenFootnote"] as? String, !diskFootnote.isEmpty {
@@ -220,7 +222,7 @@ struct ConfigView: View {
     }
 
     private func writeConfigFiles(footnote: String, isSupervised: Bool, organization: String) {
-        ensureConfigAccess()
+        _ = ensureConfigAccess()
         let ftDict: [String: Any] = ["LockScreenFootnote": footnote]
         if let ftData = try? PropertyListSerialization.data(fromPropertyList: ftDict, format: .binary, options: 0) {
             try? ftData.write(to: sharedDevConfigURL, options: .atomic)
@@ -248,6 +250,7 @@ struct ConfigView: View {
         toolStore.configTweaksEnabled = true
         writeConfigFiles(footnote: footnoteText, isSupervised: supervised, organization: orgName)
         showApplyTab = true
+        GLOBAL_LOG.beginNewSession(header: "=== Config Tweaks ===")
         GLOBAL_LOG.success("Đã lưu Config Tweaks.")
         saveAlertMessage = L("config_saved_message")
         showSaveAlert = true
@@ -266,6 +269,7 @@ struct ConfigView: View {
         writeConfigFiles(footnote: "", isSupervised: false, organization: "")
         showApplyTab = true
         navigateAfterAlert = true
+        GLOBAL_LOG.beginNewSession(header: "=== Reset Config Tweaks ===")
         GLOBAL_LOG.step("Đã đặt lại Config Tweaks & xoá footnote.")
         saveAlertMessage = L("reset_tweaks_info")
         showSaveAlert = true

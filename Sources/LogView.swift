@@ -5,12 +5,36 @@ import UIKit
 
 final class LogModel: ObservableObject {
     @Published var text = ""
+    @Published var sessionID = UUID()
+
+    /// Bắt đầu một log mới cho từng lần chạy, không ghi đè/nối tiếp log cũ.
+    func beginNewSession(header: String? = nil) {
+        let startAction = {
+            self.sessionID = UUID()
+            self.text = ""
+            if let header, !header.isEmpty {
+                self.append(header)
+            }
+        }
+        if Thread.isMainThread {
+            startAction()
+        } else {
+            DispatchQueue.main.sync(execute: startAction)
+        }
+    }
 
     func append(_ msg: String) {
-        if msg.hasSuffix("\n") {
-            text += msg
+        let writeAction = {
+            if msg.hasSuffix("\n") {
+                self.text += msg
+            } else {
+                self.text += msg + "\n"
+            }
+        }
+        if Thread.isMainThread {
+            writeAction()
         } else {
-            text += msg + "\n"
+            DispatchQueue.main.async(execute: writeAction)
         }
     }
 
@@ -27,7 +51,14 @@ final class LogModel: ObservableObject {
     }
 
     func clear() {
-        text = ""
+        let clearAction = {
+            self.text = ""
+        }
+        if Thread.isMainThread {
+            clearAction()
+        } else {
+            DispatchQueue.main.async(execute: clearAction)
+        }
     }
 
     func exportToDocuments(fileName: String = "EnsWilde-Log.txt") throws -> URL {
@@ -55,14 +86,19 @@ struct LogView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                Text(GLOBAL_LOG.text)
+                Text(log.text)
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
 
-                Spacer().id(0)
+                Spacer().id("bottom")
+            }
+            .onChange(of: log.text) { _ in
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
             }
             .onAppear {
                 guard !ran else { return }
@@ -76,9 +112,7 @@ struct LogView: View {
                         if !Utils.udid.isEmpty, logString.contains(Utils.udid) {
                             logString = logString.replacingOccurrences(of: Utils.udid, with: "<redacted>")
                         }
-
                         log.append(logString)
-                        proxy.scrollTo(0)
                     }
                 }
             }
@@ -88,12 +122,12 @@ struct LogView: View {
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
                 Button(L("log_clear")) {
-                    GLOBAL_LOG.clear()
+                    log.clear()
                 }
 
                 Button(L("log_export_txt")) {
                     do {
-                        let url = try GLOBAL_LOG.exportToDocuments()
+                        let url = try log.exportToDocuments()
                         exportURL = url
                         exportError = nil
                         showShareSheet = true

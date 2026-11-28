@@ -52,6 +52,7 @@ struct DocumentPickerView: UIViewControllerRepresentable {
 struct SettingsView: View {
     @ObservedObject var toolStore: ToolStore
     @ObservedObject private var localizationManager = LocalizationManager.shared
+    @ObservedObject private var globalLog = GLOBAL_LOG
     @AppStorage("PairingFile") private var pairingFile: String?
     @State private var showPairingPicker = false
     @State private var showOnDevicePairing = false
@@ -66,6 +67,7 @@ struct SettingsView: View {
     @State private var isTestingWrite = false
     @State private var writeTestLog = ""
     @State private var writeTestSuccess: Bool? = nil
+    @State private var copiedLog: Bool = false
 
     private var tintOptions: [(name: String, hex: String)] {
         [
@@ -76,6 +78,19 @@ struct SettingsView: View {
             (L("color_green"),  "#a6d189"),
             (L("color_blue"),   "#8caaee"),
         ]
+    }
+
+    private var combinedLogForCopy: String {
+        var sections: [String] = []
+        let mainLog = globalLog.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !mainLog.isEmpty {
+            sections.append(mainLog)
+        }
+        let testLog = writeTestLog.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !testLog.isEmpty {
+            sections.append("--- Bad Query Test Log ---\n\(testLog)")
+        }
+        return sections.joined(separator: "\n\n")
     }
 
     var body: some View {
@@ -106,7 +121,7 @@ struct SettingsView: View {
                 }
             }
         }
-        .alert(L("pairing_error_title"), isPresented: $showErrorAlert) {
+        .alert("Chạy không thành công", isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
         } message: {
             Text(errorMessage)
@@ -114,7 +129,7 @@ struct SettingsView: View {
     }
 
     private var runTestSection: some View {
-        Section(header: Text(L("settings_run_test_header"))) {
+        Section {
             Button(action: runMobileGestaltTest) {
                 HStack {
                     Label(L("settings_run_test_btn"), systemImage: "doc.badge.plus")
@@ -134,6 +149,35 @@ struct SettingsView: View {
                 }
                 .frame(maxHeight: 250)
             }
+        } header: {
+            HStack {
+                Text(L("settings_run_test_header"))
+                    .font(.headline)
+                    .textCase(nil)
+
+                Spacer()
+
+                Button {
+                    UIPasteboard.general.string = combinedLogForCopy
+                    withAnimation {
+                        copiedLog = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        withAnimation {
+                            copiedLog = false
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: copiedLog ? "checkmark" : "doc.on.doc")
+                        Text(copiedLog ? "Copied" : "Copy Log")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(copiedLog ? .green : .secondary)
+                    .textCase(nil)
+                }
+                .buttonStyle(.borderless)
+            }
         }
     }
 
@@ -143,7 +187,7 @@ struct SettingsView: View {
                 do {
                     try RespringHelper.respring()
                 } catch {
-                    errorMessage = error.localizedDescription
+                    errorMessage = "Chạy không thành công do: \(error.localizedDescription). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                     showErrorAlert = true
                 }
             } label: {
@@ -208,7 +252,7 @@ struct SettingsView: View {
 
     private var appInfoSection: some View {
         Section(header: Text(L("settings_app_info"))) {
-            HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v3.1.3 Beta 3").font(.footnote).foregroundStyle(.secondary) }
+            HStack { Label("EnsWilde", systemImage: "sparkles"); Spacer(); Text("v3.1.3 Beta 4").font(.footnote).foregroundStyle(.secondary) }
             HStack { Label(L("app_ios"), systemImage: "iphone"); Spacer(); Text(UIDevice.current.systemVersion).font(.footnote).foregroundStyle(.secondary) }
             HStack { Label(L("app_device"), systemImage: "apps.iphone"); Spacer(); Text(settingsDeviceModelName()).font(.footnote).foregroundStyle(.secondary) }
             Text(L("app_info_footer")).font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
@@ -218,7 +262,9 @@ struct SettingsView: View {
     private func runMobileGestaltTest() {
         isTestingWrite = true
         writeTestSuccess = nil
+        GLOBAL_LOG.beginNewSession(header: "=== Bad Query Test Log ===")
         writeTestLog = "[*] Starting permission test (Native MCM & fsgetpath)...\n"
+        GLOBAL_LOG.step("[*] Starting permission test (Native MCM & fsgetpath)...")
 
         let work = DispatchWorkItem {
             let testFile = MobileGestaltApplyTask.onDeviceMGPath
@@ -226,7 +272,12 @@ struct SettingsView: View {
             let runtimeGroups = self.getAllRuntimeAppGroups()
             let targetDir = "/private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobilegestaltcache/Library/Caches"
 
-            DispatchQueue.main.async { self.writeTestLog += "📱 Runtime Groups: \(runtimeGroups.joined(separator: ", "))\n" }
+            DispatchQueue.main.async {
+                let line = "📱 Runtime Groups: \(runtimeGroups.joined(separator: ", "))"
+                self.writeTestLog += line + "\n"
+                GLOBAL_LOG.step(line)
+            }
+            Thread.sleep(forTimeInterval: 1.0)
 
             var finalHandle: Int64 = -1
             var lastError = ""
@@ -234,44 +285,78 @@ struct SettingsView: View {
             for group in runtimeGroups {
                 if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) == nil { continue }
 
-                DispatchQueue.main.async { self.writeTestLog += "[*] Try requesting permission via App Group: \(group)...\n" }
+                DispatchQueue.main.async {
+                    let line = "[*] Try requesting permission via App Group: \(group)..."
+                    self.writeTestLog += line + "\n"
+                    GLOBAL_LOG.step(line)
+                }
 
                 let (handle, error) = bridge.grantAccess(targetPath: targetDir, appGroupID: group)
 
                 if handle > 0 {
                     finalHandle = handle
-                    DispatchQueue.main.async { self.writeTestLog += "✅ Success: \(error)\n" }
+                    DispatchQueue.main.async {
+                        let line = "✅ Success: \(error)"
+                        self.writeTestLog += line + "\n"
+                        GLOBAL_LOG.success(line)
+                    }
                     break
                 } else {
                     lastError = error
-                    DispatchQueue.main.async { self.writeTestLog += " ⚠️ Failure: \(error)\n" }
+                    DispatchQueue.main.async {
+                        let line = " ⚠️ Failure: \(error)"
+                        self.writeTestLog += line + "\n"
+                        GLOBAL_LOG.error(line)
+                    }
                 }
             }
 
             if finalHandle <= 0 {
-                DispatchQueue.main.async { self.writeTestLog += "[*] Fallback: Try fsgetpath inode traversal...\n" }
+                DispatchQueue.main.async {
+                    let line = "[*] Fallback: Try fsgetpath inode traversal..."
+                    self.writeTestLog += line + "\n"
+                    GLOBAL_LOG.step(line)
+                }
                 let (handle, error) = bridge.grantViaFsgetpath(targetFile: testFile)
                 if handle > 0 {
                     finalHandle = handle
-                    DispatchQueue.main.async { self.writeTestLog += "✅ Success: \(error)\n" }
+                    DispatchQueue.main.async {
+                        let line = "✅ Success: \(error)"
+                        self.writeTestLog += line + "\n"
+                        GLOBAL_LOG.success(line)
+                    }
                 } else {
                     lastError = error
-                    DispatchQueue.main.async { self.writeTestLog += " ⚠️ Failure: \(error)\n" }
+                    DispatchQueue.main.async {
+                        let line = " ⚠️ Failure: \(error)"
+                        self.writeTestLog += line + "\n"
+                        GLOBAL_LOG.error(line)
+                    }
                 }
             }
 
             guard finalHandle > 0 else {
                 DispatchQueue.main.async {
-                    self.writeTestLog += "\n❌ ALL METHODS HAVE FAILED!\n"
-                    self.writeTestLog += "👉 The Final Error: \(lastError)\n"
-                    self.writeTestLog += "👉 DIAGNOSE:\n"
-                    self.writeTestLog += "   - Fake certificate signing or an XPC-related flaw in the AirliftFFI framework.\n"
-                    self.writeTestSuccess = false; self.isTestingWrite = false
+                    let failMsg = "Chạy không thành công"
+                    let detail = lastError.isEmpty ? "Không cấp được quyền truy cập file" : lastError
+                    self.writeTestLog += "\n❌ \(failMsg): \(detail)\n"
+                    GLOBAL_LOG.error(failMsg)
+                    GLOBAL_LOG.error("Chi tiết lỗi: \(detail)")
+                    self.writeTestSuccess = false
+                    self.isTestingWrite = false
+                    self.errorMessage = "Chạy không thành công do: \(detail). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
+                    self.showErrorAlert = true
                 }
                 return
             }
 
-            DispatchQueue.main.async { self.writeTestLog += "✅ Token acquired! Testing file writing...\n" }
+            DispatchQueue.main.async {
+                let line = "✅ Token acquired! Testing file writing..."
+                self.writeTestLog += line + "\n"
+                GLOBAL_LOG.step(line)
+            }
+            Thread.sleep(forTimeInterval: 1.0)
+
             do {
                 let originalData = try Data(contentsOf: URL(fileURLWithPath: testFile))
                 var st = stat()
@@ -291,14 +376,24 @@ struct SettingsView: View {
                 _ = fcntl(fd, F_FULLFSYNC)
                 bridge.releaseAll()
                 DispatchQueue.main.async {
-                    self.writeTestLog += "✅ FILE WRITE SUCCESSFULLY!\n"
-                    self.writeTestSuccess = true; self.isTestingWrite = false
+                    let line = "✅ FILE WRITE SUCCESSFULLY!"
+                    self.writeTestLog += line + "\n"
+                    GLOBAL_LOG.success(line)
+                    self.writeTestSuccess = true
+                    self.isTestingWrite = false
                 }
             } catch {
                 bridge.releaseAll()
                 DispatchQueue.main.async {
-                    self.writeTestLog += "❌ WRITE ERROR: \(error.localizedDescription)\n"
-                    self.writeTestSuccess = false; self.isTestingWrite = false
+                    let failMsg = "Chạy không thành công"
+                    let detail = error.localizedDescription
+                    self.writeTestLog += "❌ \(failMsg): \(detail)\n"
+                    GLOBAL_LOG.error(failMsg)
+                    GLOBAL_LOG.error("Chi tiết lỗi: \(detail)")
+                    self.writeTestSuccess = false
+                    self.isTestingWrite = false
+                    self.errorMessage = "Chạy không thành công do: \(detail). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
+                    self.showErrorAlert = true
                 }
             }
         }
@@ -342,7 +437,7 @@ struct SettingsView: View {
             try data.write(to: destURL)
             pairingFile = url.lastPathComponent
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Chạy không thành công do: \(error.localizedDescription). Hãy qua Cài đặt -> Chạy thử nghiệm / Worse Query và sao chép log rồi gửi lên nhóm Telegram."
             showErrorAlert = true
         }
     }

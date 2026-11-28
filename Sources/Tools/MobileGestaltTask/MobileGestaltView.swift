@@ -228,7 +228,7 @@ struct MobileGestaltView: View {
         }
         .navigationTitle(L("tool_mobile_gestalt"))
         .navigationBarTitleDisplayMode(.inline)
-        .alert(L("alert_message_title"), isPresented: $showErrorAlert) {
+        .alert("Chạy không thành công", isPresented: $showErrorAlert) {
             Button(L("alert_ok")) {}
         } message: {
             Text(lastError ?? L("msg_error_unknown"))
@@ -331,10 +331,13 @@ struct MobileGestaltView: View {
     private func saveChanges() {
         guard !taskRunning else { return }
         taskRunning = true
+        GLOBAL_LOG.beginNewSession(header: "=== Lưu MobileGestalt ===")
         GLOBAL_LOG.step("Đang lưu MobileGestalt...")
 
         Task {
             do {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+
                 let ce = store.cacheExtra
                 let targetProductType = productType
                 let chosenRegionCode = selectedRegionCode
@@ -427,8 +430,9 @@ struct MobileGestaltView: View {
             } catch {
                 await MainActor.run {
                     taskRunning = false
-                    GLOBAL_LOG.error("Lỗi: \(error.localizedDescription)")
-                    lastError = L("mg_save_failed") + " \(error.localizedDescription)"
+                    GLOBAL_LOG.error("Chạy không thành công")
+                    GLOBAL_LOG.error("Chi tiết lỗi: \(error.localizedDescription)")
+                    lastError = "Chạy không thành công do: \(error.localizedDescription). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                     showErrorAlert = true
                 }
             }
@@ -438,10 +442,13 @@ struct MobileGestaltView: View {
     private func resetOriginal() {
         guard !taskRunning else { return }
         taskRunning = true
+        GLOBAL_LOG.beginNewSession(header: "=== Khôi phục MobileGestalt ===")
         GLOBAL_LOG.step("Đang khôi phục MobileGestalt gốc...")
 
         Task {
             do {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+
                 try await MobileGestaltApplyTask.restoreGestalt { log in
                     print(log)
                 }
@@ -461,8 +468,9 @@ struct MobileGestaltView: View {
             } catch {
                 await MainActor.run {
                     taskRunning = false
-                    GLOBAL_LOG.error("Lỗi: \(error.localizedDescription)")
-                    lastError = L("mg_revert_failed") + " \(error.localizedDescription)"
+                    GLOBAL_LOG.error("Chạy không thành công")
+                    GLOBAL_LOG.error("Chi tiết lỗi: \(error.localizedDescription)")
+                    lastError = "Chạy không thành công do: \(error.localizedDescription). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                     showErrorAlert = true
                 }
             }

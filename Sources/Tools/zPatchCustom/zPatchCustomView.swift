@@ -104,8 +104,10 @@ struct zPatchCustomView: View {
                     handleImportedEns(url)
                 },
                 onError: { msg in
-                    GLOBAL_LOG.error("Import .ens lỗi: \(msg)")
-                    errorMessage = msg
+                    GLOBAL_LOG.beginNewSession(header: "=== Import .ens ===")
+                    GLOBAL_LOG.error("Chạy không thành công")
+                    GLOBAL_LOG.error("Chi tiết lỗi: \(msg)")
+                    errorMessage = "Chạy không thành công do: \(msg). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                     showErrorAlert = true
                 }
             )
@@ -117,17 +119,51 @@ struct zPatchCustomView: View {
         } message: {
             Text(popupMessage)
         }
-        .alert("Error", isPresented: $showErrorAlert) {
+        .alert("Chạy không thành công", isPresented: $showErrorAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage)
         }
     }
 
+    /// Chuẩn hóa đường dẫn tương đối để tránh bị ghép trùng lặp như `Library/Cookies/Library/Cookies/...`
+    private func sanitizeRelativeDest(_ raw: String) -> String {
+        var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while cleaned.hasPrefix("/") {
+            cleaned.removeFirst()
+        }
+        let prefixes = [
+            "Library/Cookies/Library/Cookies/",
+            "Library/Preferences/Library/Preferences/",
+            "Documents/Documents/"
+        ]
+        for p in prefixes where cleaned.hasPrefix(p) {
+            cleaned.removeFirst(p.count - (p.hasSuffix("Library/Cookies/") ? "Library/Cookies/".count : 0))
+            break
+        }
+        let parts = cleaned.components(separatedBy: "/")
+        var deduped: [String] = []
+        var i = 0
+        while i < parts.count {
+            if i + 3 < parts.count,
+               parts[i] == parts[i + 2],
+               parts[i + 1] == parts[i + 3] {
+                deduped.append(parts[i])
+                deduped.append(parts[i + 1])
+                i += 4
+            } else {
+                deduped.append(parts[i])
+                i += 1
+            }
+        }
+        return deduped.joined(separator: "/")
+    }
+
     private func applySaveChange() {
         guard !isBusy else { return }
         isBusy = true
         let enabledSnapshot = draftEnabled
+        GLOBAL_LOG.beginNewSession(header: "=== Save Change zPatch Custom ===")
         GLOBAL_LOG.step("Đang lưu thay đổi zPatch Custom...")
 
         patchStore.saveChange(enableTweak: enabledSnapshot)
@@ -145,6 +181,7 @@ struct zPatchCustomView: View {
     private func handleImportedEns(_ url: URL) {
         guard !isBusy else { return }
         isBusy = true
+        GLOBAL_LOG.beginNewSession(header: "=== Import .ens ===")
         GLOBAL_LOG.step("Đang import gói .ens: \(url.lastPathComponent)...")
 
         let accessed = url.startAccessingSecurityScopedResource()
@@ -174,10 +211,11 @@ struct zPatchCustomView: View {
             GLOBAL_LOG.success(msg)
             showSavedPopup = true
         case .failure(let err):
-            let errMsg = "Import .ens lỗi: \(err.localizedDescription)"
+            let detail = err.localizedDescription
             isBusy = false
-            errorMessage = errMsg
-            GLOBAL_LOG.error(errMsg)
+            errorMessage = "Chạy không thành công do: \(detail). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
+            GLOBAL_LOG.error("Chạy không thành công")
+            GLOBAL_LOG.error("Chi tiết lỗi: \(detail)")
             showErrorAlert = true
         }
     }
@@ -185,6 +223,7 @@ struct zPatchCustomView: View {
     private func requestRevertPatch(_ patch: zPatchItem) {
         guard !isBusy else { return }
         isBusy = true
+        GLOBAL_LOG.beginNewSession(header: "=== Revert Patch ===")
         GLOBAL_LOG.step("Đang đánh dấu Revert cho \(patch.bundleID)...")
 
         patchStore.requestRevert(patch)
@@ -300,6 +339,7 @@ struct zPatchCustomView: View {
     }
 
     private func triggerExport(for patch: zPatchItem, appName: String, icon: UIImage?) {
+        GLOBAL_LOG.beginNewSession(header: "=== Export .ens ===")
         GLOBAL_LOG.step("Đang xuất file .ens cho \(patch.bundleID)...")
         Task.detached(priority: .userInitiated) {
             let result = zPatchStore.shared.exportEnsFile(for: patch, appName: appName, icon: icon)
@@ -308,16 +348,18 @@ struct zPatchCustomView: View {
                 case .success(let url):
                     guard FileManager.default.fileExists(atPath: url.path) else {
                         let msg = "Không tìm thấy file .ens vừa xuất."
-                        GLOBAL_LOG.error(msg)
-                        errorMessage = msg
+                        GLOBAL_LOG.error("Chạy không thành công")
+                        GLOBAL_LOG.error("Chi tiết lỗi: \(msg)")
+                        errorMessage = "Chạy không thành công do: \(msg). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                         showErrorAlert = true
                         return
                     }
                     GLOBAL_LOG.success("Đã xuất file .ens: \(url.lastPathComponent)")
                     presentActivityVC(for: url)
                 case .failure(let err):
-                    GLOBAL_LOG.error("Xuất .ens lỗi: \(err.localizedDescription)")
-                    errorMessage = err.localizedDescription
+                    GLOBAL_LOG.error("Chạy không thành công")
+                    GLOBAL_LOG.error("Chi tiết lỗi: \(err.localizedDescription)")
+                    errorMessage = "Chạy không thành công do: \(err.localizedDescription). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                     showErrorAlert = true
                 }
             }
@@ -327,7 +369,7 @@ struct zPatchCustomView: View {
     private func presentActivityVC(for fileURL: URL) {
         DispatchQueue.main.async {
             guard let topVC = topMostViewController() else {
-                errorMessage = "Không mở được bảng chia sẻ."
+                errorMessage = "Chạy không thành công do: Không mở được bảng chia sẻ. Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                 showErrorAlert = true
                 return
             }
@@ -394,9 +436,10 @@ struct zPatchCustomView: View {
                         .autocorrectionDisabled()
 
                     if !newBundleID.isEmpty || !newRelativeDest.isEmpty {
+                        let cleanRel = sanitizeRelativeDest(newRelativeDest)
                         let preview = zPatchItem(
                             bundleID: newBundleID,
-                            relativeDestPath: newRelativeDest,
+                            relativeDestPath: cleanRel,
                             sourcePath: newSourcePath
                         ).fastPreviewPath
                         Text(preview)
@@ -449,7 +492,7 @@ struct zPatchCustomView: View {
                         importSourceURL(url)
                     },
                     onError: { msg in
-                        errorMessage = msg
+                        errorMessage = "Chạy không thành công do: \(msg). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
                         showErrorAlert = true
                     }
                 )
@@ -488,15 +531,16 @@ struct zPatchCustomView: View {
             newSourcePath = destURL.path
             GLOBAL_LOG.step("Đã chọn file nguồn: \(safeName)")
         } catch {
-            GLOBAL_LOG.error("Không thể import file: \(error.localizedDescription)")
-            errorMessage = "Không thể import file: \(error.localizedDescription)"
+            GLOBAL_LOG.error("Chạy không thành công")
+            GLOBAL_LOG.error("Chi tiết lỗi: \(error.localizedDescription)")
+            errorMessage = "Chạy không thành công do: \(error.localizedDescription). Hãy qua Cài đặt -> Chạy thử nghiệm / Bad Query và sao chép log rồi gửi lên nhóm Telegram."
             showErrorAlert = true
         }
     }
 
     private func savePatch() {
         let cleanBundle = zPatchItem.normalizedBundleID(newBundleID)
-        let cleanRel = newRelativeDest.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanRel = sanitizeRelativeDest(newRelativeDest)
         let srcPath = newSourcePath
 
         guard !cleanBundle.isEmpty, !cleanRel.isEmpty, !srcPath.isEmpty else { return }
@@ -541,7 +585,7 @@ struct zPatchCustomView: View {
         newBundleID = patch.bundleID
         selectedAppName = meta.name
         selectedAppIcon = meta.icon
-        newRelativeDest = patch.relativeDestPath
+        newRelativeDest = sanitizeRelativeDest(patch.relativeDestPath)
         newSourcePath = patch.sourcePath
         showAddSheet = true
     }
