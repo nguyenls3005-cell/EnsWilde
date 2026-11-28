@@ -287,9 +287,11 @@ private enum AppScannerEngine {
             }
             if !rec.dataContainerPath.isEmpty {
                 indexPath(rec.dataContainerPath, bid: bid)
-            } else if let (_, fastContainer) = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid),
-                      let fastContainer, !fastContainer.isEmpty {
-                indexPath(fastContainer, bid: bid)
+            } else {
+                let lookup = CSStoreEngine.shared.lookupAppContainer(forBundleID: bid)
+                if lookup.0, let fastContainer = lookup.1, !fastContainer.isEmpty {
+                    indexPath(fastContainer, bid: bid)
+                }
             }
         }
 
