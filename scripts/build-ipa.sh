@@ -134,7 +134,7 @@ ruby -e '
   end
 
   # --- XỬ LÝ WQ FILES (TỰ ĐỘNG ADD VÀO BUILD) ---
-  wq_dir_path = File.expand_path("source/tool/zPachCustom")
+  wq_dir_path = File.expand_path("source/tool/zPatchCustom") # Đã sửa thành zPatchCustom
   if Dir.exist?(wq_dir_path)
     puts "==> Đang thêm các file WQ từ #{wq_dir_path} vào build..."
     
@@ -157,6 +157,8 @@ ruby -e '
         puts "    -> Đã thêm #{file_name} vào build"
       end
     end
+  else
+    puts "⚠️ CẢNH BÁO: Không tìm thấy thư mục source/tool/zPatchCustom. Bỏ qua WQ files."
   end
   # ------------------------------------------------
 
@@ -169,8 +171,8 @@ ruby -e '
     hdr_paths = Array(config.build_settings["HEADER_SEARCH_PATHS"] || ["$(inherited)"])
     hdr_paths = hdr_paths.reject { |p| p.to_s =~ /simulator/i }
     hdr_paths << abs_hdr_dir
-    # Thêm đường dẫn header của WQ
-    hdr_paths << File.expand_path("source/tool/zPachCustom")
+    # Thêm đường dẫn header của WQ để Bridging Header có thể import trực tiếp
+    hdr_paths << wq_dir_path if Dir.exist?(wq_dir_path)
     config.build_settings["HEADER_SEARCH_PATHS"] = hdr_paths.uniq
 
     ldflags = ["$(inherited)"]
@@ -212,7 +214,10 @@ rm -rf "$BUILD_DIR/Payload" && mkdir -p "$BUILD_DIR/Payload"
 cp -R "$APP_PATH" "$BUILD_DIR/Payload/"
 rm -rf "$BUILD_DIR/Payload/${APP_BASENAME}/_CodeSignature"
 
-# Nén thành file IPA chuẩn (bản chất IPA là 1 file zip chứa thư mục Payload)
+# Nén thành file IPA chuẩn
 (cd "$BUILD_DIR" && zip -qry "$IPA_PATH" Payload)
+
+# Dọn dẹp rác
+rm -rf "$BUILD_DIR/Payload"
 
 echo "🔥 Done: Unsigned IPA tại $IPA_PATH"

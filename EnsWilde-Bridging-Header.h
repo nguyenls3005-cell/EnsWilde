@@ -48,6 +48,6 @@ NSArray *pathleak(NSString *filter, uint64_t max_inode);
 NSDictionary<NSString *, id> * _Nullable MGCopyLoadedMobileGestaltImage(void);
 
 // --- WQ LAUNCH SERVICES INTEGRATION ---
-#import "source/tool/zPachCustom/WQLaunchServices.h"
-#import "source/tool/zPachCustom/WQAccess.h"
-#import "source/tool/zPachCustom/WQLocalization.h"
+#import "WQLaunchServices.h"
+#import "WQAccess.h"
+#import "WQLocalization.h"
