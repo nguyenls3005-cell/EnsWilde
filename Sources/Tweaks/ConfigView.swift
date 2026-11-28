@@ -1,5 +1,29 @@
 import SwiftUI
 
+private struct QuickActionBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(.white)
+            .background(Color.white.opacity(0.22))
+            .clipShape(Circle())
+    }
+}
+
+private struct HeaderLabel: View {
+    let text: String
+    let symbol: String
+
+    init(_ text: String, symbol: String) {
+        self.text = text
+        self.symbol = symbol
+    }
+
+    var body: some View {
+        Label(text, systemImage: symbol)
+            .font(.subheadline.bold())
+    }
+}
+
 struct ConfigView: View {
     @ObservedObject var toolStore: ToolStore
     @AppStorage("ShowApplyTab") private var showApplyTab: Bool = false
@@ -165,7 +189,7 @@ struct ConfigView: View {
     }
 
     private func ensureConfigAccess() {
-        _ = bq.grantAccess(atPath: configDir)
+        _ = wq.grantAccess(path: configDir, requireWrite: true)
         if !fm.fileExists(atPath: sharedDevConfigURL.path) {
             let dict: [String: Any] = ["LockScreenFootnote": ""]
             if let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .binary, options: 0) {
