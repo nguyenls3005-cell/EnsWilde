@@ -14,6 +14,18 @@ final class LogModel: ObservableObject {
         }
     }
 
+    func step(_ msg: String) {
+        append("[STEP] \(msg)")
+    }
+
+    func success(_ msg: String) {
+        append("[SUCCESS] \(msg)")
+    }
+
+    func error(_ msg: String) {
+        append("[ERROR] \(msg)")
+    }
+
     func clear() {
         text = ""
     }

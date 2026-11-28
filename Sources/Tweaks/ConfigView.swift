@@ -16,10 +16,6 @@ struct ConfigView: View {
         Form {
             Section(header: Text(L("config_tweaks_title"))) {
                 Toggle(L("config_enable_tweak"), isOn: $toolStore.configTweaksEnabled)
-
-                UniversalLogView()
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                    .listRowBackground(Color.clear)
             }
 
             Section(header: Text(L("config_lock_screen_footnote"))) {

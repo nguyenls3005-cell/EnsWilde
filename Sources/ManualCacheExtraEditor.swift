@@ -185,10 +185,6 @@ struct ManualCacheExtraEditorView: View {
                     .onChange(of: manualCacheEditorEnabled) { isEnabled in
                         if !isEnabled { showApplyTab = false }
                     }
-
-                UniversalLogView()
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                    .listRowBackground(Color.clear)
             }
 
             Section(header: Text(L("manual_editor_fields"))) {

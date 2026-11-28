@@ -80,10 +80,24 @@ struct ApplyTabView: View {
     @State private var showErrorAlert = false
     @State private var lastError: String?
     @State private var statusLogs: [String] = [L("msg_apply_status_ready")]
+    @State private var currentLine: String = L("msg_apply_status_ready")
+    @State private var isApplyingUI: Bool = false
+    @State private var copiedLog: Bool = false
+    @State private var applyTask: Task<Void, Never>?
 
     private var isApplying: Bool {
+        if isApplyingUI { return true }
         if case .running = toolRunner.state { return true }
         return false
+    }
+
+    private var isFailed: Bool {
+        if case .failed = toolRunner.state { return true }
+        return false
+    }
+
+    private var isSuccess: Bool {
+        !isApplying && toolRunner.state == .success
     }
 
     private var enabledTweaks: [(String, String)] {
@@ -99,6 +113,23 @@ struct ApplyTabView: View {
             list.append(("zPatch Custom", "wrench.and.screwdriver"))
         }
         return list
+    }
+
+    private var statusTextColor: Color {
+        if isFailed || currentLine.hasPrefix("❌") { return .red }
+        if isSuccess || currentLine.hasPrefix("✅") { return .green }
+        if isApplying { return .primary }
+        return .secondary
+    }
+
+    private var fullLogString: String {
+        var lines = statusLogs
+        let globalText = GLOBAL_LOG.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !globalText.isEmpty {
+            lines.append("--- GLOBAL LOG ---")
+            lines.append(globalText)
+        }
+        return lines.joined(separator: "\n")
     }
 
     var body: some View {
@@ -124,23 +155,54 @@ struct ApplyTabView: View {
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
                 Section(header: Text(L("section_status")).font(.headline).textCase(nil)) {
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 4) {
-                                ForEach(statusLogs.indices, id: \.self) { index in
-                                    Text(statusLogs[index])
-                                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                                        .foregroundStyle(statusLogs[index].hasPrefix("✅") ? .green : (statusLogs[index].hasPrefix("❌") ? .red : .secondary))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                Spacer().id("bottom")
+                    HStack(spacing: 10) {
+                        if isApplying {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(Color(hex: userTintColorHex))
+                        } else if isFailed || currentLine.hasPrefix("❌") {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.red)
+                        } else if isSuccess || currentLine.hasPrefix("✅") {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.green)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(currentLine)
+                            .font(.system(size: 13, weight: .regular, design: .monospaced))
+                            .foregroundStyle(statusTextColor)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button {
+                            UIPasteboard.general.string = fullLogString
+                            withAnimation {
+                                copiedLog = true
                             }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                                withAnimation {
+                                    copiedLog = false
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: copiedLog ? "checkmark" : "doc.on.doc")
+                                Text(copiedLog ? "Copied" : "Copy Log")
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(copiedLog ? .green : .secondary)
+                            .fixedSize(horizontal: true, vertical: false)
                         }
-                        .frame(height: 150)
-                        .onChange(of: statusLogs.count) { _ in
-                            withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
-                        }
+                        .buttonStyle(.borderless)
                     }
+                    .padding(.vertical, 2)
                 }
                 .listRowBackground(Color(.secondarySystemGroupedBackground))
 
@@ -157,6 +219,9 @@ struct ApplyTabView: View {
             .onAppear {
                 patchStore.reloadFromStorage()
             }
+            .onDisappear {
+                applyTask?.cancel()
+            }
         }
         .alert(L("alert_error"), isPresented: $showErrorAlert) {
             Button(L("alert_ok"), role: .cancel) { }
@@ -165,10 +230,29 @@ struct ApplyTabView: View {
         }
     }
 
-    private func performApply() {
-        statusLogs = [L("apply_starting")]
+    private func pushStep(_ message: String) async {
+        await MainActor.run {
+            self.statusLogs.append(message)
+            self.currentLine = message
+            GLOBAL_LOG.step(message)
+        }
+        try? await Task.sleep(nanoseconds: 850_000_000)
+    }
 
-        Task.detached(priority: .userInitiated) {
+    private func performApply() {
+        guard !isApplying else { return }
+
+        let startMsg = L("apply_starting")
+        statusLogs = [startMsg]
+        currentLine = startMsg
+        isApplyingUI = true
+        GLOBAL_LOG.step(startMsg)
+
+        applyTask?.cancel()
+        applyTask = Task {
+            try? await Task.sleep(nanoseconds: 850_000_000)
+            guard !Task.isCancelled else { return }
+
             await toolRunner.applyAll(
                 isSystemReady: true,
                 store: toolStore,
@@ -176,25 +260,40 @@ struct ApplyTabView: View {
                 themeStore: themeStore,
                 featureFlagsStore: featureFlagsStore,
                 onLogUpdate: { message in
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         self.statusLogs.append(message)
+                        self.currentLine = message
+                        GLOBAL_LOG.step(message)
                     }
+                    Thread.sleep(forTimeInterval: 0.75)
                 }
             )
 
             await MainActor.run {
                 patchStore.reloadFromStorage()
+                isApplyingUI = false
+
                 if case .failed(let msg) = toolRunner.state {
-                    lastError = msg
-                    statusLogs.append("❌ \(L("alert_error")): \(msg)")
-                    showErrorAlert = true
+                    let errLine = "❌ \(L("alert_error")): \(msg)"
+                    self.lastError = msg
+                    self.statusLogs.append(errLine)
+                    self.currentLine = errLine
+                    GLOBAL_LOG.error(msg)
+                    self.showErrorAlert = true
                 } else if toolRunner.state == .success {
-                    statusLogs.append("✅ \(L("apply_done"))")
+                    let doneLine = "✅ \(L("apply_done"))"
+                    self.statusLogs.append(doneLine)
+                    self.currentLine = doneLine
+                    GLOBAL_LOG.success(L("apply_done"))
+                } else {
+                    if let last = self.statusLogs.last {
+                        self.currentLine = last
+                    }
                 }
             }
 
             if toolStore.soundRespringEnabled && toolRunner.state == .success {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await pushStep("Respringing device...")
                 try? RespringHelper.respring()
             }
         }

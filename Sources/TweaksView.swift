@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TweaksView: View {
-    @ObservedObject var toolStore: ToolStore // Thêm biến này để truyền vào ConfigView
+    @ObservedObject var toolStore: ToolStore
 
     var body: some View {
         NavigationStack {
@@ -13,7 +13,6 @@ struct TweaksView: View {
                         Label("MobileGestalt", systemImage: "cpu")
                     }
                     NavigationLink {
-                        // Đã truyền toolStore vào ConfigView để hết lỗi
                         ConfigView(toolStore: toolStore)
                     } label: {
                         Label("Config Tweaks", systemImage: "slider.horizontal.3")

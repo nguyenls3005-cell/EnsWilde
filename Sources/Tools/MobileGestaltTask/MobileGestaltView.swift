@@ -62,10 +62,6 @@ struct MobileGestaltView: View {
                     .onChange(of: toolStore.replaceMobileGestaltEnabled) { isEnabled in
                         if !isEnabled { showApplyTab = false }
                     }
-
-                UniversalLogView()
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                    .listRowBackground(Color.clear)
             }
 
             Section(header: Text(L("section_device_subtype"))) {
@@ -496,7 +492,7 @@ struct MobileGestaltView: View {
         do {
             if FileManager.default.fileExists(atPath: liveURL.path) {
                 try? FileManager.default.removeItem(at: modMGURL)
-                try FileManager.default.copyItem(at: liveURL, to: modMGURL)
+                try? FileManager.default.copyItem(at: liveURL, to: modMGURL)
             } else if !FileManager.default.fileExists(atPath: modMGURL.path) {
                 try FileManager.default.copyItem(at: origMGURL, to: modMGURL)
             }

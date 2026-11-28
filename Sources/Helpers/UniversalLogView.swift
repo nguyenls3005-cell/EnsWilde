@@ -61,6 +61,12 @@ extension LogModel {
 
 struct UniversalLogView: View {
     @ObservedObject private var log = GLOBAL_LOG
+    var statusText: String? = nil
+    var isRunning: Bool = false
+    var isSuccess: Bool = false
+    var isError: Bool = false
+    var allLogText: String? = nil
+
     @State private var copied = false
 
     var body: some View {
@@ -68,14 +74,14 @@ struct UniversalLogView: View {
             statusIcon
 
             Text(displayText)
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(textColor)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                UIPasteboard.general.string = log.text
+                UIPasteboard.general.string = combinedLogText()
                 withAnimation {
                     copied = true
                 }
@@ -85,63 +91,69 @@ struct UniversalLogView: View {
                     }
                 }
             } label: {
-                Image(systemName: copied ? "checkmark.doc.on.clipboard" : "doc.on.doc")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(copied ? .green : .secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    Text(copied ? "Copied" : "Copy Log")
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(copied ? .green : .secondary)
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .buttonStyle(.plain)
-            .disabled(log.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(.borderless)
+            .disabled(combinedLogText().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
+        .padding(.vertical, 2)
     }
 
-    private var currentState: UniversalLogState {
-        UniversalLogStore.state
+    private func combinedLogText() -> String {
+        let gText = log.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let extra = (allLogText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !gText.isEmpty && !extra.isEmpty && !gText.contains(extra) {
+            return gText + "\n" + extra
+        }
+        return !gText.isEmpty ? gText : extra
     }
 
     private var displayText: String {
+        if let custom = statusText?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+            return custom
+        }
         let line = UniversalLogStore.currentLine.trimmingCharacters(in: .whitespacesAndNewlines)
         if !line.isEmpty {
             return line
         }
         let fallback = log.latestLine
-        return fallback.isEmpty ? "Sẵn sàng" : fallback
+        return fallback.isEmpty ? "Ready to apply." : fallback
     }
 
     private var textColor: Color {
-        switch currentState {
-        case .idle:
-            return .secondary
-        case .running, .success:
-            return .primary
-        case .error:
+        if isError || UniversalLogStore.state == .error {
             return .red
         }
+        if isRunning || UniversalLogStore.state == .running || isSuccess || UniversalLogStore.state == .success {
+            return .primary
+        }
+        return .secondary
     }
 
     @ViewBuilder
     private var statusIcon: some View {
-        switch currentState {
-        case .idle:
-            Image(systemName: "terminal")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .running:
+        if isRunning || UniversalLogStore.state == .running {
             ProgressView()
                 .controlSize(.small)
-        case .success:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption)
-                .foregroundStyle(.green)
-        case .error:
+                .tint(Color(hex: UserDefaults.standard.string(forKey: "EnsWilde.userTintColor") ?? "#ef9f76"))
+        } else if isError || UniversalLogStore.state == .error {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.red)
+        } else if isSuccess || UniversalLogStore.state == .success {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(.green)
+        } else {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 }
